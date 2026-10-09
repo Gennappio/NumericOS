@@ -1,17 +1,78 @@
 # NumericOS
 
-NumericOS is a local-first agentic workbench for computational and numerical research:
-a scientific board of typed objects, anchored discussions on agent answers, an approved-knowledge
+NumericOS is a local-first agentic workbench for computational and numerical research: a
+scientific board of typed objects, anchored discussions on agent answers, an approved-knowledge
 context engine, and a runtime (NumericOS Runtime) that supervises real numerical experiments with
-provenance, observability and validators. CLI, API and GUI call the same runtime.
+provenance, observability and validators. The GUI, the `numericos` CLI and external agents all
+call the same API.
 
-**Status:** pre-alpha. Active milestone: see `CURRENT_MILESTONE.md` (M0, foundations).
+**Status:** pre-alpha, milestone **M0** (foundations) in progress; see `CURRENT_MILESTONE.md`.
+Nothing here performs science yet: M0 delivers the persistent project board, the API, the CLI and
+the event ledger that later milestones build on.
 
-## Start here
+## Requirements
 
-1. `AGENTS.md` — product vision and project invariants.
-2. `CURRENT_MILESTONE.md` and `milestones/M0/AGENTS.md` — the active development brief.
-3. `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md`, `docs/SKILL_ARCHITECTURE.md`, `docs/AGENT_ADAPTER_CONTRACT.md`.
-4. `docs/DEVELOPMENT_PACK.md` — the original development pack notes.
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/)
+- Node.js 20.19+ and npm
+- Playwright Chromium for browser tests (installed by `make install`)
 
-Development commands (install, run, test) arrive with ticket M0-T01.
+## Install
+
+```bash
+git clone https://github.com/Gennappio/NumericOS.git
+cd NumericOS
+make install            # uv sync + npm ci + playwright install chromium
+```
+
+## Run
+
+```bash
+make api                # API on http://127.0.0.1:8765 (health: /v1/health, docs: /v1/docs)
+make web                # GUI on http://localhost:5173 (shows the real backend connection state)
+uv run numericos health --json
+```
+
+`uv run numericos serve --ephemeral` starts the API on a throwaway data directory.
+
+The Makefile pins the Python environment to `./.venv` (it exports `UV_PROJECT_ENVIRONMENT`), so a
+global `UV_PROJECT_ENVIRONMENT` in your shell never redirects NumericOS dependencies into another
+project's environment. When calling `uv` directly, do the same: `UV_PROJECT_ENVIRONMENT=.venv uv run ...`.
+
+## Test and quality
+
+```bash
+make test               # pytest (API + real subprocess + CLI) and vitest
+make lint               # ruff check/format, eslint
+make typecheck          # mypy --strict, tsc
+make e2e                # Playwright against a real API process
+make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail if stale
+```
+
+## Configuration
+
+| Variable | Default |
+| --- | --- |
+| `NUMERICOS_DATA_DIR` | `~/.numericos` |
+| `NUMERICOS_HOST` / `NUMERICOS_PORT` | `127.0.0.1` / `8765` |
+| `NUMERICOS_CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173"]` |
+| `NUMERICOS_API_URL` (CLI) | `http://127.0.0.1:8765` |
+| `VITE_API_URL` (GUI) | `http://127.0.0.1:8765` |
+
+## Layout
+
+```text
+src/numericos/   Python package: config, core (schemas, ids, errors), api, cli
+tests/           pytest suites (api, cli); `LiveServer` runs a real API subprocess
+contracts/       exported OpenAPI contract (generated, committed, drift-checked in CI)
+apps/web/        React + TypeScript + Vite GUI; src/api/schema.d.ts is generated from contracts/
+docs/            architecture.md, ADRs, blueprint, skill architecture, adapter contract
+milestones/      executable development briefs M0-M5 (one ticket at a time)
+skills/          canonical scientific Agent Skills (SKILL.md)
+```
+
+## Start here (contributors and coding agents)
+
+1. `AGENTS.md`: product vision and project invariants.
+2. `CURRENT_MILESTONE.md` and `milestones/M0/AGENTS.md`: the active brief and its tickets.
+3. `docs/architecture.md`: what exists today and the decisions behind it (`docs/adr/`).
+4. `docs/DEVELOPMENT_PACK.md`: the original development pack notes.

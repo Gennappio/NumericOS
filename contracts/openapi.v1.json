@@ -1,0 +1,133 @@
+{
+  "components": {
+    "schemas": {
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable error code, e.g. NOT_FOUND.",
+            "title": "Code",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "description": "The one JSON shape of every non-2xx response.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "HealthOut": {
+        "properties": {
+          "app": {
+            "const": "numericos",
+            "title": "App",
+            "type": "string"
+          },
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "time_utc": {
+            "format": "date-time",
+            "title": "Time Utc",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "app",
+          "version",
+          "time_utc"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "NumericOS API",
+    "version": "0.0.1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "operationId": "health_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Liveness of the API process",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}
