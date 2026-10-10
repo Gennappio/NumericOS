@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/v1/cards/{card_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one card */
+        get: operations["get_card"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit and/or move a card (requires its current version) */
+        patch: operations["update_card"];
+        trace?: never;
+    };
+    "/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a project's event ledger by cursor */
+        get: operations["list_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/health": {
         parameters: {
             query?: never;
@@ -12,9 +47,79 @@ export interface paths {
             cookie?: never;
         };
         /** Liveness of the API process and state of its database */
-        get: operations["health_v1_health_get"];
+        get: operations["health"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List projects in creation order */
+        get: operations["list_projects"];
+        put?: never;
+        /** Create a research project */
+        post: operations["create_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one project */
+        get: operations["get_project"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update a project (requires its current version) */
+        patch: operations["update_project"];
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cards of a project in board order (column, then rank) */
+        get: operations["get_board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a typed card at the end of its column */
+        post: operations["create_card"];
         delete?: never;
         options?: never;
         head?: never;
@@ -25,6 +130,93 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BoardOut */
+        BoardOut: {
+            /** Cards */
+            cards: components["schemas"]["CardOut"][];
+            /** Project Id */
+            project_id: string;
+            /** Workflow Statuses */
+            workflow_statuses: components["schemas"]["WorkflowStatus"][];
+        };
+        /** CardCreate */
+        CardCreate: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Entity Ref
+             * @description Typed ID of a later entity (hyp_..., exp_...).
+             */
+            entity_ref?: string | null;
+            /** Title */
+            title: string;
+            type: components["schemas"]["CardType"];
+            /** @default backlog */
+            workflow_status: components["schemas"]["WorkflowStatus"];
+        };
+        /** CardOut */
+        CardOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Entity Ref */
+            entity_ref: string | null;
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Title */
+            title: string;
+            type: components["schemas"]["CardType"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            workflow_status: components["schemas"]["WorkflowStatus"];
+        };
+        /** CardPatch */
+        CardPatch: {
+            /** Description */
+            description?: string | null;
+            /** Entity Ref */
+            entity_ref?: string | null;
+            /**
+             * Position
+             * @description Zero-based index in the destination column; omitted means append.
+             */
+            position?: number | null;
+            /**
+             * Project Id
+             * @description If given, the card must belong to this project.
+             */
+            project_id?: string | null;
+            /** Title */
+            title?: string | null;
+            type?: components["schemas"]["CardType"] | null;
+            /**
+             * Version
+             * @description Current version of the card (optimistic locking).
+             */
+            version: number;
+            workflow_status?: components["schemas"]["WorkflowStatus"] | null;
+        };
+        /**
+         * CardType
+         * @enum {string}
+         */
+        CardType: "task" | "hypothesis" | "experiment" | "issue" | "decision";
         /** ErrorBody */
         ErrorBody: {
             /**
@@ -47,6 +239,50 @@ export interface components {
          */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** EventOut */
+        EventOut: {
+            /** Actor */
+            actor: string;
+            /** Correlation Id */
+            correlation_id: string;
+            /** Event Id */
+            event_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Producer */
+            producer: string;
+            /** Project Id */
+            project_id: string;
+            /** Schema Version */
+            schema_version: number;
+            /**
+             * Seq
+             * @description Monotonic ledger position; the replay cursor.
+             */
+            seq: number;
+            /** Severity */
+            severity: string;
+            /** Subject Id */
+            subject_id: string;
+            /**
+             * Timestamp Utc
+             * Format: date-time
+             */
+            timestamp_utc: string;
+            /** Type */
+            type: string;
+        };
+        /** EventPage */
+        EventPage: {
+            /** Events */
+            events: components["schemas"]["EventOut"][];
+            /** Has More */
+            has_more: boolean;
+            /** Next Cursor */
+            next_cursor: number | null;
         };
         /** HealthOut */
         HealthOut: {
@@ -79,6 +315,88 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** ProjectCreate */
+        ProjectCreate: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Is Demo
+             * @description Marks demo data so the GUI can label it.
+             * @default false
+             */
+            is_demo: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Research Question
+             * @default
+             */
+            research_question: string;
+            /**
+             * Root Path
+             * @description Absolute path of the research code. Stored as a reference, never opened.
+             */
+            root_path?: string | null;
+        };
+        /** ProjectList */
+        ProjectList: {
+            /** Projects */
+            projects: components["schemas"]["ProjectOut"][];
+        };
+        /** ProjectOut */
+        ProjectOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Is Demo */
+            is_demo: boolean;
+            /** Name */
+            name: string;
+            /** Research Question */
+            research_question: string;
+            /** Root Path */
+            root_path: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** ProjectPatch */
+        ProjectPatch: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Research Question */
+            research_question?: string | null;
+            /**
+             * Root Path
+             * @description Explicit null clears the path; an absent field keeps it.
+             */
+            root_path?: string | null;
+            /**
+             * Version
+             * @description Current version of the project (optimistic locking).
+             */
+            version: number;
+        };
+        /**
+         * WorkflowStatus
+         * @enum {string}
+         */
+        WorkflowStatus: "backlog" | "planned" | "active" | "review" | "completed" | "blocked";
     };
     responses: never;
     parameters: never;
@@ -88,7 +406,151 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health_v1_health_get: {
+    get_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_card: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_events: {
+        parameters: {
+            query: {
+                /** @description Project whose ledger is read. */
+                project_id: string;
+                /** @description Return events with seq greater than this cursor. */
+                after?: number | null;
+                /** @description Return events with seq lower than this value. */
+                before?: number | null;
+                limit?: number;
+                /** @description Ordering by seq. */
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPage"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    health: {
         parameters: {
             query?: never;
             header?: never;
@@ -104,6 +566,272 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_projects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_project: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_card: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
                 };
             };
             /** @description Resource not found */

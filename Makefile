@@ -1,7 +1,7 @@
 # Pin the Python environment to ./.venv even when the shell exports a global UV_PROJECT_ENVIRONMENT.
 export UV_PROJECT_ENVIRONMENT := $(CURDIR)/.venv
 
-.PHONY: install api web test test-backend test-web lint typecheck e2e openapi check-contracts
+.PHONY: install api web seed-demo test test-backend test-web lint typecheck e2e openapi check-contracts
 
 install: ## Install Python and Node toolchains (+ Playwright Chromium)
 	uv sync
@@ -12,6 +12,9 @@ api: ## Run the API on http://127.0.0.1:8765
 
 web: ## Run the GUI dev server on http://localhost:5173
 	cd apps/web && npm run dev
+
+seed-demo: ## Create one clearly marked demo project in the running API (idempotent)
+	uv run numericos seed-demo
 
 test: test-backend test-web
 

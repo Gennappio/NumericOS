@@ -7,11 +7,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
 
 from numericos import __version__
 from numericos.api.errors import ERROR_RESPONSES, install_error_handlers
 from numericos.api.middleware import CorrelationIdMiddleware
-from numericos.api.routes import health
+from numericos.api.routes import cards, events, health, projects
 from numericos.config import Settings
 from numericos.events.notifier import EventNotifier
 from numericos.persistence.engine import make_engine, make_session_factory
@@ -21,6 +22,11 @@ from numericos.persistence.engine import make_engine, make_session_factory
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     app.state.engine.dispose()
+
+
+def _operation_id(route: APIRoute) -> str:
+    """Stable, readable operation IDs (``create_project``) for generated clients."""
+    return route.name
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/v1/docs",
         redoc_url=None,
         lifespan=_lifespan,
+        generate_unique_id_function=_operation_id,
     )
     app.state.settings = settings
     app.state.engine = make_engine(settings.db_path)
@@ -48,7 +55,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.add_middleware(CorrelationIdMiddleware)  # outermost: every response carries the ID
     install_error_handlers(app)
-    app.include_router(health.router, prefix="/v1", responses=ERROR_RESPONSES)
+    for router in (health.router, projects.router, cards.router, events.router):
+        app.include_router(router, prefix="/v1", responses=ERROR_RESPONSES)
     return app
 
 

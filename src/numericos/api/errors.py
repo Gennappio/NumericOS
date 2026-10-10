@@ -31,6 +31,11 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: {"model": ErrorEnvelope, "description": "Request validation failed"},
 }
 
+#: For mutations guarded by optimistic locking or a project assertion.
+CONFLICT_RESPONSES: dict[int | str, dict[str, Any]] = {
+    409: {"model": ErrorEnvelope, "description": "Stale version or project mismatch"},
+}
+
 
 def error_response(
     request: Request,

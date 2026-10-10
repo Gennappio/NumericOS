@@ -1,6 +1,257 @@
 {
   "components": {
     "schemas": {
+      "BoardOut": {
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardOut"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "workflow_statuses": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStatus"
+            },
+            "title": "Workflow Statuses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "workflow_statuses",
+          "cards"
+        ],
+        "title": "BoardOut",
+        "type": "object"
+      },
+      "CardCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Description",
+            "type": "string"
+          },
+          "entity_ref": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Typed ID of a later entity (hyp_..., exp_...).",
+            "title": "Entity Ref"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/CardType"
+          },
+          "workflow_status": {
+            "$ref": "#/components/schemas/WorkflowStatus",
+            "default": "backlog"
+          }
+        },
+        "required": [
+          "type",
+          "title"
+        ],
+        "title": "CardCreate",
+        "type": "object"
+      },
+      "CardOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "entity_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Ref"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/CardType"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "workflow_status": {
+            "$ref": "#/components/schemas/WorkflowStatus"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "type",
+          "title",
+          "description",
+          "workflow_status",
+          "sort_order",
+          "entity_ref",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CardOut",
+        "type": "object"
+      },
+      "CardPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "entity_ref": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Ref"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Zero-based index in the destination column; omitted means append.",
+            "title": "Position"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "If given, the card must belong to this project.",
+            "title": "Project Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CardType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "description": "Current version of the card (optimistic locking).",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "workflow_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "CardPatch",
+        "type": "object"
+      },
+      "CardType": {
+        "enum": [
+          "task",
+          "hypothesis",
+          "experiment",
+          "issue",
+          "decision"
+        ],
+        "title": "CardType",
+        "type": "string"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -47,6 +298,110 @@
           "error"
         ],
         "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EventOut": {
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "correlation_id": {
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "producer": {
+            "title": "Producer",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seq": {
+            "description": "Monotonic ledger position; the replay cursor.",
+            "title": "Seq",
+            "type": "integer"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "timestamp_utc": {
+            "format": "date-time",
+            "title": "Timestamp Utc",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "seq",
+          "project_id",
+          "type",
+          "subject_id",
+          "actor",
+          "producer",
+          "severity",
+          "correlation_id",
+          "schema_version",
+          "timestamp_utc",
+          "payload"
+        ],
+        "title": "EventOut",
+        "type": "object"
+      },
+      "EventPage": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "events",
+          "next_cursor",
+          "has_more"
+        ],
+        "title": "EventPage",
         "type": "object"
       },
       "HealthOut": {
@@ -113,6 +468,207 @@
         ],
         "title": "HealthOut",
         "type": "object"
+      },
+      "ProjectCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Description",
+            "type": "string"
+          },
+          "is_demo": {
+            "default": false,
+            "description": "Marks demo data so the GUI can label it.",
+            "title": "Is Demo",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "research_question": {
+            "default": "",
+            "maxLength": 5000,
+            "title": "Research Question",
+            "type": "string"
+          },
+          "root_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absolute path of the research code. Stored as a reference, never opened.",
+            "title": "Root Path"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectCreate",
+        "type": "object"
+      },
+      "ProjectList": {
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectOut"
+            },
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ProjectList",
+        "type": "object"
+      },
+      "ProjectOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_demo": {
+            "title": "Is Demo",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "research_question": {
+            "title": "Research Question",
+            "type": "string"
+          },
+          "root_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Path"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "research_question",
+          "description",
+          "root_path",
+          "is_demo",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProjectOut",
+        "type": "object"
+      },
+      "ProjectPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "research_question": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Question"
+          },
+          "root_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit null clears the path; an absent field keeps it.",
+            "title": "Root Path"
+          },
+          "version": {
+            "description": "Current version of the project (optimistic locking).",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ProjectPatch",
+        "type": "object"
+      },
+      "WorkflowStatus": {
+        "enum": [
+          "backlog",
+          "planned",
+          "active",
+          "review",
+          "completed",
+          "blocked"
+        ],
+        "title": "WorkflowStatus",
+        "type": "string"
       }
     }
   },
@@ -122,9 +678,264 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/cards/{card_id}": {
+      "get": {
+        "operationId": "get_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "title": "Card Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one card",
+        "tags": [
+          "cards"
+        ]
+      },
+      "patch": {
+        "operationId": "update_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "title": "Card Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Edit and/or move a card (requires its current version)",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "operationId": "list_events",
+        "parameters": [
+          {
+            "description": "Project whose ledger is read.",
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "description": "Project whose ledger is read.",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return events with seq greater than this cursor.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return events with seq greater than this cursor.",
+              "title": "After"
+            }
+          },
+          {
+            "description": "Return events with seq lower than this value.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return events with seq lower than this value.",
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Ordering by seq.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "description": "Ordering by seq.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Read a project's event ledger by cursor",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/v1/health": {
       "get": {
-        "operationId": "health_v1_health_get",
+        "operationId": "health",
         "responses": {
           "200": {
             "content": {
@@ -160,6 +971,373 @@
         "summary": "Liveness of the API process and state of its database",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/projects": {
+      "get": {
+        "operationId": "list_projects",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "List projects in creation order",
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "operationId": "create_project",
+        "parameters": [
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Create a research project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}": {
+      "get": {
+        "operationId": "get_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one project",
+        "tags": [
+          "projects"
+        ]
+      },
+      "patch": {
+        "operationId": "update_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Update a project (requires its current version)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/board": {
+      "get": {
+        "operationId": "get_board",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Cards of a project in board order (column, then rank)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/cards": {
+      "post": {
+        "operationId": "create_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Create a typed card at the end of its column",
+        "tags": [
+          "projects"
         ]
       }
     }

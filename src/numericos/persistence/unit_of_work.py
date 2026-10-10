@@ -1,7 +1,7 @@
 """One transaction per mutation: state change and ledger event commit together.
 
 Subscribers are woken only after ``session.commit()`` returned, so publishing without a durable
-commit is structurally impossible. Leaving the block without ``commit()`` rolls everything back.
+commit is structurally impossible. Leaving the block without ``commit()`` discards everything.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ class UnitOfWork:
         self._session_factory = session_factory
         self._notifier = notifier
         self._recorded: list[Event] = []
-        self._committed = False
 
     def __enter__(self) -> UnitOfWork:
         self.session = self._session_factory()
@@ -51,7 +50,6 @@ class UnitOfWork:
 
     def commit(self) -> None:
         self.session.commit()
-        self._committed = True
         published, self._recorded = self._recorded, []
         for event in published:
             self._notifier.publish(event.project_id, event.seq)

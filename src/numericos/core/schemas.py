@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import PurePath
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from numericos.core.enums import CardType, WorkflowStatus
 
@@ -21,6 +21,13 @@ def _absolute_or_none(value: str | None) -> str | None:
     if value is not None and not PurePath(value).is_absolute():
         raise ValueError("root_path must be an absolute path")
     return value
+
+
+def _reject_explicit_nulls(model: BaseModel, fields: tuple[str, ...]) -> None:
+    """In a PATCH an absent field means "keep"; null is only valid for nullable columns."""
+    for name in fields:
+        if name in model.model_fields_set and getattr(model, name) is None:
+            raise ValueError(f"{name} cannot be null")
 
 
 class ProjectCreate(StrictModel):
@@ -53,6 +60,11 @@ class ProjectPatch(StrictModel):
     def _root_path_absolute(cls, value: str | None) -> str | None:
         return _absolute_or_none(value)
 
+    @model_validator(mode="after")
+    def _no_explicit_nulls(self) -> Self:
+        _reject_explicit_nulls(self, ("name", "research_question", "description"))
+        return self
+
 
 class ProjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -66,6 +78,10 @@ class ProjectOut(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class ProjectList(BaseModel):
+    projects: list[ProjectOut]
 
 
 class CardCreate(StrictModel):
@@ -93,6 +109,11 @@ class CardPatch(StrictModel):
         ge=0,
         description="Zero-based index in the destination column; omitted means append.",
     )
+
+    @model_validator(mode="after")
+    def _no_explicit_nulls(self) -> Self:
+        _reject_explicit_nulls(self, ("type", "title", "description", "workflow_status"))
+        return self
 
 
 class CardOut(BaseModel):

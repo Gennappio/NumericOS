@@ -36,6 +36,23 @@ uv run numericos health --json
 `uv run numericos db upgrade` / `db current` do the same explicitly, and
 `uv run numericos serve --ephemeral` starts the API on a throwaway data directory.
 
+## Command line
+
+The `numericos` CLI is a client of the same API the GUI uses (`.venv/bin/numericos` after
+`make install`). Add `--json` to any command for machine-readable output on stdout.
+
+```bash
+numericos project add "Heat 2D" --question "Is the explicit scheme stable at dt = 0.01?"
+numericos project list
+numericos card add --project PROJECT_ID --type hypothesis --title "H01: ..."
+numericos card move CARD_ID --status review --position 0
+numericos card list --project PROJECT_ID
+numericos events list --project PROJECT_ID          # the ordered event ledger
+numericos seed-demo                                 # one clearly marked demo project
+```
+
+Exit codes: `0` success, `1` API error (envelope on stderr), `2` usage error, `3` API unreachable.
+
 The Makefile pins the Python environment to `./.venv` (it exports `UV_PROJECT_ENVIRONMENT`), so a
 global `UV_PROJECT_ENVIRONMENT` in your shell never redirects NumericOS dependencies into another
 project's environment. When calling `uv` directly, do the same: `UV_PROJECT_ENVIRONMENT=.venv uv run ...`.
@@ -63,8 +80,8 @@ make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail 
 ## Layout
 
 ```text
-src/numericos/   Python package: config, core, persistence (models, migrations), events, api, cli
-tests/           pytest suites (unit, persistence, api, cli); `LiveServer` runs a real API subprocess
+src/numericos/   Python package: config, core, persistence (models, migrations), events, services, api, cli
+tests/           pytest suites (unit, persistence, api, cli, integration); `LiveServer` runs a real API subprocess
 contracts/       exported OpenAPI contract (generated, committed, drift-checked in CI)
 apps/web/        React + TypeScript + Vite GUI; src/api/schema.d.ts is generated from contracts/
 docs/            architecture.md, ADRs, blueprint, skill architecture, adapter contract

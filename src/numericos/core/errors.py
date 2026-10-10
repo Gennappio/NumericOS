@@ -18,3 +18,17 @@ class DomainError(Exception):
 class NotFoundError(DomainError):
     code = "NOT_FOUND"
     status_code = 404
+
+
+class StaleRevisionError(DomainError):
+    """The caller's ``version`` is not the current one (optimistic locking)."""
+
+    code = "STALE_REVISION"
+    status_code = 409
+
+
+class ProjectMismatchError(DomainError):
+    """The resource exists but does not belong to the project the caller named."""
+
+    code = "PROJECT_MISMATCH"
+    status_code = 409

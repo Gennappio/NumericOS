@@ -74,5 +74,7 @@ def test_openapi_export_is_the_public_contract() -> None:
     assert result.exit_code == 0, result.output
     document = json.loads(result.stdout)
     assert document["info"]["title"] == "NumericOS API"
-    assert "/v1/health" in document["paths"]
+    assert {"/v1/health", "/v1/projects", "/v1/cards/{card_id}", "/v1/events"} <= set(
+        document["paths"]
+    )
     assert "ErrorEnvelope" in document["components"]["schemas"]
