@@ -29,3 +29,7 @@ class Settings(BaseSettings):
     @classmethod
     def _expand_user(cls, value: Path) -> Path:
         return value.expanduser()
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "numericos.db"

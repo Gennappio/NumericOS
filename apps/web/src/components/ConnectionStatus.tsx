@@ -3,10 +3,10 @@ import { useConnectionState } from "@/api/queries"
 import { cn } from "@/lib/utils"
 
 export function ConnectionStatus() {
-  const { state, version } = useConnectionState()
+  const { state, version, degraded } = useConnectionState()
   const label =
     state === "connected"
-      ? `Connected · API v${version}`
+      ? `Connected · API v${version}${degraded ? " · database needs migration" : ""}`
       : state === "unreachable"
         ? `Backend unreachable (${API_URL})`
         : "Checking backend…"

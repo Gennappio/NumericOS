@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,9 +13,18 @@ from numericos.api.errors import ERROR_RESPONSES, install_error_handlers
 from numericos.api.middleware import CorrelationIdMiddleware
 from numericos.api.routes import health
 from numericos.config import Settings
+from numericos.events.notifier import EventNotifier
+from numericos.persistence.engine import make_engine, make_session_factory
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    app.state.engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build the app. Migrations are NOT applied here: ``numericos serve`` / ``db upgrade`` do."""
     settings = settings or Settings()
     app = FastAPI(
         title="NumericOS API",
@@ -20,8 +32,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/v1/openapi.json",
         docs_url="/v1/docs",
         redoc_url=None,
+        lifespan=_lifespan,
     )
     app.state.settings = settings
+    app.state.engine = make_engine(settings.db_path)
+    app.state.session_factory = make_session_factory(app.state.engine)
+    app.state.notifier = EventNotifier()
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

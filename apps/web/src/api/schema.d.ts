@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liveness of the API process */
+        /** Liveness of the API process and state of its database */
         get: operations["health_v1_health_get"];
         put?: never;
         post?: never;
@@ -55,11 +55,22 @@ export interface components {
              * @constant
              */
             app: "numericos";
+            /** Data Dir */
+            data_dir: string;
+            /**
+             * Db
+             * @enum {string}
+             */
+            db: "ok" | "unavailable";
+            /** Expected Revision */
+            expected_revision: string;
+            /** Schema Revision */
+            schema_revision: string | null;
             /**
              * Status
-             * @constant
+             * @enum {string}
              */
-            status: "ok";
+            status: "ok" | "degraded";
             /**
              * Time Utc
              * Format: date-time

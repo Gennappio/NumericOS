@@ -1,4 +1,4 @@
-"""Shared fixtures: an in-process TestClient and a real API subprocess (``LiveServer``)."""
+"""Shared fixtures: migrated SQLite engine, unit of work, in-process TestClient, LiveServer."""
 
 from __future__ import annotations
 
@@ -7,15 +7,21 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from numericos.api.app import create_app
 from numericos.config import Settings
+from numericos.events.notifier import EventNotifier
+from numericos.persistence import migrate
+from numericos.persistence.engine import make_engine, make_session_factory
+from numericos.persistence.unit_of_work import UnitOfWork
 
 
 @pytest.fixture
@@ -24,7 +30,34 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def client(settings: Settings) -> Iterator[TestClient]:
+def engine(settings: Settings) -> Iterator[Engine]:
+    """A freshly migrated database in a temporary data directory."""
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    engine = make_engine(settings.db_path)
+    migrate.upgrade(engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def session_factory(engine: Engine) -> sessionmaker[Session]:
+    return make_session_factory(engine)
+
+
+@pytest.fixture
+def notifier() -> EventNotifier:
+    return EventNotifier()
+
+
+@pytest.fixture
+def uow(
+    session_factory: sessionmaker[Session], notifier: EventNotifier
+) -> Callable[[], UnitOfWork]:
+    return lambda: UnitOfWork(session_factory, notifier)
+
+
+@pytest.fixture
+def client(settings: Settings, engine: Engine) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as test_client:
         yield test_client
 

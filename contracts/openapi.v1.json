@@ -56,8 +56,38 @@
             "title": "App",
             "type": "string"
           },
+          "data_dir": {
+            "title": "Data Dir",
+            "type": "string"
+          },
+          "db": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Db",
+            "type": "string"
+          },
+          "expected_revision": {
+            "title": "Expected Revision",
+            "type": "string"
+          },
+          "schema_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Revision"
+          },
           "status": {
-            "const": "ok",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -75,7 +105,11 @@
           "status",
           "app",
           "version",
-          "time_utc"
+          "time_utc",
+          "data_dir",
+          "db",
+          "schema_revision",
+          "expected_revision"
         ],
         "title": "HealthOut",
         "type": "object"
@@ -123,7 +157,7 @@
             "description": "Request validation failed"
           }
         },
-        "summary": "Liveness of the API process",
+        "summary": "Liveness of the API process and state of its database",
         "tags": [
           "health"
         ]

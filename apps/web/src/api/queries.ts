@@ -18,10 +18,23 @@ export function useHealth() {
 
 export type ConnectionState = "checking" | "connected" | "unreachable"
 
+export interface ConnectionInfo {
+  state: ConnectionState
+  version?: string
+  /** True when the API answers but reports a degraded database (e.g. pending migrations). */
+  degraded?: boolean
+}
+
 /** Derived from the live health query: an error always wins over previously cached data. */
-export function useConnectionState(): { state: ConnectionState; version?: string } {
+export function useConnectionState(): ConnectionInfo {
   const health = useHealth()
   if (health.status === "error") return { state: "unreachable" }
-  if (health.status === "success") return { state: "connected", version: health.data.version }
+  if (health.status === "success") {
+    return {
+      state: "connected",
+      version: health.data.version,
+      degraded: health.data.status === "degraded",
+    }
+  }
   return { state: "checking" }
 }

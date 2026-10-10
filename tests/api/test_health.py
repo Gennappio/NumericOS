@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from numericos import __version__
+from numericos.api.app import create_app
+from numericos.config import Settings
 
 
-def test_health_reports_version_and_utc_time(client: TestClient) -> None:
+def test_health_reports_version_time_and_migrated_database(client: TestClient) -> None:
     response = client.get("/v1/health")
 
     assert response.status_code == 200
@@ -14,6 +18,30 @@ def test_health_reports_version_and_utc_time(client: TestClient) -> None:
     assert body["app"] == "numericos"
     assert body["version"] == __version__
     assert body["time_utc"].endswith("Z")
+    assert body["db"] == "ok"
+    assert body["schema_revision"] == body["expected_revision"] == "0001"
+
+
+def test_health_is_degraded_when_the_schema_is_missing(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path / "data")
+    settings.data_dir.mkdir()
+
+    with TestClient(create_app(settings)) as client:
+        body = client.get("/v1/health").json()
+
+    assert body["status"] == "degraded"
+    assert body["db"] == "ok"
+    assert body["schema_revision"] is None
+
+
+def test_health_reports_an_unavailable_database(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path / "missing" / "data")  # directory never created
+
+    with TestClient(create_app(settings)) as client:
+        body = client.get("/v1/health").json()
+
+    assert body["status"] == "degraded"
+    assert body["db"] == "unavailable"
 
 
 def test_correlation_id_is_generated_when_missing(client: TestClient) -> None:

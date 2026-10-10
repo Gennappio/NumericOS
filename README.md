@@ -32,6 +32,8 @@ make web                # GUI on http://localhost:5173 (shows the real backend c
 uv run numericos health --json
 ```
 
+`make api` applies pending schema migrations to `~/.numericos/numericos.db` before listening;
+`uv run numericos db upgrade` / `db current` do the same explicitly, and
 `uv run numericos serve --ephemeral` starts the API on a throwaway data directory.
 
 The Makefile pins the Python environment to `./.venv` (it exports `UV_PROJECT_ENVIRONMENT`), so a
@@ -61,8 +63,8 @@ make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail 
 ## Layout
 
 ```text
-src/numericos/   Python package: config, core (schemas, ids, errors), api, cli
-tests/           pytest suites (api, cli); `LiveServer` runs a real API subprocess
+src/numericos/   Python package: config, core, persistence (models, migrations), events, api, cli
+tests/           pytest suites (unit, persistence, api, cli); `LiveServer` runs a real API subprocess
 contracts/       exported OpenAPI contract (generated, committed, drift-checked in CI)
 apps/web/        React + TypeScript + Vite GUI; src/api/schema.d.ts is generated from contracts/
 docs/            architecture.md, ADRs, blueprint, skill architecture, adapter contract
