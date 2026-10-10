@@ -4,6 +4,9 @@ import { API_PORT, API_URL, WEB_PORT, WEB_URL } from "./e2e/urls"
 /**
  * Browser tests run against a REAL API process on a throwaway data directory and the Vite dev
  * server; nothing is mocked except where a test deliberately cuts the network.
+ *
+ * One worker, files in alphabetical order: `00-first-run.spec.ts` must see the empty database
+ * that every `playwright test` invocation starts with.
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -12,6 +15,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  // The GUI learns about changes made elsewhere by polling every 5 s (until the SSE stream).
+  expect: { timeout: 10_000 },
   use: {
     baseURL: WEB_URL,
     trace: "retain-on-failure",

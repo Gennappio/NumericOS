@@ -201,7 +201,11 @@ def serve(
         bool, typer.Option("--migrate/--no-migrate", help="Apply schema migrations at startup.")
     ] = True,
     reload: Annotated[
-        bool, typer.Option("--reload", help="Reload on source changes (development only).")
+        bool,
+        typer.Option(
+            "--reload",
+            help="Restart on source changes (development). Migrations run once, at startup.",
+        ),
     ] = False,
 ) -> None:
     """Start the NumericOS API server (loopback-bound by default)."""
@@ -236,6 +240,7 @@ def serve(
             "numericos.api.app:create_app_from_env",
             factory=True,
             reload=True,
+            reload_dirs=[str(Path(__file__).resolve().parents[1])],  # the numericos package
             host=settings.host,
             port=settings.port,
         )

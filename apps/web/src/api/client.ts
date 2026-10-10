@@ -1,7 +1,18 @@
 import type { components } from "./schema"
 
-export type HealthOut = components["schemas"]["HealthOut"]
-export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"]
+type Schemas = components["schemas"]
+export type HealthOut = Schemas["HealthOut"]
+export type ErrorEnvelope = Schemas["ErrorEnvelope"]
+export type Project = Schemas["ProjectOut"]
+export type ProjectList = Schemas["ProjectList"]
+export type ProjectCreate = Schemas["ProjectCreate"]
+export type ProjectPatch = Schemas["ProjectPatch"]
+export type Card = Schemas["CardOut"]
+export type CardCreate = Schemas["CardCreate"]
+export type CardPatch = Schemas["CardPatch"]
+export type Board = Schemas["BoardOut"]
+export type CardType = Schemas["CardType"]
+export type WorkflowStatus = Schemas["WorkflowStatus"]
 type ErrorBody = ErrorEnvelope["error"]
 
 const DEFAULT_API_URL = "http://127.0.0.1:8765"
@@ -75,4 +86,23 @@ async function readErrorBody(response: Response): Promise<ErrorBody> {
   }
 }
 
-export const fetchHealth = () => apiFetch<HealthOut>("/v1/health")
+const send = (method: "POST" | "PATCH", body: unknown): RequestInit => ({
+  method,
+  body: JSON.stringify(body),
+})
+const seg = encodeURIComponent
+
+/** One function per API operation; names follow the operation IDs of the contract. */
+export const api = {
+  health: () => apiFetch<HealthOut>("/v1/health"),
+  listProjects: () => apiFetch<ProjectList>("/v1/projects"),
+  getProject: (projectId: string) => apiFetch<Project>(`/v1/projects/${seg(projectId)}`),
+  createProject: (body: ProjectCreate) => apiFetch<Project>("/v1/projects", send("POST", body)),
+  updateProject: (projectId: string, body: ProjectPatch) =>
+    apiFetch<Project>(`/v1/projects/${seg(projectId)}`, send("PATCH", body)),
+  getBoard: (projectId: string) => apiFetch<Board>(`/v1/projects/${seg(projectId)}/board`),
+  createCard: (projectId: string, body: CardCreate) =>
+    apiFetch<Card>(`/v1/projects/${seg(projectId)}/cards`, send("POST", body)),
+  updateCard: (cardId: string, body: CardPatch) =>
+    apiFetch<Card>(`/v1/cards/${seg(cardId)}`, send("PATCH", body)),
+}

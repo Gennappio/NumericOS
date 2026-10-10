@@ -28,13 +28,29 @@ make install            # uv sync + npm ci + playwright install chromium
 
 ```bash
 make api                # API on http://127.0.0.1:8765 (health: /v1/health, docs: /v1/docs)
-make web                # GUI on http://localhost:5173 (shows the real backend connection state)
-uv run numericos health --json
+make web                # GUI on http://localhost:5173
+make seed-demo          # optional: one clearly marked demo project (needs the API running)
 ```
 
-`make api` applies pending schema migrations to `~/.numericos/numericos.db` before listening;
-`uv run numericos db upgrade` / `db current` do the same explicitly, and
-`uv run numericos serve --ephemeral` starts the API on a throwaway data directory.
+`make api` applies pending schema migrations to `~/.numericos/numericos.db` before listening and
+restarts itself when the Python source changes. `numericos db upgrade` / `db current` manage the
+schema explicitly, and `numericos serve --ephemeral` starts the API on a throwaway data directory.
+
+## Using the GUI
+
+Open http://localhost:5173 with the API running.
+
+1. **New project**: give it a name, the research question and, optionally, the absolute path of
+   the research code (stored as a reference only).
+2. On the project page use **New card** (or the `+` of a column) to add typed cards: task,
+   hypothesis, experiment, issue, decision.
+3. Move a card with its status select (to another column) or its up/down buttons (inside the
+   column); click its title to edit it. Reload the page or restart `make api`: the board is
+   exactly as you left it.
+4. Columns are workflow status only. Nothing on the board states whether a result is valid.
+
+The indicator in the top right corner shows the real connection to the backend. If the API stops,
+the GUI says so, marks what it shows as the last known state and disables every change.
 
 ## Command line
 
@@ -63,7 +79,7 @@ project's environment. When calling `uv` directly, do the same: `UV_PROJECT_ENVI
 make test               # pytest (API + real subprocess + CLI) and vitest
 make lint               # ruff check/format, eslint
 make typecheck          # mypy --strict, tsc
-make e2e                # Playwright against a real API process
+make e2e                # Playwright against a real API process (own ports and data directory)
 make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail if stale
 ```
 

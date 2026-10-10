@@ -145,7 +145,7 @@ export interface components {
              * Description
              * @default
              */
-            description: string;
+            description?: string;
             /**
              * Entity Ref
              * @description Typed ID of a later entity (hyp_..., exp_...).
@@ -155,7 +155,7 @@ export interface components {
             title: string;
             type: components["schemas"]["CardType"];
             /** @default backlog */
-            workflow_status: components["schemas"]["WorkflowStatus"];
+            workflow_status?: components["schemas"]["WorkflowStatus"];
         };
         /** CardOut */
         CardOut: {
@@ -321,20 +321,20 @@ export interface components {
              * Description
              * @default
              */
-            description: string;
+            description?: string;
             /**
              * Is Demo
              * @description Marks demo data so the GUI can label it.
              * @default false
              */
-            is_demo: boolean;
+            is_demo?: boolean;
             /** Name */
             name: string;
             /**
              * Research Question
              * @default
              */
-            research_question: string;
+            research_question?: string;
             /**
              * Root Path
              * @description Absolute path of the research code. Stored as a reference, never opened.

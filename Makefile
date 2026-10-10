@@ -7,8 +7,8 @@ install: ## Install Python and Node toolchains (+ Playwright Chromium)
 	uv sync
 	cd apps/web && npm ci && npx playwright install chromium
 
-api: ## Run the API on http://127.0.0.1:8765
-	uv run numericos serve
+api: ## Run the API on http://127.0.0.1:8765 (restarts itself when the source changes)
+	uv run numericos serve --reload
 
 web: ## Run the GUI dev server on http://localhost:5173
 	cd apps/web && npm run dev

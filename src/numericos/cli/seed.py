@@ -17,8 +17,8 @@ DEMO_PROJECT: dict[str, Any] = {
         "equation solver stable, and what do they cost in accuracy and runtime?"
     ),
     "description": (
-        "Demo data created by `numericos seed-demo`. The cards illustrate the board; "
-        "none of them is a recorded result."
+        "Demo data created by the numericos seed-demo command. The cards illustrate the "
+        "board; none of them is a recorded result."
     ),
     "root_path": None,
     "is_demo": True,

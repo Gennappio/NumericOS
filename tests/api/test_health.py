@@ -74,3 +74,19 @@ def test_cors_is_limited_to_configured_origins(client: TestClient) -> None:
 
     assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
     assert "access-control-allow-origin" not in denied.headers
+
+
+def test_both_spellings_of_the_local_gui_origin_may_change_data(client: TestClient) -> None:
+    for origin in ("http://localhost:5173", "http://127.0.0.1:5173"):
+        preflight = client.options(
+            "/v1/cards/card_x",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "PATCH",
+                "Access-Control-Request-Headers": "content-type,x-actor",
+            },
+        )
+
+        assert preflight.status_code == 200
+        assert preflight.headers["access-control-allow-origin"] == origin
+        assert "PATCH" in preflight.headers["access-control-allow-methods"]

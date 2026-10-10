@@ -1,6 +1,6 @@
 # NumericOS architecture (living document)
 
-Status: **M0-T03** (public API and CLI on top of the model, migrations and event ledger). Everything below describes
+Status: **M0-T04** (scientific board GUI on top of the public API, the CLI and the event ledger). Everything below describes
 what exists; later milestones extend this file instead of replacing it. Roadmap and acceptance
 gates live in `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md` and `milestones/`.
 
@@ -21,7 +21,9 @@ tests/                         pytest: unit, persistence, api (TestClient), cli 
                                (real server subprocess)
 contracts/openapi.v1.json      exported public contract (generated, committed, drift-checked)
 apps/web/                      React + TypeScript + Vite GUI (npm project)
-  src/api/schema.d.ts          TypeScript types generated from contracts/openapi.v1.json
+  src/api/                     schema.d.ts (generated from the contract), typed client, query hooks
+  src/components/, src/pages/  shell, project list, project page, board, dialogs
+  e2e/                         Playwright journeys against a real API process
 docs/, milestones/, skills/    specification pack (product invariants, briefs, canonical skills)
 ```
 
@@ -40,6 +42,8 @@ Dependency direction inside `src/numericos`: `core <- persistence <- events <- s
 | `VITE_API_URL` (web) | `http://127.0.0.1:8765` | API base URL baked into the GUI |
 
 `numericos serve --ephemeral` uses a fresh temporary data directory (demos, e2e tests).
+`numericos serve --reload` (what `make api` runs) restarts the server when a file of the
+`numericos` package changes; migrations are applied once, at startup.
 
 Tooling: `uv` manages the Python environment in `./.venv`; the Makefile and the Playwright config
 export `UV_PROJECT_ENVIRONMENT` explicitly because a global value in the developer's shell would
@@ -174,6 +178,38 @@ printed on stderr), `2` usage error, `3` API unreachable.
 `update` and `move` use optimistic locking: without `--version` they read the latest version
 first (last write wins); with `--version N` a concurrent change is reported as `STALE_REVISION`.
 
+## GUI
+
+The GUI is a client of the public API like any other; it holds no state of its own beyond a
+query cache and never ships mock data.
+
+- **Routes:** `/` lists projects; `/projects/:projectId` shows one project and its board; any
+  other path is a not-found page.
+- **Shell:** left project navigation and a connection indicator that is always visible. The
+  indicator is derived from polling `GET /v1/health`: `Connected` (with the API version, and a
+  note when the database needs a migration), `Checking backend` or `Backend unreachable`. When
+  the backend is unreachable a banner states that what is shown is the last state received at a
+  given time, not live data, and every control that changes data is disabled.
+- **Project page:** the research question and the project reference (code path and project ID)
+  are shown prominently; demo projects carry a "Demo data" label. The view tabs anticipate the
+  roadmap: `Board` is active, `Experiments`, `Timeline`, `Agents` and `Knowledge` are disabled
+  buttons naming the milestone that delivers them. Nothing is pretend-functional.
+- **Board:** one column per workflow status, in the order returned by the board endpoint; cards
+  in the order the backend stores. A card shows its type and its workflow status and nothing
+  about validity: no supported/refuted label exists anywhere in the GUI. Until drag and drop
+  (M1) a card moves through its status select (appended to the destination column) and its
+  up/down buttons (position in the column). Cards are created and edited in a dialog.
+- **Writes:** every update sends the record `version`. A `STALE_REVISION` answer is explained to
+  the person and the view is refreshed; a `VALIDATION_ERROR` shows the server's message next to
+  the field. A mutation stays pending until the refreshed data is on screen, so a second action
+  is never sent with an outdated version by accident.
+- **Freshness:** projects and boards are re-read every 5 seconds (bounded reads of real state),
+  so changes made by the CLI or another tab appear without a reload. The replayable event stream
+  of M0-T05 will drive refreshes; polling remains its fallback.
+- **Types:** request and response types come from `schema.d.ts`. The label maps for card types
+  and workflow statuses are `Record`s over the generated unions, so a vocabulary change in the
+  contract is a compile error until the GUI handles it.
+
 ## Contracts pipeline
 
 Pydantic models in `numericos.core.schemas` are the single source of the public schema:
@@ -188,8 +224,8 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Persistence | pytest on a migrated temp SQLite | migrations (fresh, idempotent, round trip, `alembic check`), PRAGMAs, repositories, constraints, unit of work, publish-after-commit, sequence continuity across restarts |
 | API | pytest + `TestClient` | projects, cards, placement, events paging, envelope, headers, CORS, health states, contract snapshot |
 | Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, startup migration, concurrent writers, restart proofs (T05) |
-| Web unit | Vitest (jsdom) | API client, components |
-| Browser | Playwright against a real API (`--ephemeral`) and the Vite dev server | user journeys, empty and API-down states |
+| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure) |
+| Browser | Playwright against a real API (`--ephemeral`) and the Vite dev server | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, CLI and browser on the same state |
 
 No fixtures or mocks live in application code; the GUI shows the real backend connection state.
 

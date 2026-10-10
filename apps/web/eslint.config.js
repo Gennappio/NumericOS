@@ -21,8 +21,9 @@ export default defineConfig([
     },
   },
   {
-    // shadcn/ui primitives export variant helpers next to their components by design.
-    files: ["src/components/ui/**/*.tsx"],
+    // shadcn/ui primitives export variant helpers next to their components by design;
+    // test helpers are never hot-reloaded.
+    files: ["src/components/ui/**/*.tsx", "src/test/**/*.tsx"],
     rules: { "react-refresh/only-export-components": "off" },
   },
 ])

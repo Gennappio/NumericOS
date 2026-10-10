@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "gen:api": "openapi-typescript ../../contracts/openapi.v1.json -o src/api/schema.d.ts"
+    "gen:api": "openapi-typescript ../../contracts/openapi.v1.json -o src/api/schema.d.ts --default-non-nullable=false"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
