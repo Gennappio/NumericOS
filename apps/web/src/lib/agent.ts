@@ -1,4 +1,12 @@
-import type { Message, MessageStatus, PermissionMode } from "@/api/client"
+import type {
+  AgentTask,
+  Message,
+  MessageStatus,
+  ModelChoice,
+  PermissionMode,
+  PlanUsage,
+  TurnUsage,
+} from "@/api/client"
 import { formatSeconds } from "@/lib/format"
 
 // `Record` over the generated unions: a status or mode added to the contract is a compile error
@@ -55,10 +63,57 @@ export const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = Object.fro
   PERMISSION_MODES.map((mode) => [mode.value, mode.label]),
 ) as Record<PermissionMode, string>
 
-/** A cost in US dollars with the digits that matter at its size. */
-export function formatCost(usd: number): string {
+/** The kinds of task the agent is used for; each has its own model and effort in the policy. */
+export const TASKS: { value: AgentTask; label: string; description: string }[] = [
+  { value: "conversation", label: "Conversation", description: "Questions asked in this view." },
+  {
+    value: "clarify",
+    label: "Clarify",
+    description: "Clarifications asked on commented passages of an answer.",
+  },
+  { value: "resolve", label: "Resolve", description: "Change requests sent together." },
+  { value: "theory", label: "Theory page", description: "The theory of the project as a paper." },
+  {
+    value: "file_description",
+    label: "File descriptions",
+    description: "One description per file of the project; many small turns.",
+  },
+  {
+    value: "execution_description",
+    label: "Execution description",
+    description: "What happens when the program runs.",
+  },
+  { value: "plan", label: "Plan", description: "The plan of the agent as a board." },
+]
+
+/**
+ * What a turn would cost at the provider's list prices, as the provider reports it. With a
+ * subscription nothing is charged per turn: the figure measures the tokens used.
+ */
+export function formatListCost(usd: number): string {
   const shown = usd >= 1 ? usd.toFixed(2) : String(Number(usd.toPrecision(2)))
-  return `${shown} USD`
+  return `${shown} USD at list prices`
+}
+
+export function formatTokens(usage: TurnUsage): string {
+  const cached = usage.cache_read_input_tokens ?? 0
+  const base = `${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out tokens`
+  return cached > 0 ? `${base} (+${cached.toLocaleString()} read from cache)` : base
+}
+
+/** Use of the plan's windows as the provider last reported it during the turn. */
+export function formatPlanUsage(usage: PlanUsage): string {
+  const parts: string[] = []
+  if (usage.five_hour) parts.push(`${Math.round(usage.five_hour.utilization * 100)}% of the 5-hour window`)
+  if (usage.seven_day) parts.push(`${Math.round(usage.seven_day.utilization * 100)}% of the week`)
+  if (parts.length === 0) return ""
+  return `plan: ${parts.join(", ")}${usage.using_overage ? " (overage in use)" : ""}`
+}
+
+/** The label of a model the provider offers, or its name as given. */
+export function modelLabel(id: string | null | undefined, models: ModelChoice[]): string {
+  if (!id) return "provider default"
+  return models.find((choice) => choice.id === id)?.label ?? id
 }
 
 /** How long the agent worked on a turn, once it has both ends. */

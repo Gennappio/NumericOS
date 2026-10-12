@@ -15,9 +15,10 @@ from pydantic import (
     model_validator,
 )
 
-from numericos.core.agents import ActivityItem, PermissionDenial, TurnUsage
+from numericos.core.agents import ActivityItem, PermissionDenial, PlanUsage, TurnUsage
 from numericos.core.enums import (
     AgentProvider,
+    AgentTask,
     CardType,
     EpistemicStatus,
     FailureClass,
@@ -470,7 +471,12 @@ class AgentSessionCreate(StrictModel):
     model: str | None = Field(
         default=None,
         max_length=100,
-        description="Model asked of the provider; null for its default.",
+        description="Overrides the policy's model for this session; null takes the policy's.",
+    )
+    effort: str | None = Field(
+        default=None,
+        max_length=20,
+        description="Overrides the policy's effort for this session; null takes the policy's.",
     )
 
 
@@ -483,7 +489,12 @@ class AgentSessionPatch(StrictModel):
     model: str | None = Field(
         default=None,
         max_length=100,
-        description="Explicit null leaves the choice to the provider; an absent field keeps it.",
+        description="Explicit null takes the policy's choice again; an absent field keeps it.",
+    )
+    effort: str | None = Field(
+        default=None,
+        max_length=20,
+        description="Explicit null takes the policy's choice again; an absent field keeps it.",
     )
 
     @model_validator(mode="after")
@@ -500,7 +511,9 @@ class AgentSessionOut(BaseModel):
     title: str
     provider: AgentProvider
     permission_mode: PermissionMode
-    model: str | None
+    task: AgentTask = Field(description="What the session is for; names its row of the policy.")
+    model: str | None = Field(description="This session's override of the policy, if any.")
+    effort: str | None = Field(description="This session's override of the policy, if any.")
     native_session_id: str = Field(description="The provider's identifier of this session.")
     cwd: str = Field(description="The directory the agent works in.")
     message_count: int = 0
@@ -530,6 +543,10 @@ class MessageOut(BaseModel):
     prompt_message_id: str | None = Field(
         default=None, description="Assistant: the user message this turn answers."
     )
+    model_requested: str | None = Field(
+        default=None, description="The model the turn was started with (session or policy)."
+    )
+    effort: str | None = Field(default=None, description="The effort the turn was started with.")
     model: str | None = Field(default=None, description="The model that answered, as reported.")
     activity: list[ActivityItem] = Field(
         description="What the agent did, in order, while it worked; grows during the turn."
@@ -538,8 +555,16 @@ class MessageOut(BaseModel):
     files_read: list[str]
     files_written: list[str]
     permission_denials: list[PermissionDenial]
-    cost_usd: float | None
+    cost_usd: float | None = Field(
+        description=(
+            "What the turn would cost at the provider's list prices, as the provider computes "
+            "it. With a subscription nothing is charged per turn: it measures the tokens used."
+        )
+    )
     usage: TurnUsage | None
+    plan_usage: PlanUsage | None = Field(
+        default=None, description="Use of the account's plan windows as last reported."
+    )
     num_turns: int | None = Field(default=None, description="Model calls the turn took.")
     structured_output: Any | None = None
     worker_id: str | None = Field(default=None, description="The supervisor serving the turn.")
@@ -560,6 +585,31 @@ class MessageList(BaseModel):
 
 class MessageCancel(StrictModel):
     reason: str = Field(default="", max_length=300)
+
+
+class TaskPolicy(StrictModel):
+    """The model and effort for one kind of task; null takes the provider's default."""
+
+    model: str | None = Field(default=None, max_length=100)
+    effort: str | None = Field(default=None, max_length=20)
+
+
+class AgentPolicyOut(BaseModel):
+    project_id: str
+    provider: AgentProvider
+    tasks: dict[AgentTask, TaskPolicy] = Field(description="One entry per task, always.")
+    available: list[AgentTask] = Field(
+        description="Tasks a built feature uses today; the others wait for theirs."
+    )
+    version: int = Field(description="0 until the policy was saved once.")
+    updated_at: datetime | None
+
+
+class AgentPolicyPut(StrictModel):
+    version: int = Field(ge=0, description="Current version; 0 saves it for the first time.")
+    tasks: dict[AgentTask, TaskPolicy] = Field(
+        description="Tasks to set; a task left out keeps the provider's default."
+    )
 
 
 class RunRecord(BaseModel):

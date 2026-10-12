@@ -91,9 +91,14 @@ Open http://localhost:5173 with the API running.
    the agent may do (read only; edit files; full autonomy, as with every permission skipped in a
    terminal) and ask. The prompt is recorded at once; the answer arrives as a turn: first the
    agent's actions as they happen (the file read, the command run, whether it succeeded), then
-   the answer with its mathematics rendered, its model, its cost and its duration. What the
-   mode refused is listed on the answer. A turn can be stopped. Every turn is a call on your
-   Claude account.
+   the answer with its mathematics rendered, the model that answered, the tokens it used, what
+   it consumed of your plan's 5-hour and 7-day windows, and its duration. What the mode refused
+   is listed on the answer. A turn can be stopped. **Models and effort per task** (a panel of
+   the same view) chooses, for each kind of task, which model answers and how hard it tries:
+   for example Haiku with low effort for file descriptions, Fable for the theory. A
+   conversation can override its row. Every turn uses your Claude account: with a
+   subscription nothing is charged per turn, the plan's windows are consumed; the answer also
+   shows what the turn would have cost at list prices, as a measure of its weight.
 
 The indicator in the top right corner shows the real connection to the backend. If the API stops,
 the GUI says so, marks what it shows as the last known state and disables every change.
@@ -185,6 +190,8 @@ numericos agent ask -s SESSION_ID "And its stability condition?"     # continues
 numericos agent sessions -p PROJECT_ID              # the conversations of a project
 numericos agent show MESSAGE_ID                     # one answer with every action of the agent
 numericos agent cancel MESSAGE_ID                   # stop a turn
+numericos agent policy -p PROJECT_ID                # model and effort per task
+numericos agent policy -p PROJECT_ID --task conversation --model claude-haiku-5-5 --effort low
 ```
 
 Exit codes: `0` success, `1` API error (envelope on stderr), `2` usage error, `3` API unreachable.
@@ -216,7 +223,7 @@ make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail 
 | `NUMERICOS_API_URL` (CLI) | `http://127.0.0.1:8765` |
 | `VITE_API_URL` (GUI) | `http://127.0.0.1:8765` |
 | `NUMERICOS_CLAUDE_COMMAND` | `["claude"]` (JSON list; the tests point it at `tests/fake_claude.py`) |
-| `NUMERICOS_AGENT_MAX_BUDGET_USD` | `5` per turn |
+| `NUMERICOS_AGENT_MAX_BUDGET_USD` | `5` per turn (bound on the list-price equivalent the provider computes) |
 | `NUMERICOS_AGENT_MAX_PARALLEL` | `2` turns at a time per supervisor |
 
 ## Layout

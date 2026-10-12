@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { formatCost, turnDuration } from "@/lib/agent"
+import { formatListCost, formatPlanUsage, formatTokens, turnDuration } from "@/lib/agent"
 
 interface MessageCardProps {
   message: Message
@@ -54,12 +54,17 @@ export function MessageCard({ message, supervisorAlive, onStop, disabled }: Mess
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <TurnStatusBadge status={message.status} />
-          {message.model && <span>model {message.model}</span>}
+          {(message.model ?? message.model_requested) && (
+            <span>model {message.model ?? message.model_requested}</span>
+          )}
+          {message.effort && <span>effort {message.effort}</span>}
+          {message.usage && <span>{formatTokens(message.usage)}</span>}
           {message.cost_usd !== null && message.cost_usd !== undefined && (
-            <span>{formatCost(message.cost_usd)}</span>
+            <span>{formatListCost(message.cost_usd)}</span>
           )}
           {duration && <span>{duration}</span>}
           {actions > 0 && <span>{actions === 1 ? "1 action" : `${actions} actions`}</span>}
+          {message.plan_usage && <span>{formatPlanUsage(message.plan_usage)}</span>}
         </div>
         {active && onStop && <StopButton onStop={onStop} disabled={disabled} />}
       </header>

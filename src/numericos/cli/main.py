@@ -1808,13 +1808,18 @@ def agent_new(
         typer.Option("--mode", help="read_only, edit (default) or full: what the agent may do."),
     ] = "edit",
     model: Annotated[
-        str | None, typer.Option("--model", help="Model asked of the provider.")
+        str | None,
+        typer.Option("--model", help="Model for this conversation (overrides the policy)."),
+    ] = None,
+    effort: Annotated[
+        str | None,
+        typer.Option("--effort", help="Effort for this conversation (overrides the policy)."),
     ] = None,
     json_: JsonFlag = False,
     api_url: ApiUrlOption = None,
 ) -> None:
     """Open a conversation about a project (its directory must be trusted for execution)."""
-    body = _given(title=title, permission_mode=mode, model=model)
+    body = _given(title=title, permission_mode=mode, model=model, effort=effort)
     data = _api(
         json_,
         api_url,
@@ -1887,6 +1892,55 @@ def agent_ask(
     code = TURN_EXIT_CODES[record["status"]]
     if code:
         raise typer.Exit(code)
+
+
+def _policy_text(policy: Record) -> str:
+    available = set(policy["available"])
+    lines = [f"policy of project {policy['project_id']} (version {policy['version']})"]
+    for task, choice in policy["tasks"].items():
+        model = choice.get("model") or "provider default"
+        effort = choice.get("effort") or "provider default"
+        note = "" if task in available else "  (not available yet)"
+        lines.append(f"  {task:<22} model {model}, effort {effort}{note}")
+    return "\n".join(lines)
+
+
+@agent.command("policy")
+def agent_policy(
+    project_id: ProjectOption,
+    task: Annotated[
+        str | None, typer.Option("--task", help="Task to set (conversation, clarify, ...).")
+    ] = None,
+    model: Annotated[
+        str | None, typer.Option("--model", help="Model for the task; 'default' clears it.")
+    ] = None,
+    effort: Annotated[
+        str | None, typer.Option("--effort", help="Effort for the task; 'default' clears it.")
+    ] = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Show, or set for one task, which model and effort the agent uses in a project."""
+    path = f"/v1/projects/{project_id}/agent-policy"
+    if task is None and model is None and effort is None:
+        _emit(_api(json_, api_url, lambda client: client.get(path)), json_, _policy_text)
+        return
+    if task is None or (model is None and effort is None):
+        raise typer.BadParameter("pass --task together with --model and/or --effort")
+
+    def put(client: ApiClient) -> Record:
+        current: Record = client.get(path)
+        tasks = {name: dict(choice) for name, choice in current["tasks"].items()}
+        if task not in tasks:
+            raise typer.BadParameter(f"unknown task {task!r}; one of {', '.join(tasks)}")
+        if model is not None:
+            tasks[task]["model"] = None if model == "default" else model
+        if effort is not None:
+            tasks[task]["effort"] = None if effort == "default" else effort
+        saved: Record = client.put(path, {"version": current["version"], "tasks": tasks})
+        return saved
+
+    _emit(_api(json_, api_url, put), json_, _policy_text)
 
 
 @agent.command("messages")

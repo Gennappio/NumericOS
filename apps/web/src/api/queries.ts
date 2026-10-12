@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   api,
+  type AgentPolicyPut,
   type AgentSessionCreate,
   type AgentSessionPatch,
   type CardCreate,
@@ -44,6 +45,7 @@ export const queryKeys = {
   artifacts: (projectId: string, runId: string) =>
     ["projects", projectId, "runs", runId, "artifacts"] as const,
   agentCapabilities: ["agents", "capabilities"] as const,
+  agentPolicy: (projectId: string) => ["projects", projectId, "agent-policy"] as const,
   agentSessions: (projectId: string) => ["projects", projectId, "agent-sessions"] as const,
   agentSession: (projectId: string, sessionId: string) =>
     ["projects", projectId, "agent-sessions", sessionId] as const,
@@ -349,6 +351,22 @@ export function useAgentCapabilities() {
     queryFn: api.getAgentCapabilities,
     refetchInterval: POLL_MS * 6,
     staleTime: POLL_MS,
+  })
+}
+
+export function useAgentPolicy(projectId: string, live: boolean) {
+  return useQuery({
+    queryKey: queryKeys.agentPolicy(projectId),
+    queryFn: () => api.getAgentPolicy(projectId),
+    refetchInterval: live ? false : POLL_MS,
+  })
+}
+
+export function usePutAgentPolicy(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: AgentPolicyPut) => api.putAgentPolicy(projectId, body),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.agentPolicy(projectId) }),
   })
 }
 

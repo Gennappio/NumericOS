@@ -1,7 +1,13 @@
 import { screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Project } from "@/api/client"
-import { answerRecord, capabilitiesRecord, sessionRecord, userMessage } from "@/test/agent"
+import {
+  answerRecord,
+  capabilitiesRecord,
+  policyRecord,
+  sessionRecord,
+  userMessage,
+} from "@/test/agent"
 import { renderProjectView, stubApi } from "@/test/render"
 import { projectRecord } from "@/test/runs"
 import { AgentView } from "./AgentView"
@@ -12,6 +18,7 @@ function open(project: Project, extra: Record<string, unknown> = {}) {
   stubApi({
     "/v1/agents/capabilities": capabilitiesRecord(),
     "/v1/workers": { workers: [], alive: 1 },
+    "/v1/projects/prj_1/agent-policy": policyRecord(),
     "/v1/projects/prj_1/agent-sessions": { sessions: [sessionRecord()] },
     "/v1/agent-sessions/ases_1": sessionRecord(),
     "/v1/agent-sessions/ases_1/messages": { messages: [userMessage(), answerRecord()] },
@@ -36,6 +43,10 @@ describe("AgentView", () => {
     expect(screen.getByLabelText("Message to the agent")).toBeEnabled()
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled() // nothing typed yet
     expect(screen.getByLabelText("Permission mode")).toHaveValue("edit")
+    // The next turn runs with the policy's choice for conversations unless overridden here.
+    expect(screen.getByLabelText("Model")).toHaveValue("")
+    expect(screen.getByRole("option", { name: "Policy: Sonnet 5.5" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "Policy: medium" })).toBeInTheDocument()
     // Everything is in order: no precondition panel.
     expect(screen.queryByText("Before the agent can work")).toBeNull()
   })

@@ -26,7 +26,7 @@ from typing import Any, Literal, TypeGuard
 import psutil
 
 from numericos.agents import claude_code, layout
-from numericos.agents.records import finished_payload
+from numericos.agents.records import choice_for, finished_payload
 from numericos.config import Settings
 from numericos.core.agents import ActivityItem, TurnResult
 from numericos.core.enums import EventType, MessageStatus, PermissionMode, Severity
@@ -99,6 +99,7 @@ class Launch:
     cwd: str
     mode: PermissionMode
     model: str | None
+    effort: str | None
     system: str
     prompt: str
     resume: bool
@@ -237,6 +238,8 @@ class TurnSupervisor:
                 if item.id != message.id and item.model is not None
             ]
             mode = PermissionMode(session.permission_mode)
+            policy = uow.agent_policies.get(message.project_id)
+            model, effort = choice_for(session, policy.tasks if policy is not None else None)
             launch = Launch(
                 message_id=message.id,
                 project_id=message.project_id,
@@ -244,7 +247,8 @@ class TurnSupervisor:
                 native_session_id=session.native_session_id,
                 cwd=session.cwd,
                 mode=mode,
-                model=session.model,
+                model=model,
+                effort=effort,
                 system=session.system_prompt,
                 prompt=(
                     f"{(prompt.markdown if prompt else '').rstrip()}\n\n"
@@ -296,10 +300,18 @@ class TurnSupervisor:
             system=launch.system,
             max_budget_usd=self.settings.agent_max_budget_usd,
             model=launch.model,
+            effort=launch.effort,
         )
         write_json_atomic(
             turn_dir / layout.SPEC,
-            {"argv": argv, "cwd": launch.cwd, "resume": launch.resume, "mode": launch.mode.value},
+            {
+                "argv": argv,
+                "cwd": launch.cwd,
+                "resume": launch.resume,
+                "mode": launch.mode.value,
+                "model": launch.model,
+                "effort": launch.effort,
+            },
         )
         env = claude_code.environment(
             {
@@ -352,7 +364,16 @@ class TurnSupervisor:
         message.version += 1
         payload: dict[str, Any] = {"pid": pid, "session_id": message.session_id}
         if launch is not None:
-            payload.update({"resume": launch.resume, "permission_mode": launch.mode.value})
+            message.model_requested = launch.model
+            message.effort = launch.effort
+            payload.update(
+                {
+                    "resume": launch.resume,
+                    "permission_mode": launch.mode.value,
+                    "model": launch.model,
+                    "effort": launch.effort,
+                }
+            )
         uow.record(self._event(message, EventType.AGENT_TURN_STARTED, payload))
 
     def _end_unstarted(self, message_id: str, status: MessageStatus, reason: str) -> None:
@@ -482,6 +503,8 @@ class TurnSupervisor:
         message.activity_dropped = progress.dropped
         message.files_read = progress.files_read
         message.files_written = progress.files_written
+        if progress.plan_usage is not None:
+            message.plan_usage = progress.plan_usage.model_dump(mode="json")
         return progress
 
     def _finalize(

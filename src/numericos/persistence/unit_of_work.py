@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from numericos.events.notifier import EventNotifier
 from numericos.persistence.models import Event
 from numericos.persistence.repositories import (
+    AgentPolicyRepository,
     AgentSessionRepository,
     ArtifactRepository,
     CardRepository,
@@ -46,6 +47,7 @@ class UnitOfWork:
         self.metric_series = MetricSeriesRepository(self.session)
         self.agent_sessions = AgentSessionRepository(self.session)
         self.messages = MessageRepository(self.session)
+        self.agent_policies = AgentPolicyRepository(self.session)
         return self
 
     def __exit__(

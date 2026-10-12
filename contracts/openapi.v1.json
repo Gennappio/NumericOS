@@ -47,7 +47,7 @@
         "type": "object"
       },
       "AgentCapabilities": {
-        "description": "Whether the provider can be started where NumericOS runs, as found, never assumed.",
+        "description": "Whether the provider can be started where NumericOS runs, as found, never assumed, and\nwhat it can be asked for.",
         "properties": {
           "available": {
             "title": "Available",
@@ -58,6 +58,22 @@
               "type": "string"
             },
             "title": "Command",
+            "type": "array"
+          },
+          "efforts": {
+            "description": "Effort levels the provider accepts, lightest first.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Efforts",
+            "type": "array"
+          },
+          "models": {
+            "description": "Models that can be asked for; empty when unavailable.",
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "title": "Models",
             "type": "array"
           },
           "path": {
@@ -108,6 +124,91 @@
         "title": "AgentCapabilities",
         "type": "object"
       },
+      "AgentPolicyOut": {
+        "properties": {
+          "available": {
+            "description": "Tasks a built feature uses today; the others wait for theirs.",
+            "items": {
+              "$ref": "#/components/schemas/AgentTask"
+            },
+            "title": "Available",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/AgentProvider"
+          },
+          "tasks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TaskPolicy"
+            },
+            "description": "One entry per task, always.",
+            "propertyNames": {
+              "$ref": "#/components/schemas/AgentTask"
+            },
+            "title": "Tasks",
+            "type": "object"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "description": "0 until the policy was saved once.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "provider",
+          "tasks",
+          "available",
+          "version",
+          "updated_at"
+        ],
+        "title": "AgentPolicyOut",
+        "type": "object"
+      },
+      "AgentPolicyPut": {
+        "additionalProperties": false,
+        "properties": {
+          "tasks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TaskPolicy"
+            },
+            "description": "Tasks to set; a task left out keeps the provider's default.",
+            "propertyNames": {
+              "$ref": "#/components/schemas/AgentTask"
+            },
+            "title": "Tasks",
+            "type": "object"
+          },
+          "version": {
+            "description": "Current version; 0 saves it for the first time.",
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "tasks"
+        ],
+        "title": "AgentPolicyPut",
+        "type": "object"
+      },
       "AgentProvider": {
         "enum": [
           "claude_code"
@@ -118,6 +219,19 @@
       "AgentSessionCreate": {
         "additionalProperties": false,
         "properties": {
+          "effort": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overrides the policy's effort for this session; null takes the policy's.",
+            "title": "Effort"
+          },
           "model": {
             "anyOf": [
               {
@@ -128,7 +242,7 @@
                 "type": "null"
               }
             ],
-            "description": "Model asked of the provider; null for its default.",
+            "description": "Overrides the policy's model for this session; null takes the policy's.",
             "title": "Model"
           },
           "permission_mode": {
@@ -182,6 +296,18 @@
             "title": "Cwd",
             "type": "string"
           },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "This session's override of the policy, if any.",
+            "title": "Effort"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -200,6 +326,7 @@
                 "type": "null"
               }
             ],
+            "description": "This session's override of the policy, if any.",
             "title": "Model"
           },
           "native_session_id": {
@@ -216,6 +343,10 @@
           },
           "provider": {
             "$ref": "#/components/schemas/AgentProvider"
+          },
+          "task": {
+            "$ref": "#/components/schemas/AgentTask",
+            "description": "What the session is for; names its row of the policy."
           },
           "title": {
             "title": "Title",
@@ -237,7 +368,9 @@
           "title",
           "provider",
           "permission_mode",
+          "task",
           "model",
+          "effort",
           "native_session_id",
           "cwd",
           "version",
@@ -250,6 +383,19 @@
       "AgentSessionPatch": {
         "additionalProperties": false,
         "properties": {
+          "effort": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit null takes the policy's choice again; an absent field keeps it.",
+            "title": "Effort"
+          },
           "model": {
             "anyOf": [
               {
@@ -260,7 +406,7 @@
                 "type": "null"
               }
             ],
-            "description": "Explicit null leaves the choice to the provider; an absent field keeps it.",
+            "description": "Explicit null takes the policy's choice again; an absent field keeps it.",
             "title": "Model"
           },
           "permission_mode": {
@@ -299,6 +445,20 @@
         ],
         "title": "AgentSessionPatch",
         "type": "object"
+      },
+      "AgentTask": {
+        "description": "What a session of the agent is for. The project's policy names a model and an effort\nfor each task; a session may override them.",
+        "enum": [
+          "conversation",
+          "clarify",
+          "resolve",
+          "theory",
+          "file_description",
+          "execution_description",
+          "plan"
+        ],
+        "title": "AgentTask",
+        "type": "string"
       },
       "ArtifactList": {
         "properties": {
@@ -2670,12 +2830,25 @@
                 "type": "null"
               }
             ],
+            "description": "What the turn would cost at the provider's list prices, as the provider computes it. With a subscription nothing is charged per turn: it measures the tokens used.",
             "title": "Cost Usd"
           },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The effort the turn was started with.",
+            "title": "Effort"
           },
           "exit_code": {
             "anyOf": [
@@ -2735,6 +2908,18 @@
             "description": "The model that answered, as reported.",
             "title": "Model"
           },
+          "model_requested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model the turn was started with (session or policy).",
+            "title": "Model Requested"
+          },
           "num_turns": {
             "anyOf": [
               {
@@ -2765,6 +2950,17 @@
             ],
             "description": "The agent process, while it runs.",
             "title": "Pid"
+          },
+          "plan_usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Use of the account's plan windows as last reported."
           },
           "project_id": {
             "title": "Project Id",
@@ -3270,6 +3466,32 @@
         "title": "MetricSpec",
         "type": "object"
       },
+      "ModelChoice": {
+        "description": "A model the provider can be asked for.",
+        "properties": {
+          "id": {
+            "description": "What is passed to the provider.",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "description": "What distinguishes it, in a few words.",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ModelChoice",
+        "type": "object"
+      },
       "ObservabilitySpec": {
         "additionalProperties": false,
         "properties": {
@@ -3393,6 +3615,38 @@
         ],
         "title": "PermissionMode",
         "type": "string"
+      },
+      "PlanUsage": {
+        "description": "Use of the account's plan as the provider last reported it during a turn. With a\nsubscription this, not a price, is what a turn consumes.",
+        "properties": {
+          "five_hour": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WindowUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seven_day": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WindowUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "using_overage": {
+            "default": false,
+            "title": "Using Overage",
+            "type": "boolean"
+          }
+        },
+        "title": "PlanUsage",
+        "type": "object"
       },
       "ProbeRecord": {
         "description": "Output of one environment probe command, kept as an artifact.",
@@ -4630,6 +4884,38 @@
         "title": "SeriesSummary",
         "type": "object"
       },
+      "TaskPolicy": {
+        "additionalProperties": false,
+        "description": "The model and effort for one kind of task; null takes the provider's default.",
+        "properties": {
+          "effort": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "title": "TaskPolicy",
+        "type": "object"
+      },
       "Termination": {
         "properties": {
           "detail": {
@@ -4730,6 +5016,26 @@
           }
         },
         "title": "TurnUsage",
+        "type": "object"
+      },
+      "WindowUsage": {
+        "properties": {
+          "resets_at": {
+            "description": "When the window resets (epoch seconds).",
+            "title": "Resets At",
+            "type": "number"
+          },
+          "utilization": {
+            "description": "Share of the window used, 0 to 1.",
+            "title": "Utilization",
+            "type": "number"
+          }
+        },
+        "required": [
+          "utilization",
+          "resets_at"
+        ],
+        "title": "WindowUsage",
         "type": "object"
       },
       "WorkerList": {
@@ -6430,6 +6736,141 @@
         "summary": "Update a project (requires its current version)",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/agent-policy": {
+      "get": {
+        "operationId": "get_agent_policy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Which model and effort the agent uses for each kind of task of the project",
+        "tags": [
+          "agents"
+        ]
+      },
+      "put": {
+        "operationId": "put_agent_policy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPolicyPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the session is still answering"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Set the model and effort per task (requires the current version; 0 at first)",
+        "tags": [
+          "agents"
         ]
       }
     },

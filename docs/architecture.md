@@ -105,7 +105,8 @@ entities (`core/ids.py`). No empty tables are created ahead of their milestone.
 | Table | Columns | Notes |
 | --- | --- | --- |
 | `agent_sessions` | `id` PK, `project_id` FK, `title`, `provider`, `permission_mode`, `model` NULL, `native_session_id`, `cwd`, `system_prompt`, `version`, `created_at`, `updated_at` | one provider session per conversation; `native_session_id` is chosen by NumericOS before the first turn; `cwd` is the trusted root at creation |
-| `messages` | `id` PK, `session_id` FK, `project_id` FK, `role`, `status`, `status_reason`, `markdown`, `prompt_message_id`, `correlation_id`, `model`, `activity` JSON, `activity_dropped`, `files_read` JSON, `files_written` JSON, `permission_denials` JSON, `cost_usd`, `usage` JSON, `num_turns`, `structured_output` JSON, supervision (`worker_id`, `pid`, `process_started_at`, `started_at`, `finished_at`, `heartbeat_at`, `cancel_requested_at`, `cancel_reason`, `exit_code`, `ingest` JSON), `version`, `created_at`, `updated_at` | a user message is the prompt (`final` at once); an assistant message is a turn: `queued | running | final | failed | cancelled | interrupted`; `markdown` is immutable once the turn ended |
+| `messages` | `id` PK, `session_id` FK, `project_id` FK, `role`, `status`, `status_reason`, `markdown`, `prompt_message_id`, `correlation_id`, `model_requested`, `effort`, `model`, `plan_usage` JSON, `activity` JSON, `activity_dropped`, `files_read` JSON, `files_written` JSON, `permission_denials` JSON, `cost_usd`, `usage` JSON, `num_turns`, `structured_output` JSON, supervision (`worker_id`, `pid`, `process_started_at`, `started_at`, `finished_at`, `heartbeat_at`, `cancel_requested_at`, `cancel_reason`, `exit_code`, `ingest` JSON), `version`, `created_at`, `updated_at` | a user message is the prompt (`final` at once); an assistant message is a turn: `queued | running | final | failed | cancelled | interrupted`; `markdown` is immutable once the turn ended; `model_requested` and `effort` are what the turn was started with, `model` what the provider reported, `plan_usage` the account's plan windows as last reported |
+| `agent_policies` (`0007`) | `project_id` PK FK, `provider`, `tasks` JSON, `version`, `created_at`, `updated_at` | `{task: {model, effort}}` for every task (`conversation`, `clarify`, `resolve`, `theory`, `file_description`, `execution_description`, `plan`); null takes the provider's default. `agent_sessions` gained `task` and `effort` (overrides of the policy) in the same revision |
 
 ### Unit of work and ordering
 
@@ -133,7 +134,8 @@ Revisions: `0001` projects, board cards, events; `0002` hypotheses, experiments,
 `projects.execution_trusted_at`; `0004` run supervision (worker, process identities, times,
 cancellation, exit, outcome, resource summary, read offsets), `workers` and `artifacts`;
 `0005` `metric_series` (one summary row per run and metric) and `runs.metric_report`; `0006`
-`agent_sessions` and `messages`.
+`agent_sessions` and `messages`; `0007` `agent_policies`, session overrides, what a turn was
+started with and what it consumed of the plan.
 
 ## Events
 
@@ -375,6 +377,7 @@ bumps no version.
 | ask for a run to be stopped | `RUN_CANCEL_REQUESTED` (and `RUN_FINISHED` at once if it was still queued) | `reason`, `status_when_requested` |
 | trust / revoke execution for a project | `PROJECT_EXECUTION_TRUSTED` / `PROJECT_EXECUTION_TRUST_REVOKED` | `project` |
 | open / change a conversation with the agent | `AGENT_SESSION_STARTED` / `AGENT_SESSION_UPDATED` | `session`, `changed_fields` |
+| set the model and effort per task | `AGENT_POLICY_UPDATED` | `tasks`, `version` |
 | send a prompt (records the user message, queues the turn) | `AGENT_TURN_QUEUED` | `session_id`, `prompt_message_id`, `prompt_excerpt`, `permission_mode`; the subject is the turn |
 | ask for a turn to be stopped | `AGENT_TURN_CANCEL_REQUESTED` (and `AGENT_TURN_FINISHED` at once if it was still queued and unclaimed) | `reason`, `status_when_requested` |
 
@@ -437,7 +440,8 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `GET /v1/workers` | supervisors, whether each is alive, and how many can start queued runs |
 | `GET /v1/runs/{id}/record`; `POST /v1/runs/{id}:rerun` | export the run record; queue a repetition with the same commit, parameters and seed |
 | `POST /v1/projects/{id}:trust-execution`, `:revoke-execution-trust` | allow, or stop allowing, commands to be executed in the project directory |
-| `GET /v1/agents/capabilities` | whether the agent command can be started where NumericOS runs: found by running `--version`, never assumed |
+| `GET /v1/agents/capabilities` | whether the agent command can be started where NumericOS runs (found by running `--version`, never assumed), and the models and effort levels it can be asked for |
+| `GET`, `PUT /v1/projects/{id}/agent-policy` | the model and effort per task of the project; `PUT` needs the current `version` (0 the first time) and refuses a model or effort the provider does not offer (422) |
 | `POST`, `GET /v1/projects/{id}/agent-sessions`; `GET`, `PATCH /v1/agent-sessions/{id}` | open a conversation (needs a trusted directory; `permission_mode`, optional `model`), list newest first, read, rename or change the mode (needs `version`) |
 | `POST`, `GET /v1/agent-sessions/{id}/messages`; `GET /v1/messages/{id}` | send a prompt (201 with the queued turn; 409 `SESSION_BUSY` while the previous turn is open, `AGENT_UNAVAILABLE` without the command), the messages in order, one message with everything observed |
 | `POST /v1/messages/{id}:cancel` | ask for a turn to be stopped (optional `reason`); returns at once |
@@ -540,11 +544,21 @@ query cache and never ships mock data.
   a turn: queued (and the page says if no supervisor can serve it), working (every action of
   the agent as it is recorded: the file, the command, the pattern, whether it succeeded),
   answered (Markdown with mathematics rendered by KaTeX; raw HTML is not rendered), failed,
-  stopped or interrupted, with the reason. Every answer shows its model, cost and duration;
-  what the permission mode refused is listed, never hidden. A working turn can be stopped with a
-  recorded reason. The permission mode of a conversation (read only, edit files, full
-  autonomy) is chosen when it starts and can be changed between turns. One turn at a time per
-  conversation: the composer waits while the agent answers.
+  stopped or interrupted, with the reason. Every answer shows the model that answered, the
+  effort, the tokens used, what the turn would cost at list prices (a measure, not a charge:
+  the owner has a subscription), its duration, and the use of the plan's 5-hour and 7-day
+  windows as the provider reported it; what the permission mode refused is listed, never
+  hidden. A working turn can be stopped with a recorded reason. The permission mode of a
+  conversation (read only, edit files, full autonomy) is chosen when it starts and can be
+  changed between turns. One turn at a time per conversation: the composer waits while the
+  agent answers.
+- **Models and effort per task:** a panel of the Agent view lists the kinds of task (conversation,
+  clarify, resolve, theory page, file descriptions, execution description, plan) with a model
+  and an effort each, chosen among what the provider offers (for Claude Code: Fable, Opus,
+  Sonnet, Haiku and `low` to `max`; "provider default" leaves the choice to Claude Code's own
+  settings). Rows of tasks whose feature is not built yet are shown, not editable. The
+  composer shows the policy's choice for the conversation and lets one conversation override
+  it; the answer records what the turn was started with.
 - **Experiments view:** first the two preconditions of running anything, as they are: whether
   execution is allowed in the project directory (allowing it is a dialog that shows the exact
   path and needs an explicit confirmation) and whether a supervisor is alive. Then the
@@ -704,9 +718,14 @@ supervisor with it too. No test calls the real provider.
   experiment are compared in a table of last values: plots across runs and verdicts belong to
   the validators ticket.
 - **No drag and drop yet** (M1): cards move through their status select and up/down buttons.
-- **The agent runs with the user's permissions and account.** Every turn is a call on the
-  owner's Claude account, bounded by `NUMERICOS_AGENT_MAX_BUDGET_USD` per turn (5 USD by
-  default); the cost is shown, not prevented. The `edit` mode refuses commands, so the agent
+- **The agent runs with the user's permissions and account.** Every turn uses the owner's
+  Claude account. With a subscription nothing is charged per turn: a turn consumes the plan's
+  windows, which the answer shows as the provider reported them; the `cost_usd` figure is the
+  list-price equivalent the provider computes, a measure of tokens, and
+  `NUMERICOS_AGENT_MAX_BUDGET_USD` bounds that figure per turn (5 by default). The weight of a
+  turn depends mostly on the model: measured on 2026-10-12, a trivial turn was 0.31
+  USD-equivalent with Fable and 0.0025 with Haiku, most of it the system prompt of the first
+  turn of a session (later turns read it from cache). The `edit` mode refuses commands, so the agent
   cannot run tests in it; `full` mode refuses nothing. What the agent changed in the repository
   is listed by name and visible in Git; nothing reverts it. Answers are not commentable yet
   (M1-T02). The provider's own session files live under `~/.claude`, outside the data

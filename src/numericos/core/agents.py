@@ -71,8 +71,31 @@ class TurnResult(BaseModel):
     native_session_id: str | None = None
 
 
+class WindowUsage(BaseModel):
+    utilization: float = Field(description="Share of the window used, 0 to 1.")
+    resets_at: float = Field(description="When the window resets (epoch seconds).")
+
+
+class PlanUsage(BaseModel):
+    """Use of the account's plan as the provider last reported it during a turn. With a
+    subscription this, not a price, is what a turn consumes."""
+
+    five_hour: WindowUsage | None = None
+    seven_day: WindowUsage | None = None
+    using_overage: bool = False
+
+
+class ModelChoice(BaseModel):
+    """A model the provider can be asked for."""
+
+    id: str = Field(description="What is passed to the provider.")
+    label: str
+    note: str = Field(default="", description="What distinguishes it, in a few words.")
+
+
 class AgentCapabilities(BaseModel):
-    """Whether the provider can be started where NumericOS runs, as found, never assumed."""
+    """Whether the provider can be started where NumericOS runs, as found, never assumed, and
+    what it can be asked for."""
 
     provider: AgentProvider
     command: list[str]
@@ -80,3 +103,9 @@ class AgentCapabilities(BaseModel):
     path: str | None = Field(default=None, description="Resolved executable, if found.")
     version: str | None = Field(default=None, description="What `--version` printed, if it ran.")
     problem: str | None = Field(default=None, description="Why it is not available, if it is not.")
+    models: list[ModelChoice] = Field(
+        default_factory=list, description="Models that can be asked for; empty when unavailable."
+    )
+    efforts: list[str] = Field(
+        default_factory=list, description="Effort levels the provider accepts, lightest first."
+    )

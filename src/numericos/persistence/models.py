@@ -23,6 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from numericos.core.enums import (
     AgentProvider,
+    AgentTask,
     CardType,
     EpistemicStatus,
     FailureClass,
@@ -293,6 +294,7 @@ class AgentSession(Base):
     __table_args__ = (
         CheckConstraint(one_of("provider", AgentProvider), name="provider"),
         CheckConstraint(one_of("permission_mode", PermissionMode), name="permission_mode"),
+        CheckConstraint(one_of("task", AgentTask), name="task"),
         CheckConstraint("length(title) BETWEEN 1 AND 200", name="title_length"),
         Index("ix_agent_sessions_project_created", "project_id", "created_at"),
     )
@@ -304,8 +306,11 @@ class AgentSession(Base):
     title: Mapped[str] = mapped_column(String(200))
     provider: Mapped[str] = mapped_column(String(20))
     permission_mode: Mapped[str] = mapped_column(String(20))
-    #: The model asked for; null leaves the choice to the provider.
+    #: What the session is for; the project's policy names its model and effort.
+    task: Mapped[str] = mapped_column(String(30), default=AgentTask.CONVERSATION.value)
+    #: Overrides of the policy for this session; null takes the policy's choice.
     model: Mapped[str | None] = mapped_column(String(100))
+    effort: Mapped[str | None] = mapped_column(String(20))
     #: The provider's own session identifier, chosen by NumericOS before the first turn.
     native_session_id: Mapped[str] = mapped_column(String(64))
     #: The directory the agent works in: the project's trusted root when the session started.
@@ -344,8 +349,12 @@ class AgentMessage(Base):
     prompt_message_id: Mapped[str | None] = mapped_column(String(40))
     #: Correlation ID of the request that queued the turn; the supervisor's events reuse it.
     correlation_id: Mapped[str | None] = mapped_column(String(64))
+    #: What the turn was started with, resolved from the session and the policy.
+    model_requested: Mapped[str | None] = mapped_column(String(100))
+    effort: Mapped[str | None] = mapped_column(String(20))
     #: What was observed while the agent worked.
     model: Mapped[str | None] = mapped_column(String(100))
+    plan_usage: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     activity: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     activity_dropped: Mapped[int] = mapped_column(Integer, default=0)
     files_read: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -367,6 +376,23 @@ class AgentMessage(Base):
     exit_code: Mapped[int | None] = mapped_column(Integer)
     #: How far the supervisor has read the turn's files.
     ingest: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class AgentPolicy(Base):
+    """Which model and effort the agent uses for each kind of task of a project."""
+
+    __tablename__ = "agent_policies"
+    __table_args__ = (CheckConstraint(one_of("provider", AgentProvider), name="provider"),)
+
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT"), primary_key=True
+    )
+    provider: Mapped[str] = mapped_column(String(20))
+    #: ``{task: {"model": ..., "effort": ...}}``; null values take the provider's default.
+    tasks: Mapped[dict[str, Any]] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)

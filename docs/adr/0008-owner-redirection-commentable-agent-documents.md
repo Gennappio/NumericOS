@@ -103,8 +103,14 @@ The owner answered three questions about how this should behave:
 - `CURRENT_MILESTONE.md` points to M1 and to this record; `milestones/M3` stays as it is.
 - The GUI gets a Markdown renderer with mathematics (KaTeX); raw HTML in agent output is not
   rendered.
-- Every agent turn costs money on the owner's Claude account: a trivial turn measured about
-  0.3 USD on 2026-10-12 because a new session loads the Claude Code system prompt. Cost is shown
-  on every answer and bounded per turn.
+- Every agent turn uses the owner's Claude account. The owner has a subscription: nothing is
+  charged per turn, the plan's 5-hour and 7-day windows are consumed, and the answer shows
+  that use as the provider reports it. The provider also reports a list-price equivalent
+  (`cost_usd`), a measure of tokens, bounded per turn. The weight depends mostly on the model
+  (a trivial turn: 0.31 USD-equivalent with Fable, 0.0025 with Haiku, measured 2026-10-12)
+  and on whether the session is new (its system prompt is cached for the later turns). By the
+  owner's request of the same evening, the model and the effort are chosen **per task**
+  (conversation, clarify, resolve, theory, file descriptions, execution description, plan)
+  among what the chosen coding agent offers, with a per-conversation override.
 - The release benchmark of the root `AGENTS.md` (section 9) becomes possible once the adapter
   exists, but is not part of these tickets.

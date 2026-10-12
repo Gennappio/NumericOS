@@ -55,6 +55,13 @@ export type MessageList = Schemas["MessageList"]
 export type MessageStatus = Schemas["MessageStatus"]
 export type ActivityItem = Schemas["ActivityItem"]
 export type AgentCapabilities = Schemas["AgentCapabilities"]
+export type ModelChoice = Schemas["ModelChoice"]
+export type PlanUsage = Schemas["PlanUsage"]
+export type TurnUsage = Schemas["TurnUsage"]
+export type AgentTask = Schemas["AgentTask"]
+export type TaskPolicy = Schemas["TaskPolicy"]
+export type AgentPolicy = Schemas["AgentPolicyOut"]
+export type AgentPolicyPut = Schemas["AgentPolicyPut"]
 type ErrorBody = ErrorEnvelope["error"]
 
 const DEFAULT_API_URL = "http://127.0.0.1:8765"
@@ -221,6 +228,13 @@ export const api = {
   getMessage: (messageId: string) => apiFetch<Message>(`/v1/messages/${seg(messageId)}`),
   cancelMessage: (messageId: string, reason: string) =>
     apiFetch<Message>(`/v1/messages/${seg(messageId)}:cancel`, send("POST", { reason })),
+  getAgentPolicy: (projectId: string) =>
+    apiFetch<AgentPolicy>(`/v1/projects/${seg(projectId)}/agent-policy`),
+  putAgentPolicy: (projectId: string, body: AgentPolicyPut) =>
+    apiFetch<AgentPolicy>(`/v1/projects/${seg(projectId)}/agent-policy`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 }
 
 /** Download address of one file of a run. */

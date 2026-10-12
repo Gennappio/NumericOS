@@ -18,16 +18,20 @@ from numericos.config import Settings
 from numericos.core.agents import AgentCapabilities
 from numericos.core.enums import (
     ACTIVE_MESSAGE_STATUSES,
+    AVAILABLE_TASKS,
     AgentProvider,
+    AgentTask,
     EventType,
     MessageRole,
     MessageStatus,
     PermissionMode,
     Severity,
 )
-from numericos.core.errors import AgentUnavailableError, SessionBusyError
+from numericos.core.errors import AgentUnavailableError, InvalidRequestError, SessionBusyError
 from numericos.core.ids import new_id
 from numericos.core.schemas import (
+    AgentPolicyOut,
+    AgentPolicyPut,
     AgentSessionCreate,
     AgentSessionList,
     AgentSessionOut,
@@ -36,10 +40,11 @@ from numericos.core.schemas import (
     MessageCreate,
     MessageList,
     MessageOut,
+    TaskPolicy,
 )
 from numericos.events.ledger import EventContext, build_event
 from numericos.persistence.engine import utcnow
-from numericos.persistence.models import AgentMessage, AgentSession
+from numericos.persistence.models import AgentMessage, AgentPolicy, AgentSession
 from numericos.persistence.unit_of_work import UnitOfWork
 from numericos.services.guards import (
     check_version,
@@ -53,7 +58,7 @@ ACTIVE = tuple(status.value for status in ACTIVE_MESSAGE_STATUSES)
 DEFAULT_TITLE = "New conversation"
 TITLE_MAX = 200
 EXCERPT_MAX = 120
-PATCHABLE = ("title", "permission_mode", "model")
+PATCHABLE = ("title", "permission_mode", "model", "effort")
 
 #: Probes that succeeded; a missing command is asked about again, it may get installed.
 _probed: dict[tuple[str, ...], AgentCapabilities] = {}
@@ -104,17 +109,123 @@ def _probe(command: tuple[str, ...]) -> AgentCapabilities:
         )
     lines = completed.stdout.strip().splitlines()
     return base.model_copy(
-        update={"available": True, "path": path, "version": lines[0] if lines else None}
+        update={
+            "available": True,
+            "path": path,
+            "version": lines[0] if lines else None,
+            "models": list(claude_code.MODELS),
+            "efforts": list(claude_code.EFFORTS),
+        }
     )
 
 
-def _require_available(settings: Settings) -> None:
+def _require_available(settings: Settings) -> AgentCapabilities:
     found = capabilities(settings)
     if not found.available:
         raise AgentUnavailableError(
             found.problem or "the agent command is not available",
             details={"command": found.command, "path": found.path},
         )
+    return found
+
+
+def _check_choice(
+    found: AgentCapabilities, model: str | None, effort: str | None, where: list[str | int]
+) -> None:
+    """A model or effort must be one the provider offers; null is its default."""
+    errors = []
+    if model is not None and model not in {choice.id for choice in found.models}:
+        errors.append(
+            {
+                "loc": [*where, "model"],
+                "msg": f"not a model of {found.provider.value}: "
+                f"{', '.join(choice.id for choice in found.models)}",
+                "type": "unknown_model",
+            }
+        )
+    if effort is not None and effort not in found.efforts:
+        errors.append(
+            {
+                "loc": [*where, "effort"],
+                "msg": f"not an effort level of {found.provider.value}: {', '.join(found.efforts)}",
+                "type": "unknown_effort",
+            }
+        )
+    if errors:
+        raise InvalidRequestError(
+            "the model or effort is not one the provider offers", details={"errors": errors}
+        )
+
+
+def _policy_out(project_id: str, row: AgentPolicy | None) -> AgentPolicyOut:
+    stored = row.tasks if row is not None else {}
+    return AgentPolicyOut(
+        project_id=project_id,
+        provider=AgentProvider(row.provider) if row is not None else AgentProvider.CLAUDE_CODE,
+        tasks={task: TaskPolicy.model_validate(stored.get(task.value) or {}) for task in AgentTask},
+        available=sorted(AVAILABLE_TASKS, key=list(AgentTask).index),
+        version=row.version if row is not None else 0,
+        updated_at=row.updated_at if row is not None else None,
+    )
+
+
+def get_policy(uow: UnitOfWork, project_id: str) -> AgentPolicyOut:
+    """The model and effort per task; the provider's defaults until something was saved."""
+    with uow:
+        project = require_project(uow, project_id)
+        return _policy_out(project.id, uow.agent_policies.get(project.id))
+
+
+def put_policy(
+    uow: UnitOfWork,
+    project_id: str,
+    data: AgentPolicyPut,
+    context: EventContext,
+    *,
+    settings: Settings,
+) -> AgentPolicyOut:
+    found = _require_available(settings)
+    for task, choice in data.tasks.items():
+        _check_choice(found, choice.model, choice.effort, ["body", "tasks", task.value])
+    # Stored in one shape for every task, so that saving the same choices again is a no-op.
+    tasks = {
+        task.value: data.tasks.get(task, TaskPolicy()).model_dump(mode="json") for task in AgentTask
+    }
+    now = utcnow()
+    with uow:
+        project = require_project(uow, project_id)
+        row = uow.agent_policies.get(project.id)
+        current = row.version if row is not None else 0
+        check_version("agent_policy", project.id, current=current, provided=data.version)
+        if row is None:
+            row = uow.agent_policies.add(
+                AgentPolicy(
+                    project_id=project.id,
+                    provider=found.provider.value,
+                    tasks=tasks,
+                    version=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            if row.tasks == tasks:
+                return _policy_out(project.id, row)
+            row.tasks = tasks
+            row.version += 1
+            row.updated_at = now
+        out = _policy_out(project.id, row)
+        uow.record(
+            build_event(
+                event_type=EventType.AGENT_POLICY_UPDATED,
+                project_id=project.id,
+                subject_id=project.id,
+                payload={"tasks": tasks, "version": row.version},
+                context=context,
+            )
+        )
+        uow.commit()
+    return out
 
 
 def _excerpt(text: str, limit: int) -> str:
@@ -136,7 +247,8 @@ def create_session(
     settings: Settings,
 ) -> AgentSessionOut:
     """Open a conversation. The agent will work in the project's trusted directory."""
-    _require_available(settings)
+    found = _require_available(settings)
+    _check_choice(found, data.model, data.effort, ["body"])
     now = utcnow()
     with uow:
         project = require_project(uow, project_id)
@@ -148,7 +260,9 @@ def create_session(
                 title=data.title or DEFAULT_TITLE,
                 provider=AgentProvider.CLAUDE_CODE.value,
                 permission_mode=data.permission_mode.value,
+                task=AgentTask.CONVERSATION.value,
                 model=data.model,
+                effort=data.effort,
                 native_session_id=str(uuid.uuid4()),
                 cwd=str(root),
                 system_prompt=claude_code.system_prompt(project.name, project.research_question),
@@ -188,8 +302,15 @@ def get_session(uow: UnitOfWork, session_id: str) -> AgentSessionOut:
 
 
 def update_session(
-    uow: UnitOfWork, session_id: str, patch: AgentSessionPatch, context: EventContext
+    uow: UnitOfWork,
+    session_id: str,
+    patch: AgentSessionPatch,
+    context: EventContext,
+    *,
+    settings: Settings,
 ) -> AgentSessionOut:
+    if patch.model is not None or patch.effort is not None:
+        _check_choice(_require_available(settings), patch.model, patch.effort, ["body"])
     with uow:
         session = require_agent_session(uow, session_id)
         check_version("agent_session", session.id, current=session.version, provided=patch.version)

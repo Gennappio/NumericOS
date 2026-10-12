@@ -252,3 +252,38 @@ def test_a_turn_cancelled_before_it_started_never_starts(lab: Lab, settings: Set
     answer = lab.message(turn["id"])
     assert (answer["status"], answer["status_reason"]) == ("cancelled", "changed my mind")
     assert not Path(layout.turn_dir(settings.data_dir, turn["id"])).exists()
+
+
+def test_the_policy_of_the_project_chooses_model_and_effort_unless_the_session_does(
+    lab: Lab, supervisor: Worker, settings: Settings
+) -> None:
+    path = f"/v1/projects/{lab.project['id']}/agent-policy"
+    lab.http.put(
+        path,
+        json={
+            "version": 0,
+            "tasks": {"conversation": {"model": "claude-sonnet-5-5", "effort": "low"}},
+        },
+    )
+    by_policy = lab.ask(lab.open_session(), "ECHO by policy")
+    drive(supervisor, lambda: ended(lab, by_policy["id"]))
+    by_session = lab.ask(
+        lab.open_session(model="claude-haiku-5-5", effort="max"), "ECHO by session"
+    )
+    drive(supervisor, lambda: ended(lab, by_session["id"]))
+
+    first = lab.message(by_policy["id"])
+    assert (first["model_requested"], first["effort"]) == ("claude-sonnet-5-5", "low")
+    assert first["model"] == "claude-sonnet-5-5"  # what the agent reported it used
+    spec = json.loads(
+        (layout.turn_dir(settings.data_dir, by_policy["id"]) / layout.SPEC).read_text()
+    )
+    assert spec["argv"][spec["argv"].index("--model") + 1] == "claude-sonnet-5-5"
+    assert spec["argv"][spec["argv"].index("--effort") + 1] == "low"
+    assert lab.turn_events(by_policy["id"])[1]["payload"]["model"] == "claude-sonnet-5-5"
+    second = lab.message(by_session["id"])
+    assert (second["model_requested"], second["effort"]) == ("claude-haiku-5-5", "max")
+    # What the turn consumed of the plan, as the provider reported it.
+    assert first["plan_usage"]["five_hour"]["utilization"] == 0.21
+    assert first["plan_usage"]["seven_day"]["utilization"] == 0.04
+    assert first["plan_usage"]["using_overage"] is False

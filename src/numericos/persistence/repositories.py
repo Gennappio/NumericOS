@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from numericos.core.enums import WORKFLOW_ORDER
 from numericos.persistence.models import (
     AgentMessage,
+    AgentPolicy,
     AgentSession,
     Artifact,
     BoardCard,
@@ -275,6 +276,19 @@ class AgentSessionRepository:
             .order_by(AgentSession.created_at.desc(), AgentSession.id.desc())
         )
         return list(self._session.scalars(statement))
+
+
+class AgentPolicyRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, policy: AgentPolicy) -> AgentPolicy:
+        self._session.add(policy)
+        self._session.flush()
+        return policy
+
+    def get(self, project_id: str) -> AgentPolicy | None:
+        return self._session.get(AgentPolicy, project_id)
 
 
 class MessageRepository:

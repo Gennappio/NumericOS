@@ -112,6 +112,9 @@ class ApiClient:
     def patch(self, path: str, json: Any) -> Any:
         return self._request("PATCH", path, json=json)
 
+    def put(self, path: str, json: Any) -> Any:
+        return self._request("PUT", path, json=json)
+
     @contextmanager
     def stream(self, path: str) -> Iterator[Iterator[bytes]]:
         """The body of a file download, in chunks, once the server has answered with success."""

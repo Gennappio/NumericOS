@@ -74,6 +74,7 @@ def main() -> int:
     disallowed = set(options.get("--disallowedTools", "").split(",")) - {""}
     may_write = mode in ("acceptEdits", "bypassPermissions") and "Write" not in disallowed
     cwd = Path.cwd()
+    model = options.get("--model") or MODEL
     prompt = sys.stdin.read()
 
     emit(
@@ -81,11 +82,26 @@ def main() -> int:
             "type": "system",
             "subtype": "init",
             "session_id": session_id,
-            "model": MODEL,
+            "model": model,
+            "effort": options.get("--effort"),
             "cwd": str(cwd),
             "permissionMode": mode,
             "argv": argv,
             "system_prompt": options.get("--append-system-prompt"),
+        }
+    )
+    emit(
+        {
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "allowed",
+                "rateLimitType": "five_hour",
+                "isUsingOverage": False,
+                "unifiedWindows": {
+                    "five_hour": {"utilization": 0.21, "resetsAt": 1791835200},
+                    "seven_day": {"utilization": 0.04, "resetsAt": 1792429200},
+                },
+            },
         }
     )
     emit(assistant(session_id, [{"type": "text", "text": "Looking at the repository."}]))
@@ -163,6 +179,7 @@ def main() -> int:
         "num_turns": turns,
         "duration_ms": 7,
         "permission_denials": denials,
+        "modelUsage": {model: {"inputTokens": 12, "outputTokens": 34, "costUSD": COST}},
     }
     if structured is not None:
         result["structured_output"] = structured

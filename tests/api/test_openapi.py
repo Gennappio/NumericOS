@@ -72,4 +72,6 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "list_messages",
         "get_message",
         "cancel_message",
+        "get_agent_policy",
+        "put_agent_policy",
     }

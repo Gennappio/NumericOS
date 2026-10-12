@@ -267,6 +267,24 @@ export interface paths {
         patch: operations["update_project"];
         trace?: never;
     };
+    "/v1/projects/{project_id}/agent-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which model and effort the agent uses for each kind of task of the project */
+        get: operations["get_agent_policy"];
+        /** Set the model and effort per task (requires the current version; 0 at first) */
+        put: operations["put_agent_policy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/agent-sessions": {
         parameters: {
             query?: never;
@@ -669,13 +687,24 @@ export interface components {
         };
         /**
          * AgentCapabilities
-         * @description Whether the provider can be started where NumericOS runs, as found, never assumed.
+         * @description Whether the provider can be started where NumericOS runs, as found, never assumed, and
+         *     what it can be asked for.
          */
         AgentCapabilities: {
             /** Available */
             available: boolean;
             /** Command */
             command: string[];
+            /**
+             * Efforts
+             * @description Effort levels the provider accepts, lightest first.
+             */
+            efforts?: string[];
+            /**
+             * Models
+             * @description Models that can be asked for; empty when unavailable.
+             */
+            models?: components["schemas"]["ModelChoice"][];
             /**
              * Path
              * @description Resolved executable, if found.
@@ -693,6 +722,46 @@ export interface components {
              */
             version?: string | null;
         };
+        /** AgentPolicyOut */
+        AgentPolicyOut: {
+            /**
+             * Available
+             * @description Tasks a built feature uses today; the others wait for theirs.
+             */
+            available: components["schemas"]["AgentTask"][];
+            /** Project Id */
+            project_id: string;
+            provider: components["schemas"]["AgentProvider"];
+            /**
+             * Tasks
+             * @description One entry per task, always.
+             */
+            tasks: {
+                [key: string]: components["schemas"]["TaskPolicy"];
+            };
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Version
+             * @description 0 until the policy was saved once.
+             */
+            version: number;
+        };
+        /** AgentPolicyPut */
+        AgentPolicyPut: {
+            /**
+             * Tasks
+             * @description Tasks to set; a task left out keeps the provider's default.
+             */
+            tasks: {
+                [key: string]: components["schemas"]["TaskPolicy"];
+            };
+            /**
+             * Version
+             * @description Current version; 0 saves it for the first time.
+             */
+            version: number;
+        };
         /**
          * AgentProvider
          * @enum {string}
@@ -701,8 +770,13 @@ export interface components {
         /** AgentSessionCreate */
         AgentSessionCreate: {
             /**
+             * Effort
+             * @description Overrides the policy's effort for this session; null takes the policy's.
+             */
+            effort?: string | null;
+            /**
              * Model
-             * @description Model asked of the provider; null for its default.
+             * @description Overrides the policy's model for this session; null takes the policy's.
              */
             model?: string | null;
             /**
@@ -733,6 +807,11 @@ export interface components {
              * @description The directory the agent works in.
              */
             cwd: string;
+            /**
+             * Effort
+             * @description This session's override of the policy, if any.
+             */
+            effort: string | null;
             /** Id */
             id: string;
             /**
@@ -740,7 +819,10 @@ export interface components {
              * @default 0
              */
             message_count?: number;
-            /** Model */
+            /**
+             * Model
+             * @description This session's override of the policy, if any.
+             */
             model: string | null;
             /**
              * Native Session Id
@@ -751,6 +833,8 @@ export interface components {
             /** Project Id */
             project_id: string;
             provider: components["schemas"]["AgentProvider"];
+            /** @description What the session is for; names its row of the policy. */
+            task: components["schemas"]["AgentTask"];
             /** Title */
             title: string;
             /**
@@ -764,8 +848,13 @@ export interface components {
         /** AgentSessionPatch */
         AgentSessionPatch: {
             /**
+             * Effort
+             * @description Explicit null takes the policy's choice again; an absent field keeps it.
+             */
+            effort?: string | null;
+            /**
              * Model
-             * @description Explicit null leaves the choice to the provider; an absent field keeps it.
+             * @description Explicit null takes the policy's choice again; an absent field keeps it.
              */
             model?: string | null;
             /** @description Applies to the turns queued from now on. */
@@ -778,6 +867,13 @@ export interface components {
              */
             version: number;
         };
+        /**
+         * AgentTask
+         * @description What a session of the agent is for. The project's policy names a model and an effort
+         *     for each task; a session may override them.
+         * @enum {string}
+         */
+        AgentTask: "conversation" | "clarify" | "resolve" | "theory" | "file_description" | "execution_description" | "plan";
         /** ArtifactList */
         ArtifactList: {
             /** Artifacts */
@@ -1793,13 +1889,21 @@ export interface components {
             cancel_reason: string | null;
             /** Cancel Requested At */
             cancel_requested_at: string | null;
-            /** Cost Usd */
+            /**
+             * Cost Usd
+             * @description What the turn would cost at the provider's list prices, as the provider computes it. With a subscription nothing is charged per turn: it measures the tokens used.
+             */
             cost_usd: number | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Effort
+             * @description The effort the turn was started with.
+             */
+            effort?: string | null;
             /** Exit Code */
             exit_code?: number | null;
             /** Files Read */
@@ -1821,6 +1925,11 @@ export interface components {
              */
             model?: string | null;
             /**
+             * Model Requested
+             * @description The model the turn was started with (session or policy).
+             */
+            model_requested?: string | null;
+            /**
              * Num Turns
              * @description Model calls the turn took.
              */
@@ -1832,6 +1941,8 @@ export interface components {
              * @description The agent process, while it runs.
              */
             pid?: number | null;
+            /** @description Use of the account's plan windows as last reported. */
+            plan_usage?: components["schemas"]["PlanUsage"] | null;
             /** Project Id */
             project_id: string;
             /**
@@ -2031,6 +2142,25 @@ export interface components {
              */
             unit?: string;
         };
+        /**
+         * ModelChoice
+         * @description A model the provider can be asked for.
+         */
+        ModelChoice: {
+            /**
+             * Id
+             * @description What is passed to the provider.
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Note
+             * @description What distinguishes it, in a few words.
+             * @default
+             */
+            note?: string;
+        };
         /** ObservabilitySpec */
         ObservabilitySpec: {
             /** Parsers */
@@ -2100,6 +2230,20 @@ export interface components {
          * @enum {string}
          */
         PermissionMode: "read_only" | "edit" | "full";
+        /**
+         * PlanUsage
+         * @description Use of the account's plan as the provider last reported it during a turn. With a
+         *     subscription this, not a price, is what a turn consumes.
+         */
+        PlanUsage: {
+            five_hour?: components["schemas"]["WindowUsage"] | null;
+            seven_day?: components["schemas"]["WindowUsage"] | null;
+            /**
+             * Using Overage
+             * @default false
+             */
+            using_overage?: boolean;
+        };
         /**
          * ProbeRecord
          * @description Output of one environment probe command, kept as an artifact.
@@ -2597,6 +2741,16 @@ export interface components {
              */
             unit: string;
         };
+        /**
+         * TaskPolicy
+         * @description The model and effort for one kind of task; null takes the provider's default.
+         */
+        TaskPolicy: {
+            /** Effort */
+            effort?: string | null;
+            /** Model */
+            model?: string | null;
+        };
         /** Termination */
         Termination: {
             /** Detail */
@@ -2651,6 +2805,19 @@ export interface components {
              * @default 0
              */
             output_tokens?: number;
+        };
+        /** WindowUsage */
+        WindowUsage: {
+            /**
+             * Resets At
+             * @description When the window resets (epoch seconds).
+             */
+            resets_at: number;
+            /**
+             * Utilization
+             * @description Share of the window used, 0 to 1.
+             */
+            utilization: number;
         };
         /** WorkerList */
         WorkerList: {
@@ -3771,6 +3938,102 @@ export interface operations {
                 };
             };
             /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_agent_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_agent_policy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPolicyPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the session is still answering */
             409: {
                 headers: {
                     [name: string]: unknown;

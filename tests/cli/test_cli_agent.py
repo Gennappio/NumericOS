@@ -69,3 +69,35 @@ def test_watching_can_give_up_and_a_turn_can_be_cancelled(
     assert gave_up.exit_code == EXIT_STILL_RUNNING == 14
     assert "it keeps going" in gave_up.stderr
     assert cancelled["cancel_requested_at"] is not None
+
+
+def test_the_policy_is_shown_and_set_per_task(
+    live_server: LiveServer, live_worker: LiveWorker, live_lab: Lab
+) -> None:
+    project_id = live_lab.project["id"]
+
+    shown = cli(live_server, "agent", "policy", "-p", project_id)
+    set_one = cli_json(
+        live_server,
+        "agent",
+        "policy",
+        "-p",
+        project_id,
+        "--task",
+        "conversation",
+        "--model",
+        "claude-haiku-5-5",
+        "--effort",
+        "low",
+    )
+    answered = cli(live_server, "agent", "ask", "-p", project_id, "ECHO light", "--json")
+    incomplete = cli(live_server, "agent", "policy", "-p", project_id, "--model", "x")
+
+    assert shown.exit_code == 0, shown.output
+    assert "conversation           model provider default, effort provider default" in shown.stdout
+    assert "clarify" in shown.stdout and "(not available yet)" in shown.stdout
+    assert set_one["tasks"]["conversation"] == {"model": "claude-haiku-5-5", "effort": "low"}
+    assert set_one["version"] == 1
+    record = json.loads(answered.stdout)
+    assert (record["model_requested"], record["effort"]) == ("claude-haiku-5-5", "low")
+    assert incomplete.exit_code == 2

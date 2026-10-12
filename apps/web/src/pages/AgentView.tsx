@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router"
-import type { AgentCapabilities, PermissionMode } from "@/api/client"
+import type { AgentCapabilities, AgentPolicy, PermissionMode } from "@/api/client"
 import {
   isTurnActive,
   useAgentCapabilities,
+  useAgentPolicy,
   useAgentSession,
   useAgentSessions,
   useCancelMessage,
@@ -14,6 +15,7 @@ import {
 } from "@/api/queries"
 import { Composer } from "@/components/agent/Composer"
 import { MessageCard } from "@/components/agent/MessageCard"
+import { PolicyPanel } from "@/components/agent/PolicyPanel"
 import { SessionList } from "@/components/agent/SessionList"
 import { ErrorPanel } from "@/components/ErrorPanel"
 import { ExecutionPanel } from "@/components/experiments/ExecutionPanel"
@@ -32,6 +34,7 @@ export function AgentView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const capabilities = useAgentCapabilities()
+  const policy = useAgentPolicy(project.id, live)
   const sessions = useAgentSessions(project.id, live)
   const workers = useWorkers()
   const create = useCreateAgentSession(project.id)
@@ -65,6 +68,38 @@ export function AgentView() {
         </Section>
       )}
 
+      <details className="group rounded-lg border border-border bg-muted/30">
+        <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
+          Models and effort per task
+          <span className="font-normal text-muted-foreground">
+            {" "}
+            · which model answers each kind of task, and how hard it tries
+          </span>
+        </summary>
+        <div className="p-3 pt-0">
+          {policy.data ? (
+            <PolicyPanel
+              key={policy.data.version}
+              projectId={project.id}
+              policy={policy.data}
+              capabilities={capabilities.data}
+              disabled={offline}
+              onError={(error) => setNotice(describeError(error))}
+            />
+          ) : policy.isError ? (
+            <ErrorPanel
+              title="Could not load the policy"
+              error={policy.error}
+              onRetry={() => void policy.refetch()}
+            />
+          ) : (
+            <p role="status" className="text-sm text-muted-foreground">
+              Loading…
+            </p>
+          )}
+        </div>
+      </details>
+
       <div className="grid gap-5 md:grid-cols-[16rem_minmax(0,1fr)]">
         {sessions.isPending ? (
           <p role="status" className="text-sm text-muted-foreground">
@@ -91,6 +126,8 @@ export function AgentView() {
             key={currentId}
             projectId={project.id}
             sessionId={currentId}
+            policy={policy.data}
+            capabilities={capabilities.data}
             supervisorAlive={supervisorAlive}
             blocked={offline ? "The NumericOS API is not reachable." : blocked}
             onError={(error) => setNotice(describeError(error))}
@@ -161,12 +198,22 @@ function AgentPanel({
 interface ConversationProps {
   projectId: string
   sessionId: string
+  policy: AgentPolicy | undefined
+  capabilities: AgentCapabilities | undefined
   supervisorAlive: boolean
   blocked: string | null
   onError: (error: unknown) => void
 }
 
-function Conversation({ projectId, sessionId, supervisorAlive, blocked, onError }: ConversationProps) {
+function Conversation({
+  projectId,
+  sessionId,
+  policy,
+  capabilities,
+  supervisorAlive,
+  blocked,
+  onError,
+}: ConversationProps) {
   const session = useAgentSession(projectId, sessionId)
   const messages = useMessages(projectId, sessionId)
   const send = useSendMessage(projectId, sessionId)
@@ -221,6 +268,8 @@ function Conversation({ projectId, sessionId, supervisorAlive, blocked, onError 
       <Composer
         projectId={projectId}
         session={session.data}
+        policy={policy}
+        capabilities={capabilities}
         busy={busy || send.isPending}
         blocked={blocked}
         onSend={(content) => send.mutate(content, { onError })}

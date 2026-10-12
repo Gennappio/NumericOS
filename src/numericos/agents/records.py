@@ -4,7 +4,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from numericos.persistence.models import AgentMessage
+from numericos.persistence.models import AgentMessage, AgentSession
+
+
+def choice_for(
+    session: AgentSession, policy_tasks: dict[str, Any] | None
+) -> tuple[str | None, str | None]:
+    """The model and effort a turn of ``session`` is started with: the session's own choice,
+    else the policy's for its task, else nothing (the provider's default)."""
+    chosen = (policy_tasks or {}).get(session.task) or {}
+    model = session.model or chosen.get("model")
+    effort = session.effort or chosen.get("effort")
+    return (model if isinstance(model, str) and model else None), (
+        effort if isinstance(effort, str) and effort else None
+    )
 
 
 def finished_payload(message: AgentMessage) -> dict[str, Any]:

@@ -55,13 +55,51 @@ def test_permission_modes_map_to_flags_the_provider_enforces() -> None:
     assert full[full.index("--permission-mode") + 1] == "bypassPermissions"
 
 
-def test_model_and_schema_are_passed_only_when_asked() -> None:
+def test_model_effort_and_schema_are_passed_only_when_asked() -> None:
     plain = argv()
-    specific = argv(model="opus", json_schema={"type": "object"})
+    specific = argv(model="claude-haiku-5-5", effort="low", json_schema={"type": "object"})
 
-    assert "--model" not in plain and "--json-schema" not in plain
-    assert specific[specific.index("--model") + 1] == "opus"
+    assert "--model" not in plain and "--effort" not in plain and "--json-schema" not in plain
+    assert specific[specific.index("--model") + 1] == "claude-haiku-5-5"
+    assert specific[specific.index("--effort") + 1] == "low"
     assert json.loads(specific[specific.index("--json-schema") + 1]) == {"type": "object"}
+
+
+def test_the_models_offered_are_full_names_and_the_efforts_the_levels_of_the_flag() -> None:
+    assert [choice.id for choice in claude_code.MODELS] == [
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+    ]
+    assert claude_code.EFFORTS == ["low", "medium", "high", "xhigh", "max"]
+
+
+def test_the_use_of_the_plan_is_taken_from_the_rate_limit_record() -> None:
+    progress = claude_code.Progress()
+
+    progress.fold(
+        record(
+            "rate_limit_event",
+            rate_limit_info={
+                "status": "allowed",
+                "isUsingOverage": False,
+                "unifiedWindows": {
+                    "five_hour": {"utilization": 0.49, "resetsAt": 1791835200},
+                    "seven_day": {"utilization": 0.04, "resetsAt": 1792429200},
+                },
+            },
+        ),
+        Path("/repo"),
+    )
+    progress.fold(record("rate_limit_event", rate_limit_info={"status": "allowed"}), Path("/repo"))
+
+    assert progress.plan_usage is not None
+    assert progress.plan_usage.five_hour is not None
+    assert progress.plan_usage.five_hour.utilization == 0.49
+    assert progress.plan_usage.seven_day is not None
+    assert progress.plan_usage.seven_day.resets_at == 1792429200
+    assert progress.plan_usage.using_overage is False
 
 
 def test_the_environment_hides_that_a_claude_session_may_be_running(

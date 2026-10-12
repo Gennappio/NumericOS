@@ -22,12 +22,32 @@ from numericos.core.agents import (
     SUMMARY_LIMIT,
     TEXT_LIMIT,
     ActivityItem,
+    ModelChoice,
     PermissionDenial,
+    PlanUsage,
     ToolCall,
     TurnResult,
     TurnUsage,
+    WindowUsage,
 )
 from numericos.core.enums import PermissionMode
+
+#: Models Claude Code can be asked for (`--model` takes a full name). The notes come from
+#: turns measured on 2026-10-12: a trivial turn consumed about 0.31 USD-equivalent with Fable
+#: and 0.0025 with Haiku, both mostly for the system prompt of the first turn.
+MODELS: list[ModelChoice] = [
+    ModelChoice(id="claude-fable-5-1", label="Fable 5.1", note="most capable; the heaviest"),
+    ModelChoice(id="claude-opus-5-5", label="Opus 5.5", note="capable; heavy"),
+    ModelChoice(id="claude-sonnet-5-5", label="Sonnet 5.5", note="fast; a fraction of Fable"),
+    ModelChoice(
+        id="claude-haiku-5-5",
+        label="Haiku 5.5",
+        note="lightest: about 1% of Fable on a trivial turn",
+    ),
+]
+
+#: Effort levels of `--effort`, lightest first.
+EFFORTS: list[str] = ["low", "medium", "high", "xhigh", "max"]
 
 #: How each permission mode is asked of Claude Code. ``default`` mode in a non-interactive
 #: session refuses every tool that would have asked for confirmation; the explicit list makes
@@ -88,6 +108,7 @@ def command(
     system: str,
     max_budget_usd: float,
     model: str | None = None,
+    effort: str | None = None,
     fork: bool = False,
     json_schema: dict[str, Any] | None = None,
 ) -> list[str]:
@@ -112,6 +133,8 @@ def command(
     argv += ["--append-system-prompt", system]
     if model:
         argv += ["--model", model]
+    if effort:
+        argv += ["--effort", effort]
     if json_schema is not None:
         argv += ["--json-schema", json.dumps(json_schema, separators=(",", ":"))]
     return argv
@@ -188,6 +211,8 @@ class Progress:
     dropped: int = 0
     files_read: list[str] = field(default_factory=list)
     files_written: list[str] = field(default_factory=list)
+    #: The last report of the account's plan windows, if the provider sent one.
+    plan_usage: PlanUsage | None = None
     result: TurnResult | None = None
 
     def _append(self, item: ActivityItem) -> None:
@@ -243,6 +268,9 @@ class Progress:
                 if block.get("type") == "tool_result":
                     self._resolve(str(block.get("tool_use_id", "")), not block.get("is_error"))
             return
+        if kind == "rate_limit_event":
+            self.plan_usage = _plan_usage(record.get("rate_limit_info")) or self.plan_usage
+            return
         if kind == "result":
             self.result = _result(record, cwd)
 
@@ -255,6 +283,30 @@ class Progress:
 
 def _clip_block(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _plan_usage(info: Any) -> PlanUsage | None:
+    """The plan windows of a ``rate_limit_event``: ``unifiedWindows.five_hour`` and
+    ``seven_day``, each with ``utilization`` (0 to 1) and ``resetsAt``."""
+    if not isinstance(info, dict):
+        return None
+    windows = info.get("unifiedWindows")
+    if not isinstance(windows, dict):
+        return None
+
+    def window(name: str) -> WindowUsage | None:
+        data = windows.get(name)
+        if not isinstance(data, dict) or "utilization" not in data:
+            return None
+        return WindowUsage(
+            utilization=float(data["utilization"]), resets_at=float(data.get("resetsAt", 0))
+        )
+
+    return PlanUsage(
+        five_hour=window("five_hour"),
+        seven_day=window("seven_day"),
+        using_overage=bool(info.get("isUsingOverage")),
+    )
 
 
 def _result(record: dict[str, Any], cwd: Path) -> TurnResult:

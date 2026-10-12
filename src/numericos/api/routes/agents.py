@@ -10,6 +10,8 @@ from numericos.api.deps import Context, Uow
 from numericos.api.errors import CONFLICT_RESPONSES
 from numericos.core.agents import AgentCapabilities
 from numericos.core.schemas import (
+    AgentPolicyOut,
+    AgentPolicyPut,
     AgentSessionCreate,
     AgentSessionList,
     AgentSessionOut,
@@ -80,9 +82,32 @@ def get_agent_session(session_id: str, uow: Uow) -> AgentSessionOut:
     responses=CONFLICT_RESPONSES,
 )
 def update_agent_session(
-    session_id: str, body: AgentSessionPatch, uow: Uow, context: Context
+    session_id: str, body: AgentSessionPatch, uow: Uow, context: Context, request: Request
 ) -> AgentSessionOut:
-    return agents.update_session(uow, session_id, body, context)
+    return agents.update_session(
+        uow, session_id, body, context, settings=request.app.state.settings
+    )
+
+
+@router.get(
+    "/projects/{project_id}/agent-policy",
+    tags=["agents"],
+    summary="Which model and effort the agent uses for each kind of task of the project",
+)
+def get_agent_policy(project_id: str, uow: Uow) -> AgentPolicyOut:
+    return agents.get_policy(uow, project_id)
+
+
+@router.put(
+    "/projects/{project_id}/agent-policy",
+    tags=["agents"],
+    summary="Set the model and effort per task (requires the current version; 0 at first)",
+    responses={**CONFLICT_RESPONSES, **UNAVAILABLE_RESPONSES},
+)
+def put_agent_policy(
+    project_id: str, body: AgentPolicyPut, uow: Uow, context: Context, request: Request
+) -> AgentPolicyOut:
+    return agents.put_policy(uow, project_id, body, context, settings=request.app.state.settings)
 
 
 @router.post(
