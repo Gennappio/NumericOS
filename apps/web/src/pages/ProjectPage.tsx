@@ -2,21 +2,33 @@ import { PencilIcon } from "lucide-react"
 import { useState } from "react"
 import { Link, useParams } from "react-router"
 import { ApiError } from "@/api/client"
-import { useBoard, useConnectionState, useProject } from "@/api/queries"
+import { useBoard, useConnectionState, useProject, useRecentEvents } from "@/api/queries"
+import { useEventStream, type Transport } from "@/api/useEventStream"
 import { Board } from "@/components/board/Board"
 import { ErrorPanel } from "@/components/ErrorPanel"
 import { Notice } from "@/components/Notice"
 import { ProjectDialog } from "@/components/projects/ProjectDialog"
 import { ViewTabs } from "@/components/projects/ViewTabs"
+import { EventStrip } from "@/components/timeline/EventStrip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { describeError } from "@/lib/errors"
 
 export function ProjectPage() {
   const { projectId = "" } = useParams()
-  const project = useProject(projectId)
-  const board = useBoard(projectId)
+  // Keyed by project: switching project starts a clean page and a new event stream.
+  return <ProjectView key={projectId} projectId={projectId} />
+}
+
+function ProjectView({ projectId }: { projectId: string }) {
   const offline = useConnectionState().state === "unreachable"
+  const stream = useEventStream(projectId)
+  // Never claim live updates while the backend is known to be unreachable.
+  const transport: Transport = offline && stream === "live" ? "reconnecting" : stream
+  const live = transport === "live"
+  const project = useProject(projectId, live)
+  const board = useBoard(projectId, live)
+  const events = useRecentEvents(projectId, live)
   const [editing, setEditing] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -28,7 +40,11 @@ export function ProjectPage() {
     )
   }
   if (!project.data) {
-    if (project.error instanceof ApiError && project.error.status === 404) {
+    const missing =
+      project.error instanceof ApiError &&
+      project.error.status === 404 &&
+      project.error.details.resource === "project"
+    if (missing) {
       return (
         <section className="space-y-3">
           <h1 className="text-2xl font-semibold">Project not found</h1>
@@ -116,6 +132,8 @@ export function ProjectPage() {
           onRetry={() => void board.refetch()}
         />
       )}
+
+      <EventStrip projectId={data.id} page={events.data} transport={transport} />
 
       <ProjectDialog open={editing} onOpenChange={setEditing} project={data} />
     </div>

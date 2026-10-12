@@ -113,6 +113,10 @@ class EventRepository:
         order = Event.seq.desc() if descending else Event.seq.asc()
         return list(self._session.scalars(statement.order_by(order).limit(limit)))
 
+    def head(self) -> int:
+        """Highest ``seq`` of the whole ledger, 0 when it is empty. It never decreases."""
+        return self._session.scalar(select(func.max(Event.seq))) or 0
+
     def count(self, project_id: str) -> int:
         statement = select(func.count()).select_from(Event).where(Event.project_id == project_id)
         return self._session.scalar(statement) or 0

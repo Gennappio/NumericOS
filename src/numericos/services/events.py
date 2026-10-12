@@ -7,6 +7,13 @@ from numericos.persistence.unit_of_work import UnitOfWork
 from numericos.services.guards import require_project
 
 
+def ledger_head(uow: UnitOfWork, project_id: str) -> int:
+    """Highest ``seq`` in the ledger; a cursor taken from this ledger is never greater."""
+    with uow:
+        require_project(uow, project_id)
+        return uow.events.head()
+
+
 def list_events(
     uow: UnitOfWork,
     project_id: str,

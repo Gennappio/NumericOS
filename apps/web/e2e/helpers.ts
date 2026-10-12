@@ -19,8 +19,9 @@ export interface CardRecord {
 export async function createProject(
   request: APIRequestContext,
   fields: Record<string, unknown> = {},
+  apiUrl: string = API_URL,
 ): Promise<ProjectRecord> {
-  const response = await request.post(`${API_URL}/v1/projects`, {
+  const response = await request.post(`${apiUrl}/v1/projects`, {
     data: { name: uniqueName("Project"), ...fields },
   })
   expect(response.status()).toBe(201)
@@ -31,8 +32,9 @@ export async function addCard(
   request: APIRequestContext,
   projectId: string,
   fields: Record<string, unknown>,
+  apiUrl: string = API_URL,
 ): Promise<CardRecord> {
-  const response = await request.post(`${API_URL}/v1/projects/${projectId}/cards`, {
+  const response = await request.post(`${apiUrl}/v1/projects/${projectId}/cards`, {
     data: { type: "task", ...fields },
   })
   expect(response.status()).toBe(201)

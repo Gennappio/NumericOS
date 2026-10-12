@@ -74,11 +74,14 @@ class LiveServer:
     ``stop()``/``start()`` on the same data directory is how restart persistence is proven.
     """
 
-    def __init__(self, data_dir: Path, log_path: Path) -> None:
+    def __init__(self, data_dir: Path, log_path: Path, env: dict[str, str] | None = None) -> None:
         self.data_dir = data_dir
         self.log_path = log_path
+        self.env = env or {}
         self.port = free_port()
         self.process: subprocess.Popen[str] | None = None
+        #: True when the last ``stop()`` had to SIGKILL a server that ignored SIGTERM.
+        self.killed = False
 
     @property
     def base_url(self) -> str:
@@ -102,7 +105,7 @@ class LiveServer:
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                env={**os.environ, "PYTHONUNBUFFERED": "1", **self.env},
             )
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -120,12 +123,15 @@ class LiveServer:
         raise RuntimeError(f"server not ready after {timeout}s:\n{self.logs()}")
 
     def stop(self, timeout: float = 10.0) -> None:
+        """SIGTERM, as a supervisor or `--reload` would send; SIGKILL only if that is ignored."""
         if self.process is None:
             return
+        self.killed = False
         self.process.terminate()
         try:
             self.process.wait(timeout)
         except subprocess.TimeoutExpired:
+            self.killed = True
             self.process.kill()
             self.process.wait()
         self.process = None
@@ -137,6 +143,21 @@ class LiveServer:
 @pytest.fixture
 def live_server(tmp_path: Path) -> Iterator[LiveServer]:
     server = LiveServer(tmp_path / "data", tmp_path / "server.log")
+    server.start()
+    try:
+        yield server
+    finally:
+        server.stop()
+
+
+@pytest.fixture
+def fast_heartbeat_server(tmp_path: Path) -> Iterator[LiveServer]:
+    """A server whose event streams re-read the ledger every 0.3 s instead of every 15 s."""
+    server = LiveServer(
+        tmp_path / "data",
+        tmp_path / "server.log",
+        env={"NUMERICOS_SSE_HEARTBEAT_SECONDS": "0.3"},
+    )
     server.start()
     try:
         yield server

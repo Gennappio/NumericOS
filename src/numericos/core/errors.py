@@ -32,3 +32,20 @@ class ProjectMismatchError(DomainError):
 
     code = "PROJECT_MISMATCH"
     status_code = 409
+
+
+class InvalidRequestError(DomainError):
+    """A request that is well formed but not valid for the operation it targets.
+
+    ``details`` uses the same ``errors`` list as schema validation failures.
+    """
+
+    code = "VALIDATION_ERROR"
+    status_code = 422
+
+
+class CursorAheadError(DomainError):
+    """A stream cursor beyond the ledger head: the caller's cursor is from another ledger."""
+
+    code = "CURSOR_AHEAD"
+    status_code = 409

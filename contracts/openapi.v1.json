@@ -829,7 +829,7 @@
             }
           },
           {
-            "description": "Return events with seq greater than this cursor.",
+            "description": "Cursor: only events with seq greater than this.",
             "in": "query",
             "name": "after",
             "required": false,
@@ -843,12 +843,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Return events with seq greater than this cursor.",
+              "description": "Cursor: only events with seq greater than this.",
               "title": "After"
             }
           },
           {
-            "description": "Return events with seq lower than this value.",
+            "description": "Only events with seq lower than this. JSON only.",
             "in": "query",
             "name": "before",
             "required": false,
@@ -862,36 +862,63 @@
                   "type": "null"
                 }
               ],
-              "description": "Return events with seq lower than this value.",
+              "description": "Only events with seq lower than this. JSON only.",
               "title": "Before"
             }
           },
           {
+            "description": "Page size, default 100. JSON only.",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 100,
-              "maximum": 1000,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Page size, default 100. JSON only.",
+              "title": "Limit"
             }
           },
           {
-            "description": "Ordering by seq.",
+            "description": "Ordering by seq. A stream is always asc.",
             "in": "query",
             "name": "order",
             "required": false,
             "schema": {
               "default": "asc",
-              "description": "Ordering by seq.",
+              "description": "Ordering by seq. A stream is always asc.",
               "enum": [
                 "asc",
                 "desc"
               ],
               "title": "Order",
               "type": "string"
+            }
+          },
+          {
+            "description": "Sent by EventSource clients when they reconnect to a stream.",
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d{1,18}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sent by EventSource clients when they reconnect to a stream.",
+              "title": "Last-Event-Id"
             }
           }
         ],
@@ -902,9 +929,14 @@
                 "schema": {
                   "$ref": "#/components/schemas/EventPage"
                 }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "A page of events as JSON. With `Accept: text/event-stream` the response is a Server-Sent Events stream instead: it replays every event after the cursor in `seq` order, then follows the ledger. Each frame has `id: <seq>` and the event as JSON in `data`; reconnecting with `Last-Event-ID` resumes after that event."
           },
           "404": {
             "content": {
@@ -915,6 +947,16 @@
               }
             },
             "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
           },
           "422": {
             "content": {
@@ -927,7 +969,7 @@
             "description": "Request validation failed"
           }
         },
-        "summary": "Read a project's event ledger by cursor",
+        "summary": "Read a project's event ledger by cursor (JSON page or SSE stream)",
         "tags": [
           "events"
         ]

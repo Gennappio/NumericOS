@@ -1,18 +1,23 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, type CardCreate, type CardPatch, type ProjectPatch } from "./client"
 
 export const queryKeys = {
   health: ["health"] as const,
   projects: ["projects"] as const,
+  /** Prefix of everything that belongs to one project: the project, its board, its events. */
   project: (projectId: string) => ["projects", projectId] as const,
   board: (projectId: string) => ["projects", projectId, "board"] as const,
+  events: (projectId: string) => ["projects", projectId, "events"] as const,
 }
 
 /**
- * Bounded re-reads of real backend state, so changes made elsewhere (CLI, another tab) show up.
- * The replayable event stream (M0-T05) will drive refreshes; polling stays as its fallback.
+ * Interval of bounded re-reads of real backend state. Used where no event stream exists (the
+ * project list, health) and as the fallback of a project page whose stream is not live.
  */
-const POLL_MS = 5_000
+export const POLL_MS = 5_000
+
+/** How many of the newest ledger entries the event strip shows. */
+export const RECENT_EVENTS = 20
 
 /** Polls the API liveness endpoint; the result drives every "is the backend live?" indicator. */
 export function useHealth() {
@@ -52,6 +57,7 @@ export function useConnectionState(): ConnectionInfo {
   return { state: "checking" }
 }
 
+/** No project-independent event stream exists yet, so the list of projects is polled. */
 export function useProjects() {
   return useQuery({
     queryKey: queryKeys.projects,
@@ -60,20 +66,34 @@ export function useProjects() {
   })
 }
 
-export function useProject(projectId: string) {
+// The queries of a project page take `live`: while the project's event stream is live every
+// change arrives as an event and triggers a re-read, so polling is switched off.
+
+export function useProject(projectId: string, live: boolean) {
   return useQuery({
     queryKey: queryKeys.project(projectId),
     queryFn: () => api.getProject(projectId),
-    refetchInterval: POLL_MS,
+    refetchInterval: live ? false : POLL_MS,
   })
 }
 
-export function useBoard(projectId: string) {
+export function useBoard(projectId: string, live: boolean) {
   return useQuery({
     queryKey: queryKeys.board(projectId),
     queryFn: () => api.getBoard(projectId),
-    refetchInterval: POLL_MS,
+    refetchInterval: live ? false : POLL_MS,
   })
+}
+
+export function recentEventsQuery(projectId: string) {
+  return queryOptions({
+    queryKey: queryKeys.events(projectId),
+    queryFn: () => api.listRecentEvents(projectId, RECENT_EVENTS),
+  })
+}
+
+export function useRecentEvents(projectId: string, live: boolean) {
+  return useQuery({ ...recentEventsQuery(projectId), refetchInterval: live ? false : POLL_MS })
 }
 
 // Mutations return the invalidation promise from `onSettled`: the mutation stays pending until
@@ -100,7 +120,7 @@ export function useCreateCard(projectId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (card: CardCreate) => api.createCard(projectId, card),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.board(projectId) }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
   })
 }
 
@@ -110,6 +130,6 @@ export function useUpdateCard(projectId: string) {
     // The project assertion makes the API refuse a card that belongs to another project.
     mutationFn: ({ cardId, patch }: { cardId: string; patch: CardPatch }) =>
       api.updateCard(cardId, { ...patch, project_id: projectId }),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.board(projectId) }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
   })
 }

@@ -13,6 +13,8 @@ export type CardPatch = Schemas["CardPatch"]
 export type Board = Schemas["BoardOut"]
 export type CardType = Schemas["CardType"]
 export type WorkflowStatus = Schemas["WorkflowStatus"]
+export type EventOut = Schemas["EventOut"]
+export type EventPage = Schemas["EventPage"]
 type ErrorBody = ErrorEnvelope["error"]
 
 const DEFAULT_API_URL = "http://127.0.0.1:8765"
@@ -105,4 +107,12 @@ export const api = {
     apiFetch<Card>(`/v1/projects/${seg(projectId)}/cards`, send("POST", body)),
   updateCard: (cardId: string, body: CardPatch) =>
     apiFetch<Card>(`/v1/cards/${seg(cardId)}`, send("PATCH", body)),
+  /** The newest entries of a project's ledger, newest first. */
+  listRecentEvents: (projectId: string, limit: number) =>
+    apiFetch<EventPage>(`/v1/events?project_id=${seg(projectId)}&order=desc&limit=${limit}`),
+}
+
+/** URL of the Server-Sent Events view of a project's ledger, starting after `cursor`. */
+export function eventStreamUrl(projectId: string, cursor: number): string {
+  return `${API_URL}/v1/events?project_id=${seg(projectId)}&after=${cursor}`
 }

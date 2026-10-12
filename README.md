@@ -6,9 +6,10 @@ context engine, and a runtime (NumericOS Runtime) that supervises real numerical
 provenance, observability and validators. The GUI, the `numericos` CLI and external agents all
 call the same API.
 
-**Status:** pre-alpha, milestone **M0** (foundations) in progress; see `CURRENT_MILESTONE.md`.
-Nothing here performs science yet: M0 delivers the persistent project board, the API, the CLI and
-the event ledger that later milestones build on.
+**Status:** pre-alpha. Milestone **M0** (foundations) is implemented and awaits its gate review;
+the evidence is in `docs/milestones/M0-gate.md`. Nothing here performs science yet: M0 delivers
+the persistent project board, the API, the CLI and the replayable event ledger that later
+milestones build on.
 
 ## Requirements
 
@@ -48,6 +49,9 @@ Open http://localhost:5173 with the API running.
    column); click its title to edit it. Reload the page or restart `make api`: the board is
    exactly as you left it.
 4. Columns are workflow status only. Nothing on the board states whether a result is valid.
+5. **Recent events** below the board lists what the backend recorded, newest first, with who did
+   it. Its indicator says whether updates are pushed live. Changes made from another tab or from
+   the CLI appear on their own.
 
 The indicator in the top right corner shows the real connection to the backend. If the API stops,
 the GUI says so, marks what it shows as the last known state and disables every change.
@@ -64,6 +68,7 @@ numericos card add --project PROJECT_ID --type hypothesis --title "H01: ..."
 numericos card move CARD_ID --status review --position 0
 numericos card list --project PROJECT_ID
 numericos events list --project PROJECT_ID          # the ordered event ledger
+numericos events follow --project PROJECT_ID        # replay it, then follow live (Ctrl+C stops)
 numericos seed-demo                                 # one clearly marked demo project
 ```
 
@@ -100,7 +105,7 @@ src/numericos/   Python package: config, core, persistence (models, migrations),
 tests/           pytest suites (unit, persistence, api, cli, integration); `LiveServer` runs a real API subprocess
 contracts/       exported OpenAPI contract (generated, committed, drift-checked in CI)
 apps/web/        React + TypeScript + Vite GUI; src/api/schema.d.ts is generated from contracts/
-docs/            architecture.md, ADRs, blueprint, skill architecture, adapter contract
+docs/            architecture.md, ADRs, milestone gate evidence, blueprint, skill and adapter docs
 milestones/      executable development briefs M0-M5 (one ticket at a time)
 skills/          canonical scientific Agent Skills (SKILL.md)
 ```

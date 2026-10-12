@@ -1,6 +1,7 @@
 # NumericOS architecture (living document)
 
-Status: **M0-T04** (scientific board GUI on top of the public API, the CLI and the event ledger). Everything below describes
+Status: **M0 complete** (tickets T01-T05), pending the gate review recorded in
+`docs/milestones/M0-gate.md`. Everything below describes
 what exists; later milestones extend this file instead of replacing it. Roadmap and acceptance
 gates live in `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md` and `milestones/`.
 
@@ -13,7 +14,8 @@ src/numericos/
   config.py                    Settings (NUMERICOS_* environment variables)
   core/                        public schemas (Pydantic), enums, typed IDs, typed errors
   persistence/                 engine policy, ORM models, repositories, unit of work, migrations
-  events/                      ledger row builder, in-process wake-up notifier
+  events/                      ledger row builder, in-process wake-up notifier, replay-then-live
+                               iteration (`stream.follow`)
   services/                    use cases (projects, cards, events): the only business logic
   api/                         FastAPI app factory, routers, error envelope, correlation middleware
   cli/                         `numericos` command line (HTTP client; `serve`/`db` are server side)
@@ -39,6 +41,7 @@ Dependency direction inside `src/numericos`: `core <- persistence <- events <- s
 | `NUMERICOS_PORT` | `8765` | API port |
 | `NUMERICOS_CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173"]` | JSON list of browser origins |
 | `NUMERICOS_API_URL` | `http://127.0.0.1:8765` | base URL used by the CLI |
+| `NUMERICOS_SSE_HEARTBEAT_SECONDS` | `15` | keep-alive and ledger re-read interval of event streams |
 | `VITE_API_URL` (web) | `http://127.0.0.1:8765` | API base URL baked into the GUI |
 
 `numericos serve --ephemeral` uses a fresh temporary data directory (demos, e2e tests).
@@ -95,8 +98,36 @@ test suite runs `alembic check`, so models and migrations cannot drift. Authorin
 
 `events/ledger.py` builds rows from an `EventContext` (actor, correlation ID, producer).
 `events/notifier.py` is a per-process wake-up signal: a committing thread calls `publish()` after
-the durable commit, async subscribers (the SSE endpoint, T05) re-read the ledger by cursor. The
-notifier carries no data, so delivery can never precede durability.
+the durable commit, and subscribers re-read the ledger by cursor. The notifier carries no data,
+so delivery can never precede durability.
+
+`events/stream.py` turns that into a replay-then-live iteration: every event after a cursor, in
+`seq` order, then each new one as it is committed. It clears the wake flag before each read (a
+commit during the read is not lost) and re-reads after every heartbeat, which bounds the delay
+for events committed by another process (ADR-0003).
+
+### Event stream
+
+`GET /v1/events` with `Accept: text/event-stream` is the Server-Sent Events view of the same
+ledger the JSON page reads:
+
+```text
+retry: 2000
+
+id: 3
+data: {"event_id":"evt_...","seq":3,"project_id":"prj_...","type":"CARD_MOVED",...}
+
+: ping - 2026-10-12 10:10:09+00:00
+```
+
+- The stream starts after `max(after, Last-Event-ID)`, replays what is already recorded, then
+  follows. A reconnect with `Last-Event-ID` (or `after`) delivers exactly the missed events.
+- Delivery is in order and at-least-once for a client that resumes from the last `seq` it
+  processed; clients de-duplicate by `event_id`. Exactly-once is not claimed.
+- Answered before the first byte: unknown project (404), `before`/`limit`/`order=desc` in
+  stream mode or a malformed `Last-Event-ID` (422), and a cursor beyond the ledger head
+  (409 `CURSOR_AHEAD`), which can only come from another ledger.
+- Open streams end promptly when the server is asked to stop, so restarts are not held up.
 
 ## Use cases and their events
 
@@ -127,7 +158,7 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `GET /v1/projects/{project_id}/board` | `workflow_statuses` in column order and `cards` in board order |
 | `POST /v1/projects/{project_id}/cards` | create a typed card at the end of its column |
 | `GET /v1/cards/{card_id}`, `PATCH /v1/cards/{card_id}` | read, edit and/or move (needs `version`; optional `project_id` assertion) |
-| `GET /v1/events?project_id=&after=&before=&limit=&order=` | one page of the ledger: `events`, `next_cursor`, `has_more` |
+| `GET /v1/events?project_id=&after=&before=&limit=&order=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
 
 Operation IDs equal the handler names (`create_project`, `update_card`, ...), so generated
 clients get stable method names.
@@ -146,8 +177,8 @@ clients get stable method names.
 
   Codes are stable UPPER_SNAKE identifiers: `VALIDATION_ERROR` (422), `NOT_FOUND` (404),
   `STALE_REVISION` (409, the `version` sent is not the current one; details carry both),
-  `PROJECT_MISMATCH` (409, the card is not in the asserted project), `METHOD_NOT_ALLOWED` (405),
-  `INTERNAL_ERROR` (500).
+  `PROJECT_MISMATCH` (409, the card is not in the asserted project), `CURSOR_AHEAD` (409, a
+  stream cursor beyond the ledger head), `METHOD_NOT_ALLOWED` (405), `INTERNAL_ERROR` (500).
 - `X-Correlation-ID`: accepted from the client when it matches `[A-Za-z0-9_.-]{1,64}`, otherwise a
   `cor_<ULID>` is generated; always echoed on the response and stored on every event.
 - `X-Actor`: label of the calling surface in the form `<surface>:<name>` (`web:local`,
@@ -173,6 +204,7 @@ printed on stderr), `2` usage error, `3` API unreachable.
 | `numericos project list` / `add NAME` / `show ID` / `update ID` | projects |
 | `numericos card add -p PROJECT -t TYPE --title T` / `list -p PROJECT` / `show ID` / `move ID` / `update ID` | board cards |
 | `numericos events list -p PROJECT [--after N] [--limit N] [--desc]` | the ordered ledger |
+| `numericos events follow -p PROJECT [--after N] [--limit N] [--json]` | replay from a cursor, then follow; JSON Lines with `--json`; on a broken stream it prints the `seq` to resume from and exits 3 |
 | `numericos seed-demo` | one demo project flagged `is_demo` (explicit, idempotent, actor `cli:seed`) |
 
 `update` and `move` use optimistic locking: without `--version` they read the latest version
@@ -203,9 +235,17 @@ query cache and never ships mock data.
   the person and the view is refreshed; a `VALIDATION_ERROR` shows the server's message next to
   the field. A mutation stays pending until the refreshed data is on screen, so a second action
   is never sent with an outdated version by accident.
-- **Freshness:** projects and boards are re-read every 5 seconds (bounded reads of real state),
-  so changes made by the CLI or another tab appear without a reload. The replayable event stream
-  of M0-T05 will drive refreshes; polling remains its fallback.
+- **Freshness:** a project page subscribes to the project's event stream. The stream is a
+  wake-up signal, not a second source of state: to connect, the page reads the ledger head,
+  subscribes right after it, and re-reads the project, the board and the recent events when the
+  stream opens and on every event (de-duplicated by `event_id`). Changes made by the CLI or
+  another tab therefore appear within a fraction of a second. If the stream fails, the page
+  closes it, says "Live updates interrupted", polls every 5 seconds and retries the same
+  sequence every 2 seconds. It never claims to be live while the backend is unreachable. The
+  list of projects has no stream yet and is polled every 5 seconds.
+- **Event strip:** below the board, the 20 newest entries of the project's ledger, newest first,
+  each with its ledger position, time, a one-line description built only from the event's type
+  and payload, and the actor. An event type the GUI does not know is shown by its recorded name.
 - **Types:** request and response types come from `schema.d.ts`. The label maps for card types
   and workflow statuses are `Record`s over the generated unions, so a vocabulary change in the
   contract is a compile error until the GUI handles it.
@@ -220,12 +260,12 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 
 | Layer | Tool | Scope |
 | --- | --- | --- |
-| Unit | pytest | IDs, ordering, schemas, notifier |
+| Unit | pytest | IDs, ordering, schemas, notifier, replay-then-live iteration, SSE decoding |
 | Persistence | pytest on a migrated temp SQLite | migrations (fresh, idempotent, round trip, `alembic check`), PRAGMAs, repositories, constraints, unit of work, publish-after-commit, sequence continuity across restarts |
 | API | pytest + `TestClient` | projects, cards, placement, events paging, envelope, headers, CORS, health states, contract snapshot |
-| Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, startup migration, concurrent writers, restart proofs (T05) |
-| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure) |
-| Browser | Playwright against a real API (`--ephemeral`) and the Vite dev server | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, CLI and browser on the same state |
+| Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, `events follow`, startup migration, concurrent writers, event stream (replay, `Last-Event-ID`, push, another process writing, refused cursors, prompt stop with subscribers), state and ledger across a restart |
+| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions, event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers) |
+| Browser | Playwright against a real API (`--ephemeral`) and the Vite dev server | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state |
 
 No fixtures or mocks live in application code; the GUI shows the real backend connection state.
 
@@ -246,8 +286,27 @@ the M3 supervisor defines a trust boundary.
 - **SkillRegistry** (M1): `skill_id`, version or Git revision, `source_path`, SHA-256 content
   digest, compatibility flags, installation receipt; design in `docs/SKILL_ARCHITECTURE.md`.
 
+## Known limitations of M0
+
+- **Single user, single API process.** No authentication; the API binds to loopback. Live
+  wake-ups need `uvicorn --workers 1`; another process writing to the database is seen by
+  subscribers within one heartbeat.
+- **No idempotency keys.** Updates are protected by optimistic locking (`version`); a retried
+  `POST` creates a second record. Idempotency keys arrive with asynchronous submissions (M3-M5).
+- **No delete or archive** for projects and cards, and no cross-project move of a card.
+- **`root_path` is a stored reference.** It is validated as absolute, never opened or executed.
+- **The list of projects is polled** every 5 seconds; only project pages have an event stream.
+- **The event strip shows the 20 newest entries.** Older ones are read with
+  `numericos events list` / `follow`. A full timeline view belongs to M3.
+- **No drag and drop yet** (M1): cards move through their status select and up/down buttons.
+- **Schema migrations need a manual restart** of a server started with `--reload`.
+- **SQLite transactions serialise writers and readers** (`BEGIN IMMEDIATE`). Invisible for one
+  local user; to be measured when the job supervisor writes telemetry in M3.
+
 ## Decisions
 
 - ADR-0001: one Python distribution with module boundaries.
 - ADR-0002: transactional event ledger, publish-after-commit, SQLite transaction policy and
   column renumbering.
+- ADR-0003: Server-Sent Events as a replayable view of the ledger; cursor rules; the GUI uses
+  the stream as a wake-up signal.

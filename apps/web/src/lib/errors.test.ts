@@ -42,6 +42,18 @@ describe("describeError", () => {
     expect(describeError(unreachable)).toMatch(/not reachable.*Nothing was saved/)
   })
 
+  it("tells a missing record from an API that is too old to know the operation", () => {
+    const missing = new ApiError(404, {
+      code: "NOT_FOUND",
+      message: "card card_1 not found",
+      details: { resource: "card", id: "card_1" },
+    })
+    const unknownRoute = new ApiError(404, { code: "NOT_FOUND", message: "Not Found", details: {} })
+
+    expect(describeError(missing)).toBe("This card no longer exists.")
+    expect(describeError(unknownRoute)).toMatch(/older than this GUI: restart it/)
+  })
+
   it("keeps the API message and code for other API errors", () => {
     const mismatch = new ApiError(409, {
       code: "PROJECT_MISMATCH",

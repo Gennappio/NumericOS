@@ -6,7 +6,12 @@ export function describeError(error: unknown): string {
     if (error.code === "STALE_REVISION") {
       return "This item was changed elsewhere in the meantime. The view has been refreshed with the latest version; apply your change again."
     }
-    if (error.code === "NOT_FOUND") return "This item no longer exists."
+    if (error.code === "NOT_FOUND") {
+      // The API names the missing resource; a bare 404 means the route itself is unknown.
+      return typeof error.details.resource === "string"
+        ? `This ${error.details.resource} no longer exists.`
+        : "The running API does not offer this operation. It is probably older than this GUI: restart it (make api)."
+    }
     return `${error.message} (${error.code})`
   }
   if (error instanceof ApiUnreachableError) {

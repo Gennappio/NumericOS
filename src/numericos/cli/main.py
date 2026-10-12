@@ -513,6 +513,59 @@ def events_list(
         typer.echo(f"more events available: --after {data['next_cursor']}", err=True)
 
 
+@events.command("follow")
+def events_follow(
+    project_id: ProjectOption,
+    after: Annotated[
+        int,
+        typer.Option("--after", min=0, help="Resume after this seq (default: from the start)."),
+    ] = 0,
+    limit: Annotated[
+        int | None, typer.Option("--limit", min=1, help="Stop after this many events.")
+    ] = None,
+    json_: Annotated[
+        bool, typer.Option("--json", help="One JSON document per line (JSON Lines) on stdout.")
+    ] = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Replay a project's ledger from a cursor, then print events as they are committed.
+
+    Stop it with Ctrl+C. If the stream breaks, the command says after which seq, so that
+    `--after` resumes exactly there, and exits with code 3.
+    """
+    cursor = after
+    printed = 0
+    with ApiClient(api_url or Settings().api_url) as client:
+        try:
+            for event in client.follow_events(project_id, after):
+                typer.echo(json.dumps(event, sort_keys=True) if json_ else _event_line(event))
+                cursor = event["seq"]
+                printed += 1
+                if limit is not None and printed >= limit:
+                    return
+        except KeyboardInterrupt:
+            return
+        except ApiError as exc:
+            if json_:
+                typer.echo(json.dumps(exc.envelope, sort_keys=True), err=True)
+            else:
+                typer.echo(f"error [{exc.code}] (HTTP {exc.status_code}): {exc.message}", err=True)
+            raise typer.Exit(EXIT_API_ERROR) from exc
+        except ApiUnreachable as exc:
+            typer.echo(
+                f"error: lost the event stream of {exc.url} ({exc.cause}); "
+                f"last seq {cursor}, resume with --after {cursor}",
+                err=True,
+            )
+            raise typer.Exit(EXIT_UNREACHABLE) from exc
+    typer.echo(
+        f"error: the server closed the event stream; last seq {cursor}, "
+        f"resume with --after {cursor}",
+        err=True,
+    )
+    raise typer.Exit(EXIT_UNREACHABLE)
+
+
 def main() -> None:
     app()
 

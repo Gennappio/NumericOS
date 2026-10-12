@@ -91,17 +91,6 @@ test("moving a card to Completed states no scientific verdict", async ({ page, r
   await expect(card).not.toContainText(/supported|refuted|validated|confirmed|passed/i)
 })
 
-test("a change made by another client shows up without a reload", async ({ page, request }) => {
-  const project = await createProject(request)
-  await page.goto(`/projects/${project.id}`)
-  await expect(column(page, "Planned").getByText("No cards")).toBeVisible()
-
-  await addCard(request, project.id, { title: "Added by a script", workflow_status: "planned" })
-
-  await expect(column(page, "Planned").getByRole("article", { name: "Added by a script" }))
-    .toBeVisible()
-})
-
 test("a stale edit is refused and explained instead of overwriting newer work", async ({
   page,
   request,

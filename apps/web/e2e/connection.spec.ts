@@ -33,6 +33,11 @@ test("losing the backend keeps the last state visible, marks it and locks change
   await expect(page.getByRole("alert").filter({ hasText: "not reachable" })).toContainText(
     "last state received at",
   )
+  // No part of the page may still claim to be live.
+  await expect(page.getByRole("status", { name: "Live updates" })).not.toHaveAttribute(
+    "data-transport",
+    "live",
+  )
   await expect(card).toBeVisible()
   await expect(page.getByRole("button", { name: "New card" })).toBeDisabled()
   await expect(page.getByRole("button", { name: "Edit project" })).toBeDisabled()

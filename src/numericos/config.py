@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     api_url: str = Field(
         default="http://127.0.0.1:8765", description="Base URL used by the CLI to reach the API."
     )
+    sse_heartbeat_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        le=300,
+        description=(
+            "Event streams send a keep-alive and re-read the ledger at this interval. It bounds "
+            "how late a subscriber learns of events committed by another process."
+        ),
+    )
 
     @field_validator("data_dir")
     @classmethod

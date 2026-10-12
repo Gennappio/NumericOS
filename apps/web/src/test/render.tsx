@@ -25,7 +25,10 @@ export const HEALTH_OK = {
   expected_revision: "0001",
 }
 
-/** Replace `fetch` with canned JSON bodies per API path; unknown paths answer 404. */
+/**
+ * Replace `fetch` with canned JSON bodies per API path; unknown paths answer 404. The object is
+ * read on every call, so a test can change an answer after the page has loaded.
+ */
 export function stubApi(routes: Record<string, unknown>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = new URL(String(input)).pathname

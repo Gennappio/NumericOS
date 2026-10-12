@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable, Iterator
 from types import TracebackType
 from typing import Any
 
@@ -24,12 +26,52 @@ class ApiError(Exception):
 
 
 class ApiUnreachable(Exception):
-    """No HTTP response at all (connection refused, timeout, ...)."""
+    """No HTTP response at all, or a response that broke off (refused, reset, timeout, ...)."""
 
     def __init__(self, url: str, cause: Exception) -> None:
         self.url = url
         self.cause = cause
         super().__init__(f"cannot reach {url}: {cause}")
+
+
+def iter_sse(lines: Iterable[str]) -> Iterator[tuple[str | None, str]]:
+    """Decode the lines of a Server-Sent Events stream into ``(last event id, data)`` pairs.
+
+    Follows the dispatch rules of the SSE format: a blank line ends an event, ``data`` lines are
+    joined with a newline, lines starting with a colon are comments (keep-alives), and the event
+    ID stays in effect until another ``id`` line replaces it. Events without data are skipped.
+    """
+    event_id: str | None = None
+    data: list[str] = []
+    for line in lines:
+        if line == "":
+            if data:
+                yield event_id, "\n".join(data)
+            data = []
+        elif not line.startswith(":"):
+            field, _, value = line.partition(":")
+            value = value.removeprefix(" ")
+            if field == "data":
+                data.append(value)
+            elif field == "id":
+                event_id = value
+
+
+def _envelope(response: httpx.Response) -> dict[str, Any]:
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict) and "error" in body:
+        return body
+    return {
+        "error": {
+            "code": "HTTP_ERROR",
+            "message": response.text,
+            "details": {},
+            "correlation_id": None,
+        }
+    }
 
 
 class ApiClient:
@@ -69,6 +111,30 @@ class ApiClient:
     def patch(self, path: str, json: Any) -> Any:
         return self._request("PATCH", path, json=json)
 
+    def follow_events(self, project_id: str, after: int = 0) -> Iterator[dict[str, Any]]:
+        """Replay a project's ledger after ``after``, then yield events as they are committed.
+
+        The iterator ends only if the server ends the stream; a broken connection raises
+        ``ApiUnreachable``. The caller keeps the last ``seq`` it saw to resume exactly there.
+        """
+        try:
+            with self._http.stream(
+                "GET",
+                "/v1/events",
+                params={"project_id": project_id, "after": after},
+                headers={"Accept": "text/event-stream"},
+                # Connecting must be quick; between events the stream may stay silent.
+                timeout=httpx.Timeout(10.0, read=None),
+            ) as response:
+                if not response.is_success:
+                    response.read()
+                    raise ApiError(response.status_code, _envelope(response))
+                for _event_id, data in iter_sse(response.iter_lines()):
+                    event: dict[str, Any] = json.loads(data)
+                    yield event
+        except httpx.TransportError as exc:
+            raise ApiUnreachable(self.base_url, exc) from exc
+
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
             response = self._http.request(method, path, **kwargs)
@@ -76,15 +142,4 @@ class ApiClient:
             raise ApiUnreachable(self.base_url, exc) from exc
         if response.is_success:
             return response.json() if response.content else None
-        try:
-            envelope = response.json()
-        except ValueError:
-            envelope = {
-                "error": {
-                    "code": "HTTP_ERROR",
-                    "message": response.text,
-                    "details": {},
-                    "correlation_id": None,
-                }
-            }
-        raise ApiError(response.status_code, envelope)
+        raise ApiError(response.status_code, _envelope(response))

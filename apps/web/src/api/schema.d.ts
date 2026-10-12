@@ -29,7 +29,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read a project's event ledger by cursor */
+        /** Read a project's event ledger by cursor (JSON page or SSE stream) */
         get: operations["list_events"];
         put?: never;
         post?: never;
@@ -507,31 +507,45 @@ export interface operations {
             query: {
                 /** @description Project whose ledger is read. */
                 project_id: string;
-                /** @description Return events with seq greater than this cursor. */
+                /** @description Cursor: only events with seq greater than this. */
                 after?: number | null;
-                /** @description Return events with seq lower than this value. */
+                /** @description Only events with seq lower than this. JSON only. */
                 before?: number | null;
-                limit?: number;
-                /** @description Ordering by seq. */
+                /** @description Page size, default 100. JSON only. */
+                limit?: number | null;
+                /** @description Ordering by seq. A stream is always asc. */
                 order?: "asc" | "desc";
             };
-            header?: never;
+            header?: {
+                /** @description Sent by EventSource clients when they reconnect to a stream. */
+                "last-event-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description A page of events as JSON. With `Accept: text/event-stream` the response is a Server-Sent Events stream instead: it replays every event after the cursor in `seq` order, then follows the ledger. Each frame has `id: <seq>` and the event as JSON in `data`; reconnecting with `Last-Event-ID` resumes after that event. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["EventPage"];
+                    "text/event-stream": string;
                 };
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
