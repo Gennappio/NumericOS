@@ -32,6 +32,7 @@ _FIXED = (
     (layout.RESOURCES, "resources", "application/x-ndjson"),
     (layout.JOURNAL, "journal", "application/x-ndjson"),
     (layout.EXIT, "outcome", "application/json"),
+    (layout.METRICS_SUMMARY, "metric_summary", "application/json"),
     (layout.MONITOR_LOG, "monitor_log", "text/plain"),
     (code.DIFF_FILE, "code_diff", "text/x-diff"),
     (code.UNTRACKED_ARCHIVE, "untracked_files", "application/x-tar"),
@@ -82,7 +83,8 @@ def _written_by_the_program(run_dir: Path) -> list[Path]:
 
 
 def collect(run_dir: Path) -> tuple[list[Found], int]:
-    """What the run left: the monitor's records, provenance files and the program's results.
+    """What the run left: the monitor's records (with the samples of every metric),
+    provenance files and the program's results.
 
     Results are the files under ``outputs/`` and, for a run of an exported commit, the files
     the program wrote into its code directory. At most ``MAX_RESULT_FILES`` are listed; the
@@ -95,13 +97,16 @@ def collect(run_dir: Path) -> tuple[list[Found], int]:
         for name, kind, media_type in _FIXED
         if (run_dir / name).is_file() and (run_dir / name).stat().st_size > 0
     ]
-    probes = run_dir / layout.ENVIRONMENT
-    if probes.is_dir():
-        found += [
-            _found(run_dir, path, "environment_probe", "text/plain")
-            for path in sorted(probes.iterdir())
-            if path.is_file()
-        ]
+    for directory, kind, media_type in (
+        (layout.ENVIRONMENT, "environment_probe", "text/plain"),
+        (layout.METRICS, "metric_series", "application/x-ndjson"),
+    ):
+        if (run_dir / directory).is_dir():
+            found += [
+                _found(run_dir, path, kind, media_type)
+                for path in sorted((run_dir / directory).iterdir())
+                if path.is_file()
+            ]
     outputs = run_dir / layout.OUTPUTS
     results = (_files_under(outputs) if outputs.is_dir() else []) + _written_by_the_program(run_dir)
     for path in results[:MAX_RESULT_FILES]:

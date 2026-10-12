@@ -353,6 +353,65 @@ def _sample_line(record: Record) -> str:
     )
 
 
+def _number(value: float | None, non_finite: str | None = None) -> str:
+    """A metric value as text. A non-finite one is shown by its word, never as a number."""
+    if value is None:
+        return non_finite or "-"
+    return f"{value:.10g}"
+
+
+def _series_line(series: Record) -> str:
+    unit = f" [{series['unit']}]" if series["unit"] else ""
+    step = f" at step {series['last_step']}" if series["last_step"] is not None else ""
+    count = f"{series['samples']:>7} {'sample ' if series['samples'] == 1 else 'samples'}"
+    text = (
+        f"{series['name']:<20} {series['source']:<15} {count}  "
+        f"last {_number(series['last_value'], series['last_non_finite'])}{step}{unit}"
+    )
+    if series["samples"] > 1 and series["min_value"] is not None:
+        text += f"  range {_number(series['min_value'])} .. {_number(series['max_value'])}"
+    if series["non_finite"]:
+        text += f"  {series['non_finite']} NOT FINITE"
+    if series["stored"] < series["samples"]:
+        text += f"  (only {series['stored']} stored)"
+    if not series["declared"]:
+        text += "  (not declared in the contract)"
+    return text
+
+
+def _metrics_text(data: Record) -> str:
+    """Coverage first: what was not observed matters as much as what was."""
+    lines = ["coverage"]
+    for level in data["coverage"]["levels"]:
+        status = level["status"].replace("_", " ")
+        lines.append(f"  {level['level']} {level['title']:<16} {status:<15} {level['detail']}")
+    lines.append("metrics")
+    listed = len(lines)
+    lines.extend(f"  {_series_line(series)}" for series in data["series"])
+    lines.extend(
+        f"  {metric['name']:<20} {metric['source']:<15} {metric['status']}: no sample"
+        for metric in data["coverage"]["metrics"]
+        if metric["status"] != "observed"
+    )
+    if len(lines) == listed:
+        lines.append("  none: the contract declares no metric and the program emitted none")
+    if data["truncated"]:
+        lines.append("  samples beyond the storage limit of the contract were counted, not stored")
+    if data["diagnostics"]:
+        lines.append("diagnostics")
+        for item in data["diagnostics"]:
+            lines.append(f"  {item['message']} ({item['count']}x)")
+            lines.extend(f"    {example}" for example in item["examples"])
+    return "\n".join(lines)
+
+
+def _metric_sample_text(sample: Record) -> str:
+    step = "-" if sample["step"] is None else str(sample["step"])
+    time_ = "-" if sample["time"] is None else f"{sample['time']:.6e}"
+    value = _number(sample["value"], sample["non_finite"])
+    return f"{step:>9}  {time_:>13}  {value:<20}  {_clock(sample['t'])}"
+
+
 def _artifact_line(record: Record) -> str:
     digest = record["sha256"][:12] if record["sha256"] else "-"
     return (
@@ -426,7 +485,7 @@ def _parse_parameters(assignments: list[str]) -> Record:
 
 def _event_line(record: Record) -> str:
     return (
-        f"{record['seq']:>6}  {record['timestamp_utc']}  {record['type']:<16}  "
+        f"{record['seq']:>6}  {record['timestamp_utc']}  {record['type']:<24}  "
         f"{record['subject_id']}  {record['actor']}"
     )
 
@@ -1412,6 +1471,67 @@ def run_resources(
         json_,
         lambda d: "\n".join(_sample_line(item) for item in d["samples"]) or "no samples recorded",
     )
+
+
+@run.command("metrics")
+def run_metrics(run_id: RunArgument, json_: JsonFlag = False, api_url: ApiUrlOption = None) -> None:
+    """Show the scientific metrics of a run and how far its observation reaches.
+
+    Coverage is listed level by level: the process (L0), values parsed from the output (L1),
+    metrics the program emits (L2), validators (L3). A level without data says so. Nothing
+    here states that a result is valid.
+    """
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/runs/{run_id}/metrics"))
+    _emit(data, json_, _metrics_text)
+
+
+@run.command("metric")
+def run_metric(
+    run_id: RunArgument,
+    name: Annotated[str, typer.Argument(metavar="NAME", help="Name of the metric.")],
+    follow: Annotated[
+        bool, typer.Option("--follow", "-f", help="Keep printing until the run has ended.")
+    ] = False,
+    tail: Annotated[
+        int | None, typer.Option("--tail", min=1, max=10000, help="Start at the last N samples.")
+    ] = None,
+    json_: Annotated[
+        bool,
+        typer.Option("--json", help="One JSON document; with --follow, one JSON line per sample."),
+    ] = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Print the samples of one metric: step, the program's time, value, arrival time (UTC)."""
+    path = f"/v1/runs/{run_id}/metrics/{name}"
+    params = _given(tail=tail, limit=5000)
+
+    if not follow:
+        data = _api(json_, api_url, lambda client: _all_pages(client, path, params, "samples"))
+        if json_:
+            typer.echo(json.dumps(data, indent=2, sort_keys=True))
+            return
+        for sample in data["samples"]:
+            typer.echo(_metric_sample_text(sample))
+        return
+
+    def print_until_the_end(client: ApiClient) -> None:
+        query = params
+        while True:
+            page = client.get(path, query)
+            for sample in page["samples"]:
+                typer.echo(
+                    json.dumps(sample, sort_keys=True) if json_ else _metric_sample_text(sample)
+                )
+            if page["complete"]:
+                return
+            query = {**_without_tail(query), "after": page["next_cursor"]}
+            if not page["has_more"]:
+                time.sleep(0.5)
+
+    try:
+        _api(json_, api_url, print_until_the_end)
+    except KeyboardInterrupt:
+        return
 
 
 @run.command("events")

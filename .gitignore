@@ -35,3 +35,6 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+# Built by the C++ example when it is run in the working tree
+examples/sparse-cg-cpp/cg

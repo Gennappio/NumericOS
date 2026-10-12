@@ -21,7 +21,8 @@ def _ended(uow: UnitOfWork, run_id: str) -> bool:
         return RunStatus(require_run(uow, run_id).status) not in ACTIVE_RUN_STATUSES
 
 
-def _start(path: Path, after: int | None, tail: int | None) -> int:
+def cursor_start(path: Path, after: int | None, tail: int | None) -> int:
+    """Where a reading begins: at the cursor, or at the last ``tail`` records. Not both."""
     if after is not None and tail is not None:
         raise InvalidRequestError(
             "give either a cursor or a tail, not both",
@@ -51,7 +52,7 @@ def read_logs(
     """Output lines of a run in arrival order, from a cursor or from the last ``tail`` lines."""
     ended = _ended(uow, run_id)
     path = layout.run_dir(data_dir, run_id) / layout.OUTPUT
-    records, cursor, at_end = files.read_after(path, _start(path, after, tail), limit)
+    records, cursor, at_end = files.read_after(path, cursor_start(path, after, tail), limit)
     lines = [
         LogLine(
             t=record["t"],
@@ -72,7 +73,7 @@ def read_resources(
     """Samples of the run's process tree, from a cursor or from the last ``tail`` samples."""
     ended = _ended(uow, run_id)
     path = layout.run_dir(data_dir, run_id) / layout.RESOURCES
-    records, cursor, at_end = files.read_after(path, _start(path, after, tail), limit)
+    records, cursor, at_end = files.read_after(path, cursor_start(path, after, tail), limit)
     return ResourcePage(
         samples=[ResourceSample.model_validate(record) for record in records],
         next_cursor=cursor,

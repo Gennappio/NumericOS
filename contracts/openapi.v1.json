@@ -529,6 +529,116 @@
         "title": "CommitInfo",
         "type": "object"
       },
+      "Coverage": {
+        "description": "What of a run is observed and what is not. Nothing here says a result is valid.",
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageLevel"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricCoverage"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "undeclared": {
+            "description": "Metrics the program emitted that the contract does not declare.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Undeclared",
+            "type": "array"
+          }
+        },
+        "required": [
+          "levels",
+          "metrics",
+          "undeclared"
+        ],
+        "title": "Coverage",
+        "type": "object"
+      },
+      "CoverageLevel": {
+        "description": "How far one level of observation reaches for a run.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "L0",
+              "L1",
+              "L2",
+              "L3"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "status": {
+            "description": "observed: everything the contract asks for at this level has data; partial: some of it; waiting: none yet, the run is still going; missing: none, and the run has ended; not_configured: the contract asks for nothing at this level.",
+            "enum": [
+              "observed",
+              "partial",
+              "waiting",
+              "missing",
+              "not_configured"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "title",
+          "status",
+          "detail"
+        ],
+        "title": "CoverageLevel",
+        "type": "object"
+      },
+      "Diagnostic": {
+        "description": "Something about the program's records or the parsers that needs a person's attention.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "examples": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "description": "What happened and what was done about it.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "message",
+          "count",
+          "examples"
+        ],
+        "title": "Diagnostic",
+        "type": "object"
+      },
       "EnvironmentRecord": {
         "properties": {
           "executable": {
@@ -1749,6 +1859,14 @@
             "title": "Grace Seconds",
             "type": "number"
           },
+          "max_metrics_mb": {
+            "default": 256,
+            "description": "Stored metric samples. Beyond it samples are still counted, not stored.",
+            "exclusiveMinimum": 0.0,
+            "maximum": 65536.0,
+            "title": "Max Metrics Mb",
+            "type": "integer"
+          },
           "max_output_mb": {
             "default": 256,
             "exclusiveMinimum": 0.0,
@@ -1858,6 +1976,334 @@
         "title": "LogPage",
         "type": "object"
       },
+      "MetricBucket": {
+        "description": "A stretch of consecutive samples of one metric, reduced to what a chart needs.",
+        "properties": {
+          "first_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Step"
+          },
+          "first_t": {
+            "title": "First T",
+            "type": "number"
+          },
+          "first_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Time"
+          },
+          "first_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Value"
+          },
+          "last_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Step"
+          },
+          "last_t": {
+            "title": "Last T",
+            "type": "number"
+          },
+          "last_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Time"
+          },
+          "last_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Value"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Over the finite samples of the stretch.",
+            "title": "Min Value"
+          },
+          "non_finite": {
+            "title": "Non Finite",
+            "type": "integer"
+          },
+          "samples": {
+            "title": "Samples",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "samples",
+          "non_finite",
+          "first_step",
+          "last_step",
+          "first_time",
+          "last_time",
+          "first_t",
+          "last_t",
+          "first_value",
+          "last_value",
+          "min_value",
+          "max_value"
+        ],
+        "title": "MetricBucket",
+        "type": "object"
+      },
+      "MetricCoverage": {
+        "description": "Whether a metric the contract declares was actually measured.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "non_finite": {
+            "title": "Non Finite",
+            "type": "integer"
+          },
+          "samples": {
+            "title": "Samples",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "instrumentation",
+              "parser",
+              "supervisor"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "observed",
+              "waiting",
+              "missing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "unit",
+          "source",
+          "status",
+          "samples",
+          "non_finite"
+        ],
+        "title": "MetricCoverage",
+        "type": "object"
+      },
+      "MetricOverview": {
+        "description": "A whole series in a bounded number of buckets, however many samples it has.",
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/MetricBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_cursor": {
+            "description": "Where the overview ends: read newer samples from here with 'after'.",
+            "title": "Next Cursor",
+            "type": "integer"
+          },
+          "samples": {
+            "description": "Stored samples the buckets were built from.",
+            "title": "Samples",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "samples",
+          "buckets",
+          "next_cursor",
+          "complete"
+        ],
+        "title": "MetricOverview",
+        "type": "object"
+      },
+      "MetricPage": {
+        "description": "Samples of one metric after a cursor. ``complete``: the run ended and nothing follows.",
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Pass as 'after' to continue. It is a byte offset.",
+            "title": "Next Cursor",
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/MetricSample"
+            },
+            "title": "Samples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "samples",
+          "next_cursor",
+          "has_more",
+          "complete"
+        ],
+        "title": "MetricPage",
+        "type": "object"
+      },
+      "MetricSample": {
+        "description": "One stored sample of a metric.",
+        "properties": {
+          "non_finite": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nan",
+                  "inf",
+                  "-inf"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which non-finite value it was, when 'value' is null.",
+            "title": "Non Finite"
+          },
+          "source_timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The time the program itself attached to the sample, as sent.",
+            "title": "Source Timestamp"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The program's step or iteration.",
+            "title": "Step"
+          },
+          "t": {
+            "description": "Epoch seconds when the monitor received the sample.",
+            "title": "T",
+            "type": "number"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The program's own time coordinate, e.g. simulated time.",
+            "title": "Time"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the value is not finite.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "t",
+          "value"
+        ],
+        "title": "MetricSample",
+        "type": "object"
+      },
       "MetricSpec": {
         "additionalProperties": false,
         "description": "A quantity the experiment measures, with its unit and who measures it.",
@@ -1929,6 +2375,12 @@
             "title": "Bytes",
             "type": "integer"
           },
+          "records": {
+            "default": 0,
+            "description": "Lines counted above that were metric or event records: they are kept as samples and events, not as lines of output.",
+            "title": "Records",
+            "type": "integer"
+          },
           "stderr_lines": {
             "title": "Stderr Lines",
             "type": "integer"
@@ -1955,7 +2407,7 @@
       },
       "ParserSpec": {
         "additionalProperties": false,
-        "description": "Extracts metrics from the program's output lines (observability level L1).\n\n``pattern`` is a Python regular expression. Every named group except ``step`` is a metric\nof that name; the optional group ``step`` is the sample's step.",
+        "description": "Extracts metrics from the program's output lines (observability level L1).\n\n``pattern`` is a Python regular expression. Every named group except ``step`` and ``time``\nis a metric of that name. The optional groups ``step`` and ``time`` give the sample's step\nand the program's own time coordinate.",
         "properties": {
           "name": {
             "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
@@ -2532,6 +2984,57 @@
         "title": "RunList",
         "type": "object"
       },
+      "RunMetrics": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "parsed_lines": {
+            "description": "Output lines from which a parser extracted values.",
+            "title": "Parsed Lines",
+            "type": "integer"
+          },
+          "program_events": {
+            "title": "Program Events",
+            "type": "integer"
+          },
+          "records": {
+            "description": "Metric records the program emitted.",
+            "title": "Records",
+            "type": "integer"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesSummary"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "truncated": {
+            "description": "Samples beyond the storage limit were not kept.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "series",
+          "coverage",
+          "records",
+          "parsed_lines",
+          "program_events",
+          "truncated",
+          "diagnostics"
+        ],
+        "title": "RunMetrics",
+        "type": "object"
+      },
       "RunOut": {
         "properties": {
           "argv": {
@@ -3009,6 +3512,166 @@
           "max_rss_bytes"
         ],
         "title": "SampledUsage",
+        "type": "object"
+      },
+      "SeriesSummary": {
+        "description": "What is known about one metric of a run without reading its samples.",
+        "properties": {
+          "declared": {
+            "description": "Whether the experiment's contract declares the metric.",
+            "title": "Declared",
+            "type": "boolean"
+          },
+          "first_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Step"
+          },
+          "first_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Value"
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Arrival time of the last sample.",
+            "title": "Last At"
+          },
+          "last_non_finite": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nan",
+                  "inf",
+                  "-inf"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Non Finite"
+          },
+          "last_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Step"
+          },
+          "last_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Time"
+          },
+          "last_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Value"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Over the finite samples.",
+            "title": "Min Value"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "non_finite": {
+            "description": "How many samples were NaN or infinite.",
+            "title": "Non Finite",
+            "type": "integer"
+          },
+          "samples": {
+            "title": "Samples",
+            "type": "integer"
+          },
+          "source": {
+            "description": "instrumentation: records emitted by the program; parser: extracted from its output; supervisor: measured from outside.",
+            "enum": [
+              "instrumentation",
+              "parser",
+              "supervisor"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "stored": {
+            "description": "Samples kept in the series file; fewer if it was cut.",
+            "title": "Stored",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "As declared in the contract; as sent, if it is not declared.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "unit",
+          "source",
+          "declared",
+          "samples",
+          "non_finite",
+          "stored"
+        ],
+        "title": "SeriesSummary",
         "type": "object"
       },
       "Termination": {
@@ -5231,6 +5894,259 @@
           }
         },
         "summary": "Output lines of a run with arrival time and stream, by cursor",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/metrics": {
+      "get": {
+        "operationId": "get_run_metrics",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunMetrics"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The metrics of a run in short, and how far its observation reaches",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/metrics/{name}": {
+      "get": {
+        "operationId": "read_metric",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Name of the metric.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Name of the metric.",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,99}$",
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cursor returned by the previous page (a byte offset).",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor returned by the previous page (a byte offset).",
+              "title": "After"
+            }
+          },
+          {
+            "description": "Start from the last N records instead of a cursor.",
+            "in": "query",
+            "name": "tail",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 10000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start from the last N records instead of a cursor.",
+              "title": "Tail"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is beyond what is recorded"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Samples of one metric in arrival order, by cursor",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/metrics/{name}/overview": {
+      "get": {
+        "operationId": "get_metric_overview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Name of the metric.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Name of the metric.",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,99}$",
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "buckets",
+            "required": false,
+            "schema": {
+              "default": 400,
+              "maximum": 2000,
+              "minimum": 10,
+              "title": "Buckets",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "A whole series reduced to a bounded number of buckets, for charts",
         "tags": [
           "observability"
         ]

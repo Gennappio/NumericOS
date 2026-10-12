@@ -28,6 +28,7 @@ from typing import Any, BinaryIO
 import psutil
 
 from numericos.executor import layout
+from numericos.executor.collector import PARSED, RECORD, LineObserver, MetricCollector
 from numericos.executor.spec import RunSpec
 from numericos.provenance.executable import resolve_executable
 
@@ -98,31 +99,16 @@ class AlreadyMonitoredError(Exception):
     """The run directory already has a monitor: this one must not start anything."""
 
 
-class LineObserver:
-    """Sees every output line. The numeric adapters hook in here; the default sees nothing."""
-
-    def observe(self, stream: str, text: str, arrived: float) -> bool:
-        """Return True when the line was consumed as structured data (e.g. a metric record)."""
-        return False
-
-    def stop_request(self) -> tuple[str, str] | None:
-        """A (reason, detail) pair when what was observed requires stopping the program."""
-        return None
-
-    def close(self) -> dict[str, Any]:
-        """Summary to include in ``exit.json``."""
-        return {}
-
-
 class Monitor:
     def __init__(self, run_dir: Path, observer: LineObserver | None = None) -> None:
         self.dir = run_dir
         self.spec = RunSpec.model_validate_json((run_dir / layout.SPEC).read_bytes())
-        self.observer = observer or LineObserver()
         self._claim()
         self._output = self._append(layout.OUTPUT)
         self._resources = self._append(layout.RESOURCES)
         self._journal = self._append(layout.JOURNAL)
+        #: Learns the metrics of the run from its output lines, and may ask for a stop.
+        self.observer = observer or MetricCollector(run_dir, self.spec, self._note)
         self._began = time.monotonic()
         self._stop: tuple[str, str] | None = None
         self._sigterm_at: float | None = None
@@ -134,6 +120,7 @@ class Monitor:
         self._output_bytes = 0
         self._output_truncated = False
         self._lines = dict.fromkeys(STREAMS, 0)
+        self._records = 0
         # Sampling state of the command in progress; the totals describe the program only.
         self._cpu_seen: dict[int, float] = {}
         self._cpu_seconds = 0.0
@@ -179,11 +166,14 @@ class Monitor:
         arrived = time.time()
         text = raw.rstrip(b"\r").decode("utf-8", errors="replace")
         self._lines[stream] += 1
-        consumed = self.observer.observe(STREAMS[stream], text, arrived)
+        became = self.observer.observe(STREAMS[stream], text, arrived)
+        if became == RECORD:
+            self._records += 1  # kept as a sample or an event, not as a line of output
+            return
         if self._output_truncated:
             return
         record: dict[str, Any] = {"t": round(arrived, 6), "s": stream, "l": text}
-        if consumed:
+        if became == PARSED:
             record["m"] = 1
         if cut:
             record["x"] = 1
@@ -403,6 +393,7 @@ class Monitor:
                     self._drive_stop(pgid)
             elif open_streams == 0 or time.monotonic() - exited_at > DRAIN_SECONDS:
                 break
+            self.observer.tick()
         selector.close()
         process.stdout.close()
         process.stderr.close()
@@ -518,6 +509,19 @@ class Monitor:
     def _finish(self, program: Ended, reason: str, detail: str) -> None:
         code = program.returncode
         measured = program.cpu_user_seconds is not None
+        cpu = (
+            program.cpu_user_seconds + program.cpu_system_seconds
+            if program.cpu_user_seconds is not None and program.cpu_system_seconds is not None
+            else None
+        )
+        self.observer.measured(
+            {
+                "wall_time": program.seconds,
+                "cpu_time": round(cpu, 6) if cpu is not None else None,
+                "max_rss": program.max_rss_bytes,
+            },
+            time.time(),
+        )
         document = {
             "exit_code": code if code is not None and code >= 0 else None,
             "signal": signal.Signals(-code).name if code is not None and code < 0 else None,
@@ -547,6 +551,7 @@ class Monitor:
                 "stdout_lines": self._lines["o"],
                 "stderr_lines": self._lines["e"],
                 "build_lines": self._lines["b"],
+                "records": self._records,
                 "bytes": self._output_bytes,
                 "truncated": self._output_truncated,
             },

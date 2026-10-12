@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import FileResponse
 
 from numericos.api.deps import Context, Uow
+from numericos.core.experiment import METRIC_NAME
+from numericos.core.metrics import MetricOverview, MetricPage, RunMetrics
 from numericos.core.schemas import (
     ArtifactList,
     ErrorEnvelope,
@@ -19,7 +21,7 @@ from numericos.core.schemas import (
     RunOut,
     WorkerList,
 )
-from numericos.services import events, observations, runs, workers
+from numericos.services import events, metrics, observations, runs, workers
 from numericos.services.guards import require_run
 
 router = APIRouter()
@@ -34,6 +36,7 @@ Tail = Annotated[
 CURSOR_RESPONSES: dict[int | str, dict[str, Any]] = {
     409: {"model": ErrorEnvelope, "description": "The cursor is beyond what is recorded"},
 }
+MetricNameInPath = Annotated[str, Path(pattern=METRIC_NAME, description="Name of the metric.")]
 
 
 @router.get(
@@ -105,6 +108,52 @@ def read_resources(
 ) -> ResourcePage:
     return observations.read_resources(
         uow, request.app.state.settings.data_dir, run_id, after=after, tail=tail, limit=limit
+    )
+
+
+@router.get(
+    "/runs/{run_id}/metrics",
+    tags=["observability"],
+    summary="The metrics of a run in short, and how far its observation reaches",
+)
+def get_run_metrics(run_id: str, uow: Uow) -> RunMetrics:
+    return metrics.run_metrics(uow, run_id)
+
+
+@router.get(
+    "/runs/{run_id}/metrics/{name}",
+    tags=["observability"],
+    summary="Samples of one metric in arrival order, by cursor",
+    responses=CURSOR_RESPONSES,
+)
+def read_metric(
+    run_id: str,
+    name: MetricNameInPath,
+    uow: Uow,
+    request: Request,
+    after: After = None,
+    tail: Tail = None,
+    limit: Annotated[int, Query(ge=1, le=5000)] = 1000,
+) -> MetricPage:
+    return metrics.read_metric(
+        uow, request.app.state.settings.data_dir, run_id, name, after=after, tail=tail, limit=limit
+    )
+
+
+@router.get(
+    "/runs/{run_id}/metrics/{name}/overview",
+    tags=["observability"],
+    summary="A whole series reduced to a bounded number of buckets, for charts",
+)
+def get_metric_overview(
+    run_id: str,
+    name: MetricNameInPath,
+    uow: Uow,
+    request: Request,
+    buckets: Annotated[int, Query(ge=10, le=2000)] = 400,
+) -> MetricOverview:
+    return metrics.metric_overview(
+        uow, request.app.state.settings.data_dir, run_id, name, buckets=buckets
     )
 
 

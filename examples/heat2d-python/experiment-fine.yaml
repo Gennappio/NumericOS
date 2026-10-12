@@ -1,0 +1,67 @@
+# The stability experiment on a finer grid: the same program, long enough to watch while it
+# runs (about 12 s on the development machine for the stable value of dt).
+# From the top of this repository:
+#   numericos experiment run examples/heat2d-python/experiment-fine.yaml -p PROJECT_ID -P dt=1.4e-05
+schema: numericos.experiment.v1
+name: heat2d-stability-fine
+question: >-
+  On a 128 x 128 grid, does the explicit FTCS scheme for the 2D heat equation stay bounded and
+  accurate below the stability limit of this scheme, and does it blow up above it?
+prediction: >-
+  For r <= 1/4 the largest |u| never exceeds its initial value 1 and the L2 error against the
+  analytic solution stays small. For r above the limit, round-off errors grow without bound.
+falsification:
+  - A run with r <= 1/4 in which the largest |u| exceeds 1.
+  - A run with r clearly above the limit that stays bounded for all its steps.
+independent_variables:
+  # h = 1/128, so r = 16384 dt: 0.229376 (stable) and 0.278528 (unstable).
+  # The exact limit of this grid is r <= 0.250038.
+  dt: [1.4e-05, 1.7e-05]
+controls:
+  grid: 128
+  steps: 16000
+  alpha: 1.0
+  report_every: 100
+execution:
+  workdir: examples/heat2d-python
+  command:
+    - python3
+    - heat2d.py
+    - --dt
+    - "{dt}"
+    - --grid
+    - "{grid}"
+    - --steps
+    - "{steps}"
+    - --alpha
+    - "{alpha}"
+    - --report-every
+    - "{report_every}"
+metrics:
+  - name: max_abs_u
+    unit: "1"
+    sampled_by: instrumentation
+    description: Largest |u| over the grid.
+  - name: l2_error
+    unit: "1"
+    sampled_by: instrumentation
+    description: Discrete L2 norm of the difference to the analytic solution.
+  - name: norm_l2
+    unit: "1"
+    sampled_by: parser
+    description: Discrete L2 norm of u, read from the program's progress lines.
+  - {name: wall_time, unit: s, sampled_by: supervisor}
+  - {name: cpu_time, unit: s, sampled_by: supervisor}
+  - {name: max_rss, unit: bytes, sampled_by: supervisor}
+observability:
+  resource_interval_seconds: 0.5
+  parsers:
+    - name: progress
+      pattern: '^step\s+(?P<step>\d+)\s+t=(?P<time>\S+)\s+norm=(?P<norm_l2>\S+)'
+guardrails:
+  non_finite: halt
+  rules:
+    # The discrete maximum principle of the stable scheme (see README.md), not a tuned value.
+    - {metric: max_abs_u, above: 1.0, patience: 3, action: halt}
+limits:
+  wall_seconds: 600

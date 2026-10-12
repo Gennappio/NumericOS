@@ -30,8 +30,14 @@ METRIC_NAME = r"^[A-Za-z][A-Za-z0-9_.-]{0,99}$"
 
 #: ``{seed}`` in a command is filled from the run's seed, not from a variable or control.
 SEED = "seed"
+#: Named groups of a parser that place a sample instead of being a metric.
+PARSER_COORDINATES = frozenset({"step", "time"})
 
-#: Quantities the supervisor measures itself, with their units.
+#: Quantities the supervisor measures itself, with their units. ``wall_time``: the program
+#: alone, from just before it is started to its exit, build commands excluded. ``cpu_time``:
+#: user plus system CPU time of the program and the descendants it waited for. ``max_rss``:
+#: the largest resident set of one process of the program. All three come from the operating
+#: system when the program ends, so each has exactly one sample.
 SUPERVISOR_METRICS: dict[str, str] = {"wall_time": "s", "cpu_time": "s", "max_rss": "bytes"}
 
 # bool before int: a JSON ``true`` must stay a boolean.
@@ -84,8 +90,9 @@ class MetricSpec(Strict):
 class ParserSpec(Strict):
     """Extracts metrics from the program's output lines (observability level L1).
 
-    ``pattern`` is a Python regular expression. Every named group except ``step`` is a metric
-    of that name; the optional group ``step`` is the sample's step.
+    ``pattern`` is a Python regular expression. Every named group except ``step`` and ``time``
+    is a metric of that name. The optional groups ``step`` and ``time`` give the sample's step
+    and the program's own time coordinate.
     """
 
     name: Annotated[str, StringConstraints(pattern=PARAMETER_NAME)]
@@ -99,13 +106,15 @@ class ParserSpec(Strict):
             compiled = re.compile(value)
         except re.error as error:
             raise ValueError(f"not a valid regular expression: {error}") from error
-        if not set(compiled.groupindex) - {"step"}:
-            raise ValueError("needs at least one named group besides 'step'")
+        if not set(compiled.groupindex) - PARSER_COORDINATES:
+            raise ValueError("needs at least one named group besides 'step' and 'time'")
         return value
 
     @property
     def metric_names(self) -> list[str]:
-        return [name for name in re.compile(self.pattern).groupindex if name != "step"]
+        return [
+            name for name in re.compile(self.pattern).groupindex if name not in PARSER_COORDINATES
+        ]
 
 
 class GuardrailRule(Strict):
@@ -141,6 +150,12 @@ class Limits(Strict):
         default=10.0, ge=0, le=300, description="Between SIGTERM and SIGKILL when a run is stopped."
     )
     max_output_mb: int = Field(default=256, gt=0, le=65536)
+    max_metrics_mb: int = Field(
+        default=256,
+        gt=0,
+        le=65536,
+        description="Stored metric samples. Beyond it samples are still counted, not stored.",
+    )
 
 
 class CodeSpec(Strict):
@@ -265,8 +280,9 @@ class ExperimentProtocol(Strict):
                     )
 
         metric_names = [metric.name for metric in self.metrics]
-        if len(set(metric_names)) != len(metric_names):
-            raise ValueError("metric names must be unique")
+        if len({name.lower() for name in metric_names}) != len(metric_names):
+            # Each series is a file, and file names do not distinguish case everywhere.
+            raise ValueError("metric names must be unique, also when case is ignored")
         parser_names = [parser.name for parser in self.observability.parsers]
         if len(set(parser_names)) != len(parser_names):
             raise ValueError("parser names must be unique")
@@ -278,11 +294,18 @@ class ExperimentProtocol(Strict):
         for metric in self.metrics:
             if metric.sampled_by == "parser" and metric.name not in parsed:
                 raise ValueError(f"no parser extracts the metric {metric.name!r}")
-            if metric.sampled_by == "supervisor" and metric.name not in SUPERVISOR_METRICS:
-                raise ValueError(
-                    f"the supervisor does not measure {metric.name!r}; it measures "
-                    f"{sorted(SUPERVISOR_METRICS)}"
-                )
+            if metric.sampled_by == "supervisor":
+                if metric.name not in SUPERVISOR_METRICS:
+                    raise ValueError(
+                        f"the supervisor does not measure {metric.name!r}; it measures "
+                        f"{sorted(SUPERVISOR_METRICS)}"
+                    )
+                measured_in = SUPERVISOR_METRICS[metric.name]
+                if metric.unit not in ("", measured_in):
+                    raise ValueError(
+                        f"the supervisor measures {metric.name!r} in {measured_in!r}, "
+                        f"not in {metric.unit!r}"
+                    )
         for rule in self.guardrails.rules:
             if rule.metric not in by_name:
                 raise ValueError(f"guardrail on {rule.metric!r}, which is not a declared metric")
@@ -306,10 +329,15 @@ def same_value(left: ParameterValue, right: ParameterValue) -> bool:
 
 
 def protocol_digest(protocol: ExperimentProtocol) -> str:
-    """SHA-256 of the canonical JSON form; identifies the contract a run was executed under."""
-    canonical = json.dumps(
-        protocol.to_json(), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    """SHA-256 of what the contract states; identifies the contract a run was executed under.
+
+    Values equal to the defaults of the schema are left out of the canonical form. A contract
+    therefore keeps its digest when it spells a default out, and when a later revision of
+    ``numericos.experiment.v1`` adds an optional field. The defaults themselves belong to the
+    schema version and do not change within it.
+    """
+    stated = protocol.model_dump(mode="json", by_alias=True, exclude_defaults=True)
+    canonical = json.dumps(stated, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

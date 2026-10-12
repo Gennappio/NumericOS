@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import signal
 import sys
 import textwrap
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
 
 from numericos.executor import control, layout
 from numericos.executor.liveness import process_alive
@@ -24,6 +26,7 @@ from numericos.executor.worker import Worker
 from tests.gitrepo import Repo
 
 Json = dict[str, Any]
+EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
 class Lab:
@@ -82,6 +85,22 @@ class Lab:
         }
         return self._send("POST", f"/v1/projects/{self.project['id']}/experiments", 201, body)
 
+    def install_example(self, name: str) -> Json:
+        """Commit one of this repository's examples to the project, at the same path, and
+        return its experiment contract as written in its ``experiment.yaml``."""
+        source = EXAMPLES / name
+        # The test repository already has a stand-in at this path: the real files replace it.
+        shutil.copytree(source, self.repo.root / "examples" / name, dirs_exist_ok=True)
+        self.repo.commit(f"add the {name} example")
+        contract: Json = yaml.safe_load((source / "experiment.yaml").read_text())
+        return contract
+
+    def register(self, contract: Json) -> Json:
+        """Register an experiment from a contract file's content (it may carry a name)."""
+        protocol = {key: value for key, value in contract.items() if key != "name"}
+        body = {"name": contract.get("name", "experiment"), "protocol": protocol}
+        return self._send("POST", f"/v1/projects/{self.project['id']}/experiments", 201, body)
+
     def queue(self, experiment: Json, **body: Any) -> Json:
         return self._send("POST", f"/v1/experiments/{experiment['id']}/runs", 201, body)
 
@@ -111,6 +130,17 @@ class Lab:
         """Recorded output lines, optionally of one stream (stdout, stderr or build)."""
         params = {"limit": 5000} if stream is None else {"limit": 5000, "stream": stream}
         return [line["text"] for line in self.get(f"/v1/runs/{run_id}/logs", **params)["lines"]]
+
+    def metrics(self, run_id: str) -> Json:
+        return self.get(f"/v1/runs/{run_id}/metrics")
+
+    def series(self, run_id: str) -> dict[str, Json]:
+        return {item["name"]: item for item in self.metrics(run_id)["series"]}
+
+    def samples(self, run_id: str, name: str, **params: Any) -> list[Json]:
+        page = self.get(f"/v1/runs/{run_id}/metrics/{name}", **{"limit": 5000, **params})
+        samples: list[Json] = page["samples"]
+        return samples
 
     def artifacts(self, run_id: str) -> dict[str, Json]:
         listed: list[Json] = self.get(f"/v1/runs/{run_id}/artifacts")["artifacts"]

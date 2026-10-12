@@ -352,6 +352,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/runs/{run_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The metrics of a run in short, and how far its observation reaches */
+        get: operations["get_run_metrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}/metrics/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Samples of one metric in arrival order, by cursor */
+        get: operations["read_metric"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}/metrics/{name}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A whole series reduced to a bounded number of buckets, for charts */
+        get: operations["get_metric_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs/{run_id}/record": {
         parameters: {
             query?: never;
@@ -662,6 +713,59 @@ export interface components {
             authored_at: string;
             /** Subject */
             subject: string;
+        };
+        /**
+         * Coverage
+         * @description What of a run is observed and what is not. Nothing here says a result is valid.
+         */
+        Coverage: {
+            /** Levels */
+            levels: components["schemas"]["CoverageLevel"][];
+            /** Metrics */
+            metrics: components["schemas"]["MetricCoverage"][];
+            /**
+             * Undeclared
+             * @description Metrics the program emitted that the contract does not declare.
+             */
+            undeclared: string[];
+        };
+        /**
+         * CoverageLevel
+         * @description How far one level of observation reaches for a run.
+         */
+        CoverageLevel: {
+            /** Detail */
+            detail: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "L0" | "L1" | "L2" | "L3";
+            /**
+             * Status
+             * @description observed: everything the contract asks for at this level has data; partial: some of it; waiting: none yet, the run is still going; missing: none, and the run has ended; not_configured: the contract asks for nothing at this level.
+             * @enum {string}
+             */
+            status: "observed" | "partial" | "waiting" | "missing" | "not_configured";
+            /** Title */
+            title: string;
+        };
+        /**
+         * Diagnostic
+         * @description Something about the program's records or the parsers that needs a person's attention.
+         */
+        Diagnostic: {
+            /** Count */
+            count: number;
+            /** Examples */
+            examples: string[];
+            /** Kind */
+            kind: string;
+            /**
+             * Message
+             * @description What happened and what was done about it.
+             */
+            message: string;
         };
         /** EnvironmentRecord */
         EnvironmentRecord: {
@@ -1167,6 +1271,12 @@ export interface components {
              */
             grace_seconds?: number;
             /**
+             * Max Metrics Mb
+             * @description Stored metric samples. Beyond it samples are still counted, not stored.
+             * @default 256
+             */
+            max_metrics_mb?: number;
+            /**
              * Max Output Mb
              * @default 256
              */
@@ -1227,6 +1337,138 @@ export interface components {
             next_cursor: number;
         };
         /**
+         * MetricBucket
+         * @description A stretch of consecutive samples of one metric, reduced to what a chart needs.
+         */
+        MetricBucket: {
+            /** First Step */
+            first_step: number | null;
+            /** First T */
+            first_t: number;
+            /** First Time */
+            first_time: number | null;
+            /** First Value */
+            first_value: number | null;
+            /** Last Step */
+            last_step: number | null;
+            /** Last T */
+            last_t: number;
+            /** Last Time */
+            last_time: number | null;
+            /** Last Value */
+            last_value: number | null;
+            /** Max Value */
+            max_value: number | null;
+            /**
+             * Min Value
+             * @description Over the finite samples of the stretch.
+             */
+            min_value: number | null;
+            /** Non Finite */
+            non_finite: number;
+            /** Samples */
+            samples: number;
+        };
+        /**
+         * MetricCoverage
+         * @description Whether a metric the contract declares was actually measured.
+         */
+        MetricCoverage: {
+            /** Name */
+            name: string;
+            /** Non Finite */
+            non_finite: number;
+            /** Samples */
+            samples: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "instrumentation" | "parser" | "supervisor";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "observed" | "waiting" | "missing";
+            /** Unit */
+            unit: string;
+        };
+        /**
+         * MetricOverview
+         * @description A whole series in a bounded number of buckets, however many samples it has.
+         */
+        MetricOverview: {
+            /** Buckets */
+            buckets: components["schemas"]["MetricBucket"][];
+            /** Complete */
+            complete: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Next Cursor
+             * @description Where the overview ends: read newer samples from here with 'after'.
+             */
+            next_cursor: number;
+            /**
+             * Samples
+             * @description Stored samples the buckets were built from.
+             */
+            samples: number;
+        };
+        /**
+         * MetricPage
+         * @description Samples of one metric after a cursor. ``complete``: the run ended and nothing follows.
+         */
+        MetricPage: {
+            /** Complete */
+            complete: boolean;
+            /** Has More */
+            has_more: boolean;
+            /**
+             * Next Cursor
+             * @description Pass as 'after' to continue. It is a byte offset.
+             */
+            next_cursor: number;
+            /** Samples */
+            samples: components["schemas"]["MetricSample"][];
+        };
+        /**
+         * MetricSample
+         * @description One stored sample of a metric.
+         */
+        MetricSample: {
+            /**
+             * Non Finite
+             * @description Which non-finite value it was, when 'value' is null.
+             */
+            non_finite?: ("nan" | "inf" | "-inf") | null;
+            /**
+             * Source Timestamp
+             * @description The time the program itself attached to the sample, as sent.
+             */
+            source_timestamp?: string | null;
+            /**
+             * Step
+             * @description The program's step or iteration.
+             */
+            step?: number | null;
+            /**
+             * T
+             * @description Epoch seconds when the monitor received the sample.
+             */
+            t: number;
+            /**
+             * Time
+             * @description The program's own time coordinate, e.g. simulated time.
+             */
+            time?: number | null;
+            /**
+             * Value
+             * @description Null when the value is not finite.
+             */
+            value: number | null;
+        };
+        /**
          * MetricSpec
          * @description A quantity the experiment measures, with its unit and who measures it.
          */
@@ -1266,6 +1508,12 @@ export interface components {
             build_lines: number;
             /** Bytes */
             bytes: number;
+            /**
+             * Records
+             * @description Lines counted above that were metric or event records: they are kept as samples and events, not as lines of output.
+             * @default 0
+             */
+            records?: number;
             /** Stderr Lines */
             stderr_lines: number;
             /** Stdout Lines */
@@ -1280,8 +1528,9 @@ export interface components {
          * ParserSpec
          * @description Extracts metrics from the program's output lines (observability level L1).
          *
-         *     ``pattern`` is a Python regular expression. Every named group except ``step`` is a metric
-         *     of that name; the optional group ``step`` is the sample's step.
+         *     ``pattern`` is a Python regular expression. Every named group except ``step`` and ``time``
+         *     is a metric of that name. The optional groups ``step`` and ``time`` give the sample's step
+         *     and the program's own time coordinate.
          */
         ParserSpec: {
             /** Name */
@@ -1533,6 +1782,31 @@ export interface components {
             /** Runs */
             runs: components["schemas"]["RunOut"][];
         };
+        /** RunMetrics */
+        RunMetrics: {
+            coverage: components["schemas"]["Coverage"];
+            /** Diagnostics */
+            diagnostics: components["schemas"]["Diagnostic"][];
+            /**
+             * Parsed Lines
+             * @description Output lines from which a parser extracted values.
+             */
+            parsed_lines: number;
+            /** Program Events */
+            program_events: number;
+            /**
+             * Records
+             * @description Metric records the program emitted.
+             */
+            records: number;
+            /** Series */
+            series: components["schemas"]["SeriesSummary"][];
+            /**
+             * Truncated
+             * @description Samples beyond the storage limit were not kept.
+             */
+            truncated: boolean;
+        };
         /** RunOut */
         RunOut: {
             /**
@@ -1706,6 +1980,66 @@ export interface components {
             max_rss_bytes: number;
             /** Samples */
             samples: number;
+        };
+        /**
+         * SeriesSummary
+         * @description What is known about one metric of a run without reading its samples.
+         */
+        SeriesSummary: {
+            /**
+             * Declared
+             * @description Whether the experiment's contract declares the metric.
+             */
+            declared: boolean;
+            /** First Step */
+            first_step?: number | null;
+            /** First Value */
+            first_value?: number | null;
+            /**
+             * Last At
+             * @description Arrival time of the last sample.
+             */
+            last_at?: number | null;
+            /** Last Non Finite */
+            last_non_finite?: ("nan" | "inf" | "-inf") | null;
+            /** Last Step */
+            last_step?: number | null;
+            /** Last Time */
+            last_time?: number | null;
+            /** Last Value */
+            last_value?: number | null;
+            /** Max Value */
+            max_value?: number | null;
+            /**
+             * Min Value
+             * @description Over the finite samples.
+             */
+            min_value?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Non Finite
+             * @description How many samples were NaN or infinite.
+             */
+            non_finite: number;
+            /** Samples */
+            samples: number;
+            /**
+             * Source
+             * @description instrumentation: records emitted by the program; parser: extracted from its output; supervisor: measured from outside.
+             * @enum {string}
+             */
+            source: "instrumentation" | "parser" | "supervisor";
+            /**
+             * Stored
+             * @description Samples kept in the series file; fewer if it was cut.
+             */
+            stored: number;
+            /**
+             * Unit
+             * @description As declared in the contract; as sent, if it is not declared.
+             */
+            unit: string;
         };
         /** Termination */
         Termination: {
@@ -3102,6 +3436,147 @@ export interface operations {
             };
             /** @description The cursor is beyond what is recorded */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_run_metrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunMetrics"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    read_metric: {
+        parameters: {
+            query?: {
+                /** @description Cursor returned by the previous page (a byte offset). */
+                after?: number | null;
+                /** @description Start from the last N records instead of a cursor. */
+                tail?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+                /** @description Name of the metric. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricPage"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The cursor is beyond what is recorded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_metric_overview: {
+        parameters: {
+            query?: {
+                buckets?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+                /** @description Name of the metric. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricOverview"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

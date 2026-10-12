@@ -116,3 +116,19 @@ def test_the_tail_is_found_without_reading_the_whole_file(
     records, _cursor, _at_end = files.read_after(path, files.tail_start(path, 3), 100)
 
     assert numbers(records) == [197, 198, 199]
+
+
+def test_a_long_series_is_counted_and_streamed_without_its_unfinished_last_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(files, "CHUNK", 16)
+    path = tmp_path / "residual.jsonl"
+    path.write_bytes(lines(*range(100)) + b'{"n": 10')
+
+    count, end = files.complete_extent(path)
+    streamed = [record["n"] for record in files.iter_records(path, end)]
+
+    assert (count, end) == (100, len(lines(*range(100))))
+    assert streamed == list(range(100))
+    assert files.complete_extent(tmp_path / "absent.jsonl") == (0, 0)
+    assert list(files.iter_records(tmp_path / "absent.jsonl", 0)) == []

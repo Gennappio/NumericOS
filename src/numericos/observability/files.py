@@ -7,6 +7,7 @@ record while the monitor is still writing, and the returned cursor always starts
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +83,37 @@ def read_to_end(path: Path, after: int) -> tuple[list[dict[str, Any]], int]:
         page, cursor, at_end = read_after(path, cursor, 5000)
         records.extend(page)
     return records, cursor
+
+
+def complete_extent(path: Path) -> tuple[int, int]:
+    """How many complete lines the file holds now, and the byte offset behind the last one."""
+    lines = end = position = 0
+    try:
+        handle = path.open("rb")
+    except FileNotFoundError:
+        return 0, 0
+    with handle:
+        while chunk := handle.read(CHUNK):
+            lines += chunk.count(b"\n")
+            last = chunk.rfind(b"\n")
+            if last >= 0:
+                end = position + last + 1
+            position += len(chunk)
+    return lines, end
+
+
+def iter_records(path: Path, end: int) -> Iterator[dict[str, Any]]:
+    """The records of the first ``end`` bytes, one at a time: a long series never has to be
+    held in memory as a whole."""
+    if end == 0:
+        return
+    position = 0
+    with path.open("rb") as handle:
+        for line in handle:
+            position += len(line)
+            if position > end:
+                return
+            yield json.loads(line)
 
 
 def tail_start(path: Path, lines: int) -> int:

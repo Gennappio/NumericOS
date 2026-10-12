@@ -108,6 +108,34 @@ def test_the_digest_identifies_the_contract_not_its_formatting() -> None:
     assert len(protocol_digest(parse())) == 64
 
 
+def test_spelling_out_a_default_does_not_make_a_different_contract() -> None:
+    # The digest covers what a contract states. Defaults belong to the schema version, so a
+    # contract keeps its digest when the schema later gains an optional field.
+    explicit = factories.protocol(
+        limits={"wall_seconds": 60, "grace_seconds": 10.0, "max_output_mb": 256},
+        guardrails={"non_finite": "record", "rules": []},
+        observability={"parsers": [], "resource_interval_seconds": 1.0},
+    )
+    different = factories.protocol(limits={"wall_seconds": 60, "grace_seconds": 5.0})
+
+    assert protocol_digest(ExperimentProtocol.model_validate(explicit)) == protocol_digest(parse())
+    assert protocol_digest(ExperimentProtocol.model_validate(different)) != protocol_digest(parse())
+
+
+def test_metric_names_and_supervisor_units_are_checked() -> None:
+    with pytest.raises(ValidationError, match="also when case is ignored"):
+        parse(
+            metrics=[
+                {"name": "Residual", "sampled_by": "instrumentation"},
+                {"name": "residual", "sampled_by": "instrumentation"},
+            ]
+        )
+    with pytest.raises(ValidationError, match="measures 'max_rss' in 'bytes'"):
+        parse(metrics=[{"name": "max_rss", "unit": "MB", "sampled_by": "supervisor"}])
+    assert parse(metrics=[{"name": "max_rss", "sampled_by": "supervisor"}]).metrics[0].unit == ""
+    assert parse().limits.max_metrics_mb == 256
+
+
 def test_a_run_gets_the_controls_and_one_declared_value_per_variable() -> None:
     protocol = parse()
 

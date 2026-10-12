@@ -18,6 +18,7 @@ from numericos.persistence.repositories import (
     EventRepository,
     ExperimentRepository,
     HypothesisRepository,
+    MetricSeriesRepository,
     ProjectRepository,
     RunRepository,
     WorkerRepository,
@@ -40,6 +41,7 @@ class UnitOfWork:
         self.runs = RunRepository(self.session)
         self.workers = WorkerRepository(self.session)
         self.artifacts = ArtifactRepository(self.session)
+        self.metric_series = MetricSeriesRepository(self.session)
         return self
 
     def __exit__(

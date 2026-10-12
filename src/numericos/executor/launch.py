@@ -132,6 +132,10 @@ def prepare(
         grace_seconds=limits.grace_seconds,
         max_output_bytes=limits.max_output_mb * MB,
         resource_interval_seconds=protocol.observability.resource_interval_seconds,
+        metrics=protocol.metrics,
+        parsers=protocol.observability.parsers,
+        guardrails=protocol.guardrails,
+        max_metrics_bytes=limits.max_metrics_mb * MB,
     )
     # 0600: the spec holds the real environment of the run, secrets included.
     layout.write_json_atomic(

@@ -209,6 +209,8 @@ class Run(Base):
     resources: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     #: How far the supervisor has read the monitor's files.
     ingest: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    #: What the monitor learned from the output besides the series: counts and diagnostics.
+    metric_report: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
@@ -244,6 +246,40 @@ class Artifact(Base):
     size_bytes: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class MetricSeries(Base):
+    """What is known about one metric of one run without reading its samples, which stay in
+    the run directory. One row per run and metric, so runs can be compared by a query."""
+
+    __tablename__ = "metric_series"
+    __table_args__ = (
+        CheckConstraint("source IN ('instrumentation', 'parser', 'supervisor')", name="source"),
+        UniqueConstraint("run_id", "name", name="uq_metric_series_run_name"),
+        Index("ix_metric_series_experiment_name", "experiment_id", "name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(40), ForeignKey("projects.id"))
+    experiment_id: Mapped[str] = mapped_column(String(40), ForeignKey("experiments.id"))
+    run_id: Mapped[str] = mapped_column(String(40), ForeignKey("runs.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    unit: Mapped[str] = mapped_column(String(60))
+    source: Mapped[str] = mapped_column(String(20))
+    declared: Mapped[bool] = mapped_column(Boolean)
+    samples: Mapped[int] = mapped_column(Integer)
+    non_finite: Mapped[int] = mapped_column(Integer)
+    stored: Mapped[int] = mapped_column(Integer)
+    first_value: Mapped[float | None] = mapped_column(Float)
+    first_step: Mapped[int | None] = mapped_column(Integer)
+    last_value: Mapped[float | None] = mapped_column(Float)
+    last_non_finite: Mapped[str | None] = mapped_column(String(4))
+    last_step: Mapped[int | None] = mapped_column(Integer)
+    last_time: Mapped[float | None] = mapped_column(Float)
+    last_at: Mapped[float | None] = mapped_column(Float)
+    min_value: Mapped[float | None] = mapped_column(Float)
+    max_value: Mapped[float | None] = mapped_column(Float)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
 class Event(Base):

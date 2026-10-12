@@ -49,6 +49,13 @@ class OutputSummary(BaseModel):
     stdout_lines: int
     stderr_lines: int
     build_lines: int
+    records: int = Field(
+        default=0,
+        description=(
+            "Lines counted above that were metric or event records: they are kept as samples "
+            "and events, not as lines of output."
+        ),
+    )
     bytes: int
     truncated: bool = Field(description="Output beyond the run's limit was seen but not stored.")
 

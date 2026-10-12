@@ -57,4 +57,7 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "list_artifacts",
         "download_artifact",
         "list_workers",
+        "get_run_metrics",
+        "read_metric",
+        "get_metric_overview",
     }

@@ -1,0 +1,59 @@
+# Conjugate gradient in double and in single precision, as a NumericOS experiment.
+# From the top of this repository (needs a C++17 compiler as `c++`):
+#   numericos experiment run examples/sparse-cg-cpp/experiment.yaml -p PROJECT_ID -P precision=double
+schema: numericos.experiment.v1
+name: sparse-cg-precision
+question: >-
+  On the 2D Poisson matrix, does conjugate gradient in single precision reach the accuracy it
+  reports, compared with the same algorithm in double precision?
+prediction: >-
+  Both runs report a recurrence residual below the tolerance and exit normally. In double
+  precision the true residual and the error agree with it. In single precision they stall
+  orders of magnitude above it.
+falsification:
+  - A single-precision run whose true residual is at the level of the residual it reports.
+independent_variables:
+  precision: [double, single]
+controls:
+  n: 128
+  tol: 1.0e-10   # with a dot: YAML reads 1e-10 as text
+  max_iter: 2000
+execution:
+  workdir: examples/sparse-cg-cpp
+  build:
+    - [c++, -O2, -std=c++17, -o, cg, cg.cpp]
+  command:
+    - ./cg
+    - --n
+    - "{n}"
+    - --tol
+    - "{tol}"
+    - --max-iter
+    - "{max_iter}"
+    - --precision
+    - "{precision}"
+  environment_probes:
+    - [c++, --version]
+metrics:
+  - name: residual_rel
+    unit: "1"
+    sampled_by: instrumentation
+    description: "The residual CG updates by recurrence, relative to ||b||. Not ||b - A x||."
+  - name: true_residual_rel
+    unit: "1"
+    sampled_by: instrumentation
+    description: "||b - A x|| / ||b|| of the returned solution, computed in double precision."
+  - name: error_rel
+    unit: "1"
+    sampled_by: instrumentation
+    description: "||x - x*|| / ||x*|| against the known solution, in double precision."
+  - {name: iterations, unit: "1", sampled_by: instrumentation}
+  - {name: converged, unit: "1", sampled_by: instrumentation}
+  - name: solve_seconds
+    unit: s
+    sampled_by: instrumentation
+    description: Time of the solve alone, measured by the program.
+  - {name: wall_time, unit: s, sampled_by: supervisor}
+  - {name: max_rss, unit: bytes, sampled_by: supervisor}
+limits:
+  wall_seconds: 300

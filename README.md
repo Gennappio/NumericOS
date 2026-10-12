@@ -11,10 +11,11 @@ replayable event ledger) was accepted on 2026-10-12; the evidence is in
 `docs/milestones/M0-gate.md`. The active milestone is **M3**, experiment engine, provenance and
 numerical observability, which the project owner placed before M1 and M2
 (`docs/adr/0004-observability-first.md`). So far M3 defines experiments by a contract, records
-exactly which code, inputs and environment a run uses, and executes runs under a supervisor
-that observes, bounds, cancels and recovers them. Scientific metrics, validators and the run
-pages of the GUI are the next tickets: today a run shows what its process did, from the command
-line and the API, and nothing yet says whether its result is valid.
+exactly which code, inputs and environment a run uses, executes runs under a supervisor that
+observes, bounds, cancels and recovers them, and collects scientific metrics that the program
+emits or that are read from its output, with explicit guardrails. Validators and the run pages
+of the GUI are the next tickets: today a run shows what was measured, from the command line
+and the API, and nothing yet says whether its result is valid.
 
 ## Requirements
 
@@ -71,35 +72,39 @@ the GUI says so, marks what it shows as the last known state and disables every 
 ## Running an experiment
 
 An experiment is a contract file: what is asked, what varies, what stays fixed, how one run is
-executed and within which limits. A run executes an exact commit of the project's Git
-repository, exported for that run, so uncommitted edits are not part of it unless the contract
-says `code: {mode: working_tree}`.
+executed, which metrics are measured and by whom, which bounds stop a run, and within which
+limits. A run executes an exact commit of the project's Git repository, exported for that run,
+so uncommitted edits are not part of it unless the contract says `code: {mode: working_tree}`.
 
-```yaml
-# stability.yaml
-schema: numericos.experiment.v1
-question: Does reducing dt restore the stability of the explicit scheme?
-independent_variables: {dt: [0.02, 0.01, 0.005]}
-controls: {grid: 32, steps: 200}
-execution:
-  command: [python3, heat2d.py, --dt, "{dt}", --grid, "{grid}", --steps, "{steps}"]
-limits: {wall_seconds: 300}
-```
+This repository ships two worked experiments. `examples/heat2d-python` is the explicit scheme
+for the 2D heat equation with time steps on both sides of its stability limit; it needs only
+`python3`. With `make api` and `make worker` running, from the top of the checkout:
 
 ```bash
-numericos project add "Heat 2D" --root-path /path/to/your/git/repository
+numericos project add "Heat 2D" --root-path "$PWD"
 numericos project trust PROJECT_ID          # allow commands to be executed in that directory
-numericos experiment run stability.yaml -p PROJECT_ID -P dt=0.01
+numericos experiment run examples/heat2d-python/experiment.yaml -p PROJECT_ID -P dt=0.0002
+numericos experiment run examples/heat2d-python/experiment.yaml -p PROJECT_ID -P dt=0.0003
 ```
 
-The last command registers the experiment, queues one run and follows it: the program's output
-is printed as it arrives, each line with its arrival time and stream, and the exit code says
-how the run ended (`0` succeeded, `10` failed, `11` cancelled, `12` timed out, `13` lost).
-Afterwards, or from another terminal while it runs:
+Each command registers the experiment (once), queues one run and follows it: the program's
+output is printed as it arrives, each line with its arrival time and stream, and the exit code
+says how the run ended (`0` succeeded, `10` failed, `11` cancelled, `12` timed out, `13`
+lost). The first run is stable and ends `succeeded`. The second is above the stability limit:
+a guardrail of the contract stops it and it ends `failed` with the class
+`numerical_instability`, keeping its series as evidence. Both take a fraction of a second;
+`experiment-fine.yaml` in the same directory runs for about twelve seconds, long enough to
+watch. The reasoning behind the time steps and the guardrail is in
+`examples/heat2d-python/README.md`; `examples/sparse-cg-cpp` is a C++ solver that exits
+normally without the accuracy it reports.
+
+Afterwards, or from another terminal while a run is in progress:
 
 ```bash
 numericos run list -p PROJECT_ID            # newest runs of the project
 numericos run show RUN_ID                   # status, exact code, exit, time, memory
+numericos run metrics RUN_ID                # coverage per level, every series, diagnostics
+numericos run metric RUN_ID l2_error -f     # the samples of one metric, following the run
 numericos run logs RUN_ID -f                # output; -f follows until the run ends
 numericos run resources RUN_ID --tail 5     # CPU and memory samples of the process tree
 numericos run events RUN_ID                 # what happened to the run, in order
@@ -112,6 +117,10 @@ numericos worker list                       # is a supervisor alive?
 A program finds its result directory in `$NUMERICOS_OUTPUT_DIR`; files it writes next to its
 sources are listed with the results as well. `succeeded` means the program ended by itself with
 exit code 0. It does not mean the result is valid.
+
+To make your own solver observable, print one JSON line per value
+(`{"schema": "numericos.metric.v1", "name": "residual", "value": 3.2e-4, "step": 42}`) or let
+the contract read numbers from the output it already prints: `docs/instrumentation.md`.
 
 A run gets a small environment: the supervisor's `PATH` without NumericOS's own Python
 environment, plus what the contract declares (`execution.env`) or asks to inherit
@@ -177,7 +186,9 @@ tests/           pytest suites (unit, persistence, provenance, executor, api, cl
                  `LiveServer` and `LiveWorker` run real API and supervisor subprocesses
 contracts/       exported OpenAPI contract (generated, committed, drift-checked in CI)
 apps/web/        React + TypeScript + Vite GUI; src/api/schema.d.ts is generated from contracts/
-docs/            architecture.md, ADRs, milestone gate evidence, blueprint, skill and adapter docs
+examples/        worked experiments with their contracts: heat2d-python, sparse-cg-cpp
+docs/            architecture.md, instrumentation.md, ADRs, milestone gate evidence, blueprint,
+                 skill and adapter docs
 milestones/      executable development briefs M0-M5 (one ticket at a time)
 skills/          canonical scientific Agent Skills (SKILL.md)
 ```

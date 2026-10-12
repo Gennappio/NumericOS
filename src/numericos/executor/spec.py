@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from numericos.core.experiment import Guardrails, MetricSpec, ParserSpec
+
 
 class RunSpec(BaseModel):
     """Written by the worker as ``spec.json`` (mode 0600: it holds the run's environment)."""
@@ -25,3 +27,9 @@ class RunSpec(BaseModel):
     grace_seconds: float = Field(ge=0)
     max_output_bytes: int = Field(gt=0)
     resource_interval_seconds: float = Field(gt=0)
+    #: What to learn from the program's output: the metrics of the contract, how to extract
+    #: them, and when a value requires stopping the program.
+    metrics: list[MetricSpec] = Field(default_factory=list)
+    parsers: list[ParserSpec] = Field(default_factory=list)
+    guardrails: Guardrails = Field(default_factory=Guardrails)
+    max_metrics_bytes: int = Field(default=256 * 1024 * 1024, gt=0)

@@ -20,7 +20,7 @@ TABLES = {
     "workers",
     "artifacts",
 }
-HEAD = "0004"
+HEAD = "0005"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:

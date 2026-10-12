@@ -14,6 +14,7 @@ from numericos.persistence.models import (
     Event,
     Experiment,
     Hypothesis,
+    MetricSeries,
     Project,
     Run,
     Worker,
@@ -221,6 +222,27 @@ class ArtifactRepository:
     def list_for_run(self, run_id: str) -> list[Artifact]:
         statement = select(Artifact).where(Artifact.run_id == run_id).order_by(Artifact.name)
         return list(self._session.scalars(statement))
+
+
+class MetricSeriesRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, series: MetricSeries) -> MetricSeries:
+        self._session.add(series)
+        return series
+
+    def list_for_run(self, run_id: str) -> list[MetricSeries]:
+        statement = (
+            select(MetricSeries).where(MetricSeries.run_id == run_id).order_by(MetricSeries.name)
+        )
+        return list(self._session.scalars(statement))
+
+    def get(self, run_id: str, name: str) -> MetricSeries | None:
+        statement = select(MetricSeries).where(
+            MetricSeries.run_id == run_id, MetricSeries.name == name
+        )
+        return self._session.scalars(statement).first()
 
 
 class EventRepository:

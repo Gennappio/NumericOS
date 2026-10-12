@@ -240,6 +240,50 @@ def test_a_contract_file_is_run_in_one_command_and_again_under_the_same_experime
     assert [(item["name"], item["run_count"]) for item in experiments] == [("grid-study", 2)]
 
 
+def test_the_heat_example_runs_from_its_contract_file_and_its_metrics_are_read_back(
+    live_server: LiveServer, live_worker: LiveWorker, live_lab: Lab
+) -> None:
+    live_lab.install_example("heat2d-python")
+    contract = str(live_lab.repo.root / "examples" / "heat2d-python" / "experiment.yaml")
+    project = live_lab.project["id"]
+
+    stable = cli(
+        live_server, "experiment", "run", contract, "-p", project, "-P", "dt=0.0002", "--json"
+    )
+    unstable = cli(live_server, "experiment", "run", contract, "-p", project, "-P", "dt=0.0003")
+    run_id = json.loads(stable.stdout)["id"]
+    shown = cli(live_server, "run", "metrics", run_id)
+    document = cli_json(live_server, "run", "metrics", run_id)
+    tail = cli(live_server, "run", "metric", run_id, "l2_error", "--tail", "2")
+    followed = cli(live_server, "run", "metric", run_id, "norm_l2", "--follow", "--json")
+    unknown = cli(live_server, "run", "metric", run_id, "enthalpy")
+
+    assert stable.exit_code == 0
+    assert "out | step    600" in stable.stderr  # the parsed progress lines are output
+    assert "numericos.metric.v1" not in stable.stderr  # the records are not
+    assert unstable.exit_code == RUN_EXIT_CODES["failed"]
+    assert "failure:    numerical_instability" in unstable.stdout
+    assert "metric max_abs_u was above 1.0 for 3 consecutive sample(s)" in unstable.stdout
+
+    assert "L0 Process          observed" in shown.stdout
+    assert "L1 Output parsers   observed" in shown.stdout
+    assert "L2 Instrumentation  observed" in shown.stdout
+    assert "L3 Validators       not configured" in shown.stdout
+    assert "says whether the result is valid" in shown.stdout
+    lines = {line.split()[0]: line for line in shown.stdout.splitlines() if " sample" in line}
+    assert "parser" in lines["norm_l2"] and "61 samples" in lines["norm_l2"]
+    assert "at step 600" in lines["l2_error"] and "[1]" in lines["l2_error"]
+    assert "supervisor" in lines["wall_time"] and "[s]" in lines["wall_time"]
+    assert " 1 sample " in lines["wall_time"]
+    assert len(document["series"]) == 6
+
+    steps = [line.split()[0] for line in tail.stdout.splitlines()]
+    assert steps == ["590", "600"]
+    streamed = [json.loads(line) for line in followed.stdout.splitlines()]
+    assert len(streamed) == 61 and streamed[-1]["step"] == 600
+    assert unknown.exit_code == 1 and "NOT_FOUND" in unknown.stderr
+
+
 def test_a_supervisor_does_not_start_against_a_database_of_another_schema(tmp_path: Path) -> None:
     completed = subprocess.run(
         [

@@ -71,6 +71,7 @@ def test_output_is_recorded_line_by_line_with_stream_and_arrival_time(tmp_path: 
         "stdout_lines": 2,
         "stderr_lines": 1,
         "build_lines": 0,
+        "records": 0,
         "bytes": (tmp_path / layout.OUTPUT).stat().st_size,
         "truncated": False,
     }

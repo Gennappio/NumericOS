@@ -3,10 +3,11 @@
 Status: **M0 accepted** on 2026-10-12 (tag `m0-gate`, evidence in
 `docs/milestones/M0-gate.md`). The active milestone is M3; ADR-0004 records why it precedes M1
 and M2. M3 so far: T01 (typed hypotheses, experiments and runs; the experiment contract; queued
-runs), T02 (provenance of code, inputs and environment; explicit execution trust) and T03 (the
-supervisor: runs are executed, observed, bounded, cancellable and recovered after a restart).
-Scientific metrics and validators arrive with T04 and T05: until then a run shows what its
-process did, not whether its result is valid. Everything below describes
+runs), T02 (provenance of code, inputs and environment; explicit execution trust), T03 (the
+supervisor: runs are executed, observed, bounded, cancellable and recovered after a restart)
+and T04 (scientific metrics emitted by the program or parsed from its output, guardrails,
+coverage per level, two worked examples). Validators arrive with T05: until then a run shows
+what was measured, not whether its result is valid. Everything below describes
 what exists; later milestones extend this file instead of replacing it. Roadmap and acceptance
 gates live in `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md` and `milestones/`.
 
@@ -22,9 +23,11 @@ src/numericos/
   events/                      ledger row builder, in-process wake-up notifier, replay-then-live
                                iteration (`stream.follow`)
   provenance/                  read-only Git access, code capture, input checksums, environment
-  executor/                    the per-run monitor, the worker, launch preparation, outcome
-                               classification, artifact collection
-  observability/               cursor reads of the files a monitor appends to
+  executor/                    the per-run monitor with its metric collector, the worker,
+                               launch preparation, outcome classification, artifact collection
+  observability/               cursor reads of the files a monitor appends to; coverage
+examples/                      worked experiments: heat2d-python, sparse-cg-cpp (contract,
+                               program, derivations)
   services/                    use cases (projects, cards, research entities, runs,
                                observations): the only business logic
   api/                         FastAPI app factory, routers, error envelope, correlation middleware
@@ -120,7 +123,8 @@ migrations cannot drift. Authoring a revision: `uv run alembic revision --autoge
 Revisions: `0001` projects, board cards, events; `0002` hypotheses, experiments, runs and
 `events.run_id`; `0003` run provenance (code, inputs, environment, reproduced run) and
 `projects.execution_trusted_at`; `0004` run supervision (worker, process identities, times,
-cancellation, exit, outcome, resource summary, read offsets), `workers` and `artifacts`.
+cancellation, exit, outcome, resource summary, read offsets), `workers` and `artifacts`;
+`0005` `metric_series` (one summary row per run and metric) and `runs.metric_report`.
 
 ## Events
 
@@ -271,7 +275,9 @@ both gone without a recorded outcome. Each status and failure class is defined i
 | `started.json` | monitor | PID, start time and process group of the program; the program file with its digest |
 | `output.jsonl` | monitor | one record per output line: arrival time, stream (`o`, `e`, build `b`), text |
 | `resources.jsonl` | monitor | samples of the process tree: CPU, resident memory, processes, threads, I/O |
-| `journal.jsonl` | monitor | what the monitor did: limits exceeded, signals sent, output cut, leftovers |
+| `journal.jsonl` | monitor | what the monitor did: limits exceeded, signals sent, output cut, leftovers, metric anomalies |
+| `metrics/<name>.jsonl` | monitor | the samples of one metric: arrival time, value or kind of non-finite value, step, time |
+| `metrics.json` | monitor | the series so far in short, counts and diagnostics; rewritten about once a second |
 | `exit.json` | monitor | exit code or signal of the program, why it ended, usage totals, output counts |
 | `cancel.json` | API or worker | a request to stop the program |
 | `code/` | worker | the exported commit (`ref` mode); the program's working directory is inside it |
@@ -298,7 +304,8 @@ The program also gets `NUMERICOS_RUN_ID`, `NUMERICOS_RUN_DIR`, `NUMERICOS_CODE_D
   started, so a run shorter than the interval has exact totals and no samples. A peak between
   two samples is missed: the sampled maximum is tree-wide but approximate.
 
-Nothing numerical is inferred from these: metrics come with T04.
+Nothing numerical is inferred from these. Numbers with a scientific meaning come from the
+program or from its output, as described next.
 
 **Limits and stopping.** See ADR-0006, decision 5. The wall-clock limit covers the build
 commands and the program.
@@ -308,7 +315,37 @@ they are alive; without a live one queued runs wait, and the CLI says so.
 
 **Artifacts.** Registered when the run ends (`GET /v1/runs/{id}/artifacts`), each with kind,
 media type, size and SHA-256, and downloadable. Kinds: `output`, `resources`, `journal`,
-`outcome`, `monitor_log`, `code_diff`, `untracked_files`, `environment_probe`, `result`.
+`outcome`, `metric_summary`, `metric_series`, `monitor_log`, `code_diff`, `untracked_files`,
+`environment_probe`, `result`.
+
+## Scientific metrics (M3-T04)
+
+ADR-0007 records the decisions; `docs/instrumentation.md` is the guide for someone who wants
+to make a program observable. In short:
+
+- **Sources.** A sample of a metric comes from a record the program emits
+  (`numericos.metric.v1`, level L2), from a parser of the contract applied to an output line
+  (L1), or from the supervisor's own measurement of the process (`wall_time`, `cpu_time`,
+  `max_rss`). The contract declares each metric with its unit and its source.
+- **Collection.** `executor/collector.py` runs inside the monitor. It validates records
+  strictly, reads numbers the way solvers print them, stores non-finite values as typed
+  samples, writes one file per metric and keeps a summary of every series.
+- **Guardrails.** Explicit bounds of the contract, evaluated on every sample by the monitor:
+  a bound with a patience in consecutive samples, and the policy for NaN and infinity. A halt
+  ends the run `failed / numerical_instability`. NumericOS assumes no threshold.
+- **Storage.** Samples stay in the run directory, bounded by `limits.max_metrics_mb`. The
+  table `metric_series` holds one row per run and metric: source, unit, counts, first and
+  last sample, extremes. The worker updates it from the monitor's summary while the run goes
+  on.
+- **Coverage.** `GET /v1/runs/{id}/metrics` answers per level (L0 process, L1 parsers, L2
+  instrumentation, L3 validators) and per declared metric with `observed`, `partial`,
+  `waiting`, `missing` or `not_configured`, and lists what the program emitted beyond the
+  contract and what was wrong with its records. L3 is `not_configured` until validators exist.
+- **Examples.** `examples/heat2d-python` (explicit scheme for the 2D heat equation: stable
+  and unstable time steps on both sides of a limit derived for this scheme, a guardrail that
+  is an invariant of the scheme, closed forms for norm and error) and `examples/sparse-cg-cpp`
+  (conjugate gradient in double and single precision: a run that exits normally and reports
+  convergence without having reached it). Their contracts are run by the test suite.
 
 ## Use cases and their events
 
@@ -343,6 +380,10 @@ correlation ID of the request that queued the run, `run_id` set):
 | `RUN_ADOPTED` | another worker took the run over | `previous_worker_id`, `worker_id` |
 | `RUN_REQUEUED` | its worker stopped before the program was started | `reason` |
 | `RUN_MONITOR_LOST` | the monitor is gone while the program still runs | `pid` |
+| `RUN_METRIC_NON_FINITE` | a metric became NaN or infinite (first time per metric; severity error) | `metric`, `value`, `step`, `action` |
+| `RUN_GUARDRAIL_VIOLATED` | a bound of the contract was violated for its patience (error if it halts, warning if it records) | `metric`, `bound`, `threshold`, `value`, `non_finite`, `step`, `consecutive`, `action` |
+| `RUN_METRICS_TRUNCATED` | samples beyond the storage limit are no longer stored | `limit_bytes` |
+| `RUN_PROGRAM_EVENT` | the program emitted a `numericos.event.v1` record | `name`, `message`, `severity`, `step` |
 
 `project` and `card` are the public representations after the change. Placement rules: a new
 `workflow_status` moves the card to `position` in that column (appended when omitted); `position`
@@ -366,6 +407,9 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `POST /v1/runs/{id}:cancel` | ask for a run to be stopped (optional `reason`); returns at once |
 | `GET /v1/runs/{id}/logs?after=&tail=&limit=&stream=` | output lines by cursor: `lines`, `next_cursor`, `has_more`, `complete` |
 | `GET /v1/runs/{id}/resources?after=&tail=&limit=` | resource samples by cursor, same shape |
+| `GET /v1/runs/{id}/metrics` | the series of a run in short, coverage per level and per declared metric, diagnostics |
+| `GET /v1/runs/{id}/metrics/{name}?after=&tail=&limit=` | samples of one metric by cursor |
+| `GET /v1/runs/{id}/metrics/{name}/overview?buckets=` | a whole series reduced to a bounded number of buckets, for charts |
 | `GET /v1/runs/{id}/events?after=&limit=&order=` | the ledger events of one run |
 | `GET /v1/runs/{id}/artifacts`; `GET /v1/artifacts/{id}/content` | the files a finished run left; download one |
 | `GET /v1/workers` | supervisors, whether each is alive, and how many can start queued runs |
@@ -438,6 +482,7 @@ output as it arrives; with `--json` that output goes to stderr and stdout carrie
 | `numericos run status ID` / `run list -p PROJECT` / `run cancel ID [--reason R]` | status and reason; newest runs of a project; ask for a stop |
 | `numericos run logs ID [-f] [--tail N] [-s STREAM] [--plain]` | output lines with arrival time and stream; `-f` follows until the run ends |
 | `numericos run resources ID [--tail N]` / `run events ID` | resource samples; the ledger events of the run |
+| `numericos run metrics ID` / `run metric ID NAME [-f] [--tail N]` | coverage, series and diagnostics of a run; the samples of one metric |
 | `numericos artifact list -r RUN` / `artifact get ID [-o FILE]` | the files a run left; download one |
 | `numericos worker run [--max-parallel N] [--data-dir D] [--reload]` / `worker list` | start a supervisor (server side); list supervisors and whether one is alive |
 | `numericos project trust ID [--yes]` / `untrust ID` | allow or stop allowing execution in the project directory |
@@ -499,6 +544,7 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Persistence | pytest on a migrated temp SQLite | migrations (fresh, idempotent, round trip, `alembic check`), PRAGMAs, repositories, constraints, unit of work, publish-after-commit, sequence continuity across restarts |
 | API | pytest + `TestClient` | projects, cards, placement, events paging, envelope, headers, CORS, health states, contract snapshot |
 | Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, `events follow`, startup migration, concurrent writers, event stream (replay, `Last-Event-ID`, push, another process writing, refused cursors, prompt stop with subscribers), state and ledger across a restart |
+| Examples | pytest running the shipped programs alone and, from their own contract files, under a supervisor | closed forms of norm and error of the heat scheme to round-off; time steps on both sides of the exact stability limit; a guardrail halt that leaves its evidence; overflow as typed samples; conjugate gradient in two precisions with the true residual far from the reported one; binary and compiler provenance |
 | Execution | pytest with real monitor processes and real programs from a real Git repository; `LiveWorker` (real `numericos worker run` subprocess) where a supervisor must die | the monitor (output, limits, signals, process tree, leftovers, build, one monitor per run); the worker (recording, classification, cancellation, trust and input checks, working tree against commit, results next to the sources, binary identity, parallelism); recovery (supervisor killed and run taken over with complete output, orderly hand-over, lost monitor, re-queue, two supervisors competing for the queue, overtaken readings); API restarted during a run; run events on an open stream |
 | Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions, event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers) |
 | Browser | Playwright against a real API (`--ephemeral`) and the Vite dev server | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state |
@@ -543,6 +589,10 @@ artifact is served as an attachment from inside its run directory and nowhere el
   interval, not enforced by the kernel; no CPU-core or GPU limit; no automatic retry; exports
   of commits are not pruned; a working-tree run's files in the project directory are not
   collected. ADR-0006 lists the consequences in full.
+- **Metrics come from standard output and standard error.** Files a solver writes are not
+  parsed. A program that emits more than about 160,000 records per second is slowed down to
+  that rate. Guardrail rules look at consecutive samples of one metric only. No validator
+  exists yet, so nothing states that a result is valid. ADR-0007 lists the consequences.
 - **The list of projects is polled** every 5 seconds; only project pages have an event stream.
 - **The event strip shows the 20 newest entries.** Older ones are read with
   `numericos events list` / `follow`. A full timeline view belongs to M3.
@@ -568,3 +618,5 @@ artifact is served as an attachment from inside its run directory and nowhere el
   working tree); NumericOS only reads the repository; execution needs explicit trust.
 - ADR-0006: one monitor process per run and a worker that turns its files into durable state;
   process identity, stopping, status and failure classes, recovery, fenced transactions.
+- ADR-0007: metrics are samples with a declared source, collected and guarded by the run's
+  monitor; strict records, typed non-finite values, explicit guardrails, coverage per level.

@@ -46,7 +46,7 @@ from numericos.persistence.engine import (
     make_session_factory,
     utcnow,
 )
-from numericos.persistence.models import Artifact, Event, Run
+from numericos.persistence.models import Artifact, Event, MetricSeries, Run
 from numericos.persistence.models import Worker as WorkerRow
 from numericos.persistence.unit_of_work import UnitOfWork
 from numericos.provenance.code import working_tree_changed
@@ -66,7 +66,21 @@ JOURNAL_EVENTS = {
     "limit_exceeded": (EventType.RUN_LIMIT_EXCEEDED, Severity.ERROR),
     "output_truncated": (EventType.RUN_OUTPUT_TRUNCATED, Severity.WARNING),
     "leftover_processes": (EventType.RUN_LEFTOVER_PROCESSES, Severity.WARNING),
+    # A NaN or an infinity in a metric is a hard event whatever the contract does about it.
+    "metric_non_finite": (EventType.RUN_METRIC_NON_FINITE, Severity.ERROR),
+    "metrics_truncated": (EventType.RUN_METRICS_TRUNCATED, Severity.WARNING),
 }
+
+
+def journal_event(entry: dict[str, Any]) -> tuple[EventType, Severity] | None:
+    """The ledger event a journal entry of the monitor becomes, if it becomes one."""
+    kind = entry["type"]
+    if kind == "guardrail_violated":
+        stops = entry.get("action") == "halt"
+        return EventType.RUN_GUARDRAIL_VIOLATED, Severity.ERROR if stops else Severity.WARNING
+    if kind == "program_event":
+        return EventType.RUN_PROGRAM_EVENT, Severity(entry.get("severity", "info"))
+    return JOURNAL_EVENTS.get(kind)
 
 
 def parse_stamp(value: str) -> datetime:
@@ -100,6 +114,8 @@ class Reading:
     outcome: RunOutcome | None
     journal: list[dict[str, Any]]
     samples: list[dict[str, Any]]
+    #: The monitor's summary of the metrics, when it has changed since the last reading.
+    metrics: dict[str, Any] | None
     offsets: dict[str, int]
 
 
@@ -108,8 +124,8 @@ def read_run_files(run_dir: Path, offsets: dict[str, Any]) -> Reading:
 
     The order matters. Liveness comes before the outcome: a monitor that ends between the two
     has written its outcome, and must not be taken for one that vanished. The outcome comes
-    before the journal and the samples: once it exists the monitor has closed them, so they
-    are read complete.
+    before the journal, the samples and the metric summary: once it exists the monitor has
+    closed them, so they are read complete.
     """
     identity = layout.read_json(run_dir / layout.MONITOR)
     monitor_alive = identity is not None and process_alive(identity["pid"], identity["create_time"])
@@ -122,6 +138,9 @@ def read_run_files(run_dir: Path, offsets: dict[str, Any]) -> Reading:
     samples, resources_cursor = files.read_to_end(
         run_dir / layout.RESOURCES, int(offsets.get("resources", 0))
     )
+    summary = layout.read_json(run_dir / layout.METRICS_SUMMARY)
+    seen_revision = int(offsets.get("metrics", -1))  # -1: no summary was read yet
+    revision = int(summary["revision"]) if summary is not None else seen_revision
     return Reading(
         identity=identity,
         started=started,
@@ -130,7 +149,8 @@ def read_run_files(run_dir: Path, offsets: dict[str, Any]) -> Reading:
         outcome=RunOutcome.model_validate(document) if document is not None else None,
         journal=journal,
         samples=samples,
-        offsets={"journal": journal_cursor, "resources": resources_cursor},
+        metrics=summary if revision != seen_revision else None,
+        offsets={"journal": journal_cursor, "resources": resources_cursor, "metrics": revision},
     )
 
 
@@ -489,7 +509,7 @@ class Worker:
             run = uow.runs.get(run_id)
             if not self._mine(run) or run.status != status or dict(run.ingest or {}) != offsets:
                 return
-            progressed = bool(reading.journal or reading.samples)
+            progressed = bool(reading.journal or reading.samples or reading.metrics)
             if reading.identity is not None and run.monitor_pid is None:
                 run.monitor_pid = reading.identity["pid"]
                 run.monitor_started_at = reading.identity["create_time"]
@@ -501,6 +521,8 @@ class Worker:
                 self._record_journal_entry(uow, run, entry)
             if reading.samples:
                 run.resources = self._fold_samples(run.resources, reading.samples)
+            if reading.metrics is not None:
+                self._record_metrics(uow, run, reading.metrics)
 
             if verdict.kind == "finished":
                 assert reading.outcome is not None and leftovers is not None
@@ -601,8 +623,31 @@ class Worker:
         )
         log.info("run %s: program running (pid %s)", run.id, run.pid)
 
+    def _record_metrics(self, uow: UnitOfWork, run: Run, report: dict[str, Any]) -> None:
+        """Bring the series of the run to what the monitor's summary says."""
+        now = utcnow()
+        known = {series.name: series for series in uow.metric_series.list_for_run(run.id)}
+        for summary in report["series"]:
+            series = known.get(summary["name"])
+            if series is None:
+                series = uow.metric_series.add(
+                    MetricSeries(
+                        id=new_id("ser"),
+                        project_id=run.project_id,
+                        experiment_id=run.experiment_id,
+                        run_id=run.id,
+                        **summary,
+                        updated_at=now,
+                    )
+                )
+                continue
+            for column, value in summary.items():
+                setattr(series, column, value)
+            series.updated_at = now
+        run.metric_report = {key: value for key, value in report.items() if key != "series"}
+
     def _record_journal_entry(self, uow: UnitOfWork, run: Run, entry: dict[str, Any]) -> None:
-        mapped = JOURNAL_EVENTS.get(entry["type"])
+        mapped = journal_event(entry)
         if mapped is None:
             return
         event_type, severity = mapped
