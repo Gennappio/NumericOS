@@ -1,13 +1,21 @@
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { defineConfig, devices } from "@playwright/test"
 import { API_PORT, API_URL, WEB_PORT, WEB_URL } from "./e2e/urls"
 
 /**
- * Browser tests run against a REAL API process on a throwaway data directory and the Vite dev
- * server; nothing is mocked except where a test deliberately cuts the network.
+ * Browser tests run against a REAL API process and a REAL supervisor process on a throwaway
+ * data directory, and the Vite dev server; nothing is mocked except where a test deliberately
+ * cuts the network. Runs execute real programs.
  *
  * One worker, files in alphabetical order: `00-first-run.spec.ts` must see the empty database
  * that every `playwright test` invocation starts with.
  */
+// The API and the supervisor share one data directory. The variable keeps it the same in the
+// processes that load this file again.
+process.env.NUMERICOS_E2E_DATA_DIR ??= mkdtempSync(join(tmpdir(), "numericos-e2e-"))
+const DATA_DIR = process.env.NUMERICOS_E2E_DATA_DIR
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -25,7 +33,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: `uv run numericos serve --ephemeral --port ${API_PORT}`,
+      command: `uv run numericos serve --port ${API_PORT} --data-dir ${DATA_DIR}`,
       cwd: "../..",
       url: `${API_URL}/v1/health`,
       reuseExistingServer: false,
@@ -34,6 +42,15 @@ export default defineConfig({
         UV_PROJECT_ENVIRONMENT: ".venv",
         NUMERICOS_CORS_ORIGINS: JSON.stringify([WEB_URL]),
       },
+    },
+    {
+      // Started after the API, which has migrated the database by then.
+      command: `uv run numericos worker run --data-dir ${DATA_DIR} --poll-interval 0.2`,
+      cwd: "../..",
+      wait: { stderr: /supervisor \S+ serving/ },
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: { UV_PROJECT_ENVIRONMENT: ".venv" },
     },
     {
       command: `npm run dev -- --port ${WEB_PORT} --strictPort`,

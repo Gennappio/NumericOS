@@ -244,6 +244,14 @@ class MetricSeriesRepository:
         )
         return self._session.scalars(statement).first()
 
+    def list_for_experiment(self, experiment_id: str) -> list[MetricSeries]:
+        statement = (
+            select(MetricSeries)
+            .where(MetricSeries.experiment_id == experiment_id)
+            .order_by(MetricSeries.run_id, MetricSeries.name)
+        )
+        return list(self._session.scalars(statement))
+
 
 class EventRepository:
     def __init__(self, session: Session) -> None:

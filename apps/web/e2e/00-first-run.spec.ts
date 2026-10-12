@@ -23,7 +23,7 @@ test("an empty workspace explains itself and a project can be created from the G
   await dialog
     .getByLabel("Research question")
     .fill("Which time steps keep the explicit scheme stable?")
-  await dialog.getByLabel("Code reference").fill("/work/heat2d")
+  await dialog.getByLabel("Code path").fill("/work/heat2d")
   await dialog.getByRole("button", { name: "Create project" }).click()
 
   await expect(page).toHaveURL(/\/projects\/prj_[0-9A-Z]{26}$/)
@@ -43,7 +43,7 @@ test("a relative code reference is rejected with the server's message", async ({
   await page.getByRole("button", { name: "New project" }).click()
   const dialog = page.getByRole("dialog")
   await dialog.getByLabel("Name").fill(uniqueName("Invalid"))
-  await dialog.getByLabel("Code reference").fill("relative/path")
+  await dialog.getByLabel("Code path").fill("relative/path")
   await dialog.getByRole("button", { name: "Create project" }).click()
 
   await expect(dialog.getByRole("alert")).toContainText("absolute path")

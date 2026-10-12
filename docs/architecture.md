@@ -401,6 +401,8 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `POST /v1/projects/{project_id}/cards` | create a typed card at the end of its column |
 | `GET /v1/cards/{card_id}`, `PATCH /v1/cards/{card_id}` | read, edit and/or move (needs `version`; optional `project_id` assertion) |
 | `POST`, `GET /v1/projects/{project_id}/hypotheses`; `GET`, `PATCH /v1/hypotheses/{id}` | state, list, read, reword (needs `version`) |
+| `GET /v1/projects/{id}/contract-files`; `POST /v1/projects/{id}/experiments:import` | experiment contracts found as files in the project's repository; register one from a file of the project or from pasted text |
+| `GET /v1/experiments/{id}/series` | the metric summaries of all runs of an experiment, to put them side by side |
 | `POST`, `GET /v1/projects/{project_id}/experiments`; `GET`, `PATCH /v1/experiments/{id}` | define by protocol (`?reuse=true` returns the experiment that already has this name and exactly this protocol), list, read; rename, relink or replace the protocol while there are no runs |
 | `POST`, `GET /v1/experiments/{id}/runs`; `GET /v1/runs/{id}` | queue a run (optional `Idempotency-Key`, optional `code_ref`), list, read |
 | `GET /v1/projects/{id}/runs?limit=` | the newest runs of a project across its experiments |
@@ -495,17 +497,47 @@ first (last write wins); with `--version N` a concurrent change is reported as `
 The GUI is a client of the public API like any other; it holds no state of its own beyond a
 query cache and never ships mock data.
 
-- **Routes:** `/` lists projects; `/projects/:projectId` shows one project and its board; any
-  other path is a not-found page.
+- **Routes:** `/` lists projects. `/projects/:projectId` frames the views of one project and
+  owns its event stream: the board (index), `experiments`, `experiments/:experimentId` and
+  `runs/:runId`. Any other path is a not-found page.
 - **Shell:** left project navigation and a connection indicator that is always visible. The
   indicator is derived from polling `GET /v1/health`: `Connected` (with the API version, and a
   note when the database needs a migration), `Checking backend` or `Backend unreachable`. When
   the backend is unreachable a banner states that what is shown is the last state received at a
   given time, not live data, and every control that changes data is disabled.
 - **Project page:** the research question and the project reference (code path and project ID)
-  are shown prominently; demo projects carry a "Demo data" label. The view tabs anticipate the
-  roadmap: `Board` is active, `Experiments`, `Timeline`, `Agents` and `Knowledge` are disabled
-  buttons naming the milestone that delivers them. Nothing is pretend-functional.
+  are shown on the board view; demo projects carry a "Demo data" label. The view tabs
+  anticipate the roadmap: `Board` and `Experiments` are real views, `Timeline`, `Agents` and
+  `Knowledge` are disabled buttons naming the milestone that delivers them. Nothing is
+  pretend-functional.
+- **Experiments view:** first the two preconditions of running anything, as they are: whether
+  execution is allowed in the project directory (allowing it is a dialog that shows the exact
+  path and needs an explicit confirmation) and whether a supervisor is alive. Then the
+  registered experiments, the contract files found in the repository (one click registers
+  one; an invalid one says why), and the newest runs of the project.
+- **Experiment page:** the contract in words (what it asks, what a run does, what is measured
+  and by whom, what stops a run), a form that queues a run from the declared values only and
+  sends an idempotency key, and the runs of the experiment side by side with the last value
+  of every declared metric.
+- **Run page (Run Monitor):** status and reason; coverage per level with what is missing,
+  undeclared or wrong; a chart for every metric with more than one sample and a table for
+  quantities measured once; exact resource totals and charts of the samples; the output,
+  closed until asked for; provenance; the run's events; its files with checksums. A run in
+  progress can be stopped (with a recorded reason); a run of an exact commit can be repeated.
+- **Honest wording:** `succeeded` is shown as "Ended normally" in a neutral colour, and the
+  page says that no validator has judged the result. "Observed" in the coverage is not
+  green. A failed run keeps everything observed and says so. Unit tests assert these.
+- **Charts:** dependency-free SVG, built from pure functions (`lib/chart.ts`: axes, ticks,
+  paths) that are unit-tested. A point of a long series is the last sample of a stretch, with
+  the extremes of the stretch as a band behind the line. Where a sample is not finite the
+  line breaks and a mark says so; nothing is interpolated across it. On a logarithmic axis
+  values without a logarithm are left out and counted. Bounds of the contract are drawn as
+  dashed lines. Resource charts include zero.
+- **Following a run:** ledger events of the project refresh every query of the project, so a
+  status change arrives through the stream. What a program produces between events (samples,
+  output) is re-read every 2 s while the run is active, and never after it ended. Output and
+  resource samples are followed by cursor (`useCursorFeed`), each reading continuing exactly
+  where the previous one stopped.
 - **Board:** one column per workflow status, in the order returned by the board endpoint; cards
   in the order the backend stores. A card shows its type and its workflow status and nothing
   about validity: no supported/refuted label exists anywhere in the GUI. Until drag and drop
@@ -546,8 +578,8 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, `events follow`, startup migration, concurrent writers, event stream (replay, `Last-Event-ID`, push, another process writing, refused cursors, prompt stop with subscribers), state and ledger across a restart |
 | Examples | pytest running the shipped programs alone and, from their own contract files, under a supervisor | closed forms of norm and error of the heat scheme to round-off; time steps on both sides of the exact stability limit; a guardrail halt that leaves its evidence; overflow as typed samples; conjugate gradient in two precisions with the true residual far from the reported one; binary and compiler provenance |
 | Execution | pytest with real monitor processes and real programs from a real Git repository; `LiveWorker` (real `numericos worker run` subprocess) where a supervisor must die | the monitor (output, limits, signals, process tree, leftovers, build, one monitor per run); the worker (recording, classification, cancellation, trust and input checks, working tree against commit, results next to the sources, binary identity, parallelism); recovery (supervisor killed and run taken over with complete output, orderly hand-over, lost monitor, re-queue, two supervisors competing for the queue, overtaken readings); API restarted during a run; run events on an open stream |
-| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions, event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers) |
-| Browser | Playwright against a real API (`--ephemeral`) and the Vite dev server | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state |
+| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor) |
+| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page |
 
 No fixtures or mocks live in application code; the GUI shows the real backend connection state.
 
@@ -596,6 +628,12 @@ artifact is served as an attachment from inside its run directory and nowhere el
 - **The list of projects is polled** every 5 seconds; only project pages have an event stream.
 - **The event strip shows the 20 newest entries.** Older ones are read with
   `numericos events list` / `follow`. A full timeline view belongs to M3.
+- **The run page re-reads, it does not stream samples.** While a run is active its metrics
+  are re-read every 2 s and each chart asks for the whole series again in buckets. That is
+  cheap for the series of the examples and wasteful for very long ones. The output view shows
+  the last 300 lines and what follows; the whole output is a file of the run. Runs of an
+  experiment are compared in a table of last values: plots across runs and verdicts belong to
+  the validators ticket.
 - **No drag and drop yet** (M1): cards move through their status select and up/down buttons.
 - **SQLite transactions serialise writers and readers** (`BEGIN IMMEDIATE`). Output and
   resource samples go to files, not to the database; the supervisor writes one short

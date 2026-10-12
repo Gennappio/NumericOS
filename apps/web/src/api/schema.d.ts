@@ -92,6 +92,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/experiments/{experiment_id}/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The metric summaries of all runs of an experiment, to look at them together */
+        get: operations["list_experiment_series"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/health": {
         parameters: {
             query?: never;
@@ -197,6 +214,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/contract-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Experiment contracts found as files in the project's repository */
+        get: operations["list_contract_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/experiments": {
         parameters: {
             query?: never;
@@ -209,6 +243,23 @@ export interface paths {
         put?: never;
         /** Define an experiment by its protocol */
         post: operations["create_experiment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/experiments:import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register the experiment of a contract given as text or as a file of the project */
+        post: operations["import_experiment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -715,6 +766,73 @@ export interface components {
             subject: string;
         };
         /**
+         * ContractFile
+         * @description A file of the project's repository that is an experiment contract.
+         */
+        ContractFile: {
+            /**
+             * Experiment Id
+             * @description The experiment already registered with this name and exactly this content.
+             */
+            experiment_id: string | null;
+            /**
+             * Name
+             * @description The experiment's name: 'name' in the file, else the file's.
+             */
+            name: string;
+            /**
+             * Path
+             * @description Relative to the project's code path.
+             */
+            path: string;
+            /**
+             * Problems
+             * @description Why it is not a valid contract, if it is not.
+             */
+            problems: string[];
+            /** Question */
+            question: string;
+            /** Valid */
+            valid: boolean;
+        };
+        /** ContractFileList */
+        ContractFileList: {
+            /** Files */
+            files: components["schemas"]["ContractFile"][];
+            /**
+             * Scanned
+             * @description How many YAML files of the repository were looked at.
+             */
+            scanned: number;
+            /**
+             * Truncated
+             * @description The repository has more YAML files than are scanned.
+             */
+            truncated: boolean;
+        };
+        /**
+         * ContractImport
+         * @description An experiment contract to register: as text, or as a file of the project directory.
+         */
+        ContractImport: {
+            /**
+             * Path
+             * @description Relative to the project's code path.
+             */
+            path?: string | null;
+            /**
+             * Reuse
+             * @description Return the experiment that already has this name and exactly this protocol.
+             * @default true
+             */
+            reuse?: boolean;
+            /**
+             * Text
+             * @description The contract itself, YAML or JSON.
+             */
+            text?: string | null;
+        };
+        /**
          * Coverage
          * @description What of a run is observed and what is not. Nothing here says a result is valid.
          */
@@ -1034,6 +1152,73 @@ export interface components {
              * @constant
              */
             schema: "numericos.experiment.v1";
+        };
+        /**
+         * ExperimentSeries
+         * @description The summary of one metric of one run, for looking at the runs of an experiment together.
+         */
+        ExperimentSeries: {
+            /**
+             * Declared
+             * @description Whether the experiment's contract declares the metric.
+             */
+            declared: boolean;
+            /** First Step */
+            first_step?: number | null;
+            /** First Value */
+            first_value?: number | null;
+            /**
+             * Last At
+             * @description Arrival time of the last sample.
+             */
+            last_at?: number | null;
+            /** Last Non Finite */
+            last_non_finite?: ("nan" | "inf" | "-inf") | null;
+            /** Last Step */
+            last_step?: number | null;
+            /** Last Time */
+            last_time?: number | null;
+            /** Last Value */
+            last_value?: number | null;
+            /** Max Value */
+            max_value?: number | null;
+            /**
+             * Min Value
+             * @description Over the finite samples.
+             */
+            min_value?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Non Finite
+             * @description How many samples were NaN or infinite.
+             */
+            non_finite: number;
+            /** Run Id */
+            run_id: string;
+            /** Samples */
+            samples: number;
+            /**
+             * Source
+             * @description instrumentation: records emitted by the program; parser: extracted from its output; supervisor: measured from outside.
+             * @enum {string}
+             */
+            source: "instrumentation" | "parser" | "supervisor";
+            /**
+             * Stored
+             * @description Samples kept in the series file; fewer if it was cut.
+             */
+            stored: number;
+            /**
+             * Unit
+             * @description As declared in the contract; as sent, if it is not declared.
+             */
+            unit: string;
+        };
+        /** ExperimentSeriesList */
+        ExperimentSeriesList: {
+            /** Series */
+            series: components["schemas"]["ExperimentSeries"][];
         };
         /**
          * FailureClass
@@ -2524,6 +2709,46 @@ export interface operations {
             };
         };
     };
+    list_experiment_series: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentSeriesList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;
@@ -2924,6 +3149,55 @@ export interface operations {
             };
         };
     };
+    list_contract_files: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContractFileList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_experiments: {
         parameters: {
             query?: never;
@@ -2982,6 +3256,71 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ExperimentCreate"];
+            };
+        };
+        responses: {
+            /** @description With reuse: the existing experiment with this name and protocol */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    import_experiment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContractImport"];
             };
         };
         responses: {

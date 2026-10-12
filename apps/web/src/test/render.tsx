@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render } from "@testing-library/react"
 import type { ReactElement } from "react"
-import { MemoryRouter } from "react-router"
+import { MemoryRouter, Outlet, Route, Routes } from "react-router"
 import { vi } from "vitest"
+import type { ProjectContext } from "@/pages/projectContext"
 
 /** Render with the providers the application installs in `main.tsx`. */
 export function renderApp(ui: ReactElement, route = "/") {
@@ -11,6 +12,27 @@ export function renderApp(ui: ReactElement, route = "/") {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
     </QueryClientProvider>,
+  )
+}
+
+/**
+ * Render a view of a project the way the project page frames it: at a route below
+ * `/projects/:projectId`, with the project and the state of its live updates as context.
+ */
+export function renderProjectView(
+  path: string,
+  view: ReactElement,
+  route: string,
+  context: Pick<ProjectContext, "project"> & Partial<ProjectContext>,
+) {
+  const full: ProjectContext = { transport: "live", live: true, offline: false, ...context }
+  return renderApp(
+    <Routes>
+      <Route path="/projects/:projectId" element={<Outlet context={full} />}>
+        <Route path={path} element={view} />
+      </Route>
+    </Routes>,
+    route,
   )
 }
 

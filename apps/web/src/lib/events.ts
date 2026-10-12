@@ -1,5 +1,7 @@
-import type { EventOut, WorkflowStatus } from "@/api/client"
+import type { EventOut, RunStatus, WorkflowStatus } from "@/api/client"
+import { formatNumber, formatValue } from "@/lib/format"
 import { STATUS_LABELS } from "@/lib/labels"
+import { RUN_STATUS_LABELS } from "@/lib/runs"
 
 type Fields = Record<string, unknown>
 
@@ -7,7 +9,7 @@ const FIELD_LABELS: Record<string, string> = {
   name: "name",
   research_question: "research question",
   description: "description",
-  root_path: "code reference",
+  root_path: "code path",
   type: "type",
   title: "title",
   entity_ref: "linked entity",
@@ -59,7 +61,90 @@ export function describeEvent(event: EventOut): string {
           : `Card moved: ${subject} from ${from} to ${to}`
       return changed ? `${move}, edited ${changed}` : move
     }
+    case "PROJECT_EXECUTION_TRUSTED":
+      return "Execution allowed in the project directory"
+    case "PROJECT_EXECUTION_TRUST_REVOKED":
+      return "Execution in the project directory no longer allowed"
+    case "HYPOTHESIS_CREATED":
+      return `Hypothesis stated: ${named(event.payload.hypothesis, "title")}`
+    case "HYPOTHESIS_UPDATED":
+      return `Hypothesis reworded: ${named(event.payload.hypothesis, "title")}`
+    case "EXPERIMENT_CREATED":
+      return `Experiment defined: ${named(event.payload.experiment, "name")}`
+    case "EXPERIMENT_UPDATED":
+      return `Experiment changed: ${named(event.payload.experiment, "name")}`
     default:
-      return event.type
+      return describeRunEvent(event) ?? event.type
   }
+}
+
+function named(value: unknown, field: string): string {
+  const name = fields(value)?.[field]
+  return typeof name === "string" ? `"${name}"` : "unnamed"
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "?"
+}
+
+function atStep(payload: Fields): string {
+  return typeof payload.step === "number" ? ` at step ${payload.step}` : ""
+}
+
+/**
+ * What an event of a run says, from its own payload. The words describe what was recorded: a
+ * run that "ended normally" is not thereby called valid.
+ */
+function describeRunEvent(event: EventOut): string | undefined {
+  const payload = event.payload
+  switch (event.type) {
+    case "RUN_QUEUED":
+      return "Run queued"
+    case "RUN_STARTED":
+      return `Program started (process ${text(payload.pid)})`
+    case "RUN_FINISHED": {
+      const status = text(payload.status) as RunStatus
+      const label = status in RUN_STATUS_LABELS ? RUN_STATUS_LABELS[status] : status
+      const reason = typeof payload.status_reason === "string" ? `: ${payload.status_reason}` : ""
+      return `Run ended, ${label.toLowerCase()}${reason}`
+    }
+    case "RUN_CANCEL_REQUESTED":
+      return `Stop requested: ${text(payload.reason)}`
+    case "RUN_LIMIT_EXCEEDED":
+      return `Limit passed: ${text(payload.limit)} reached ${formatMeasure(payload.value)}, allowed ${formatMeasure(payload.threshold)}`
+    case "RUN_OUTPUT_TRUNCATED":
+      return "Output beyond the limit of the contract is no longer stored"
+    case "RUN_METRICS_TRUNCATED":
+      return "Metric samples beyond the limit of the contract are no longer stored"
+    case "RUN_LEFTOVER_PROCESSES":
+      return "The program left processes behind; they were stopped"
+    case "RUN_SOURCE_CHANGED":
+      return "The source was edited while the program ran"
+    case "RUN_ADOPTED":
+      return "Another supervisor took the run over"
+    case "RUN_REQUEUED":
+      return "Queued again: its supervisor stopped before starting the program"
+    case "RUN_MONITOR_LOST":
+      return "The monitor is gone while the program still runs: its end will not be recorded"
+    case "RUN_METRIC_NON_FINITE":
+      return `Metric ${text(payload.metric)} became ${formatValue(null, text(payload.value))}${atStep(payload)}`
+    case "RUN_GUARDRAIL_VIOLATED": {
+      const value =
+        typeof payload.value === "number"
+          ? formatNumber(payload.value)
+          : formatValue(null, typeof payload.non_finite === "string" ? payload.non_finite : null)
+      const consequence = payload.action === "halt" ? "the program was stopped" : "recorded only"
+      return `Guardrail: ${text(payload.metric)} ${text(payload.bound)} ${formatMeasure(payload.threshold)} for ${text(payload.consecutive)} consecutive samples (${value}${atStep(payload)}); ${consequence}`
+    }
+    case "RUN_PROGRAM_EVENT": {
+      const message = typeof payload.message === "string" && payload.message ? `: ${payload.message}` : ""
+      return `Program: ${text(payload.name)}${message}${atStep(payload)}`
+    }
+    default:
+      return undefined
+  }
+}
+
+function formatMeasure(value: unknown): string {
+  return typeof value === "number" ? formatNumber(value) : "?"
 }

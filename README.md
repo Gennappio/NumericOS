@@ -13,9 +13,11 @@ numerical observability, which the project owner placed before M1 and M2
 (`docs/adr/0004-observability-first.md`). So far M3 defines experiments by a contract, records
 exactly which code, inputs and environment a run uses, executes runs under a supervisor that
 observes, bounds, cancels and recovers them, and collects scientific metrics that the program
-emits or that are read from its output, with explicit guardrails. Validators and the run pages
-of the GUI are the next tickets: today a run shows what was measured, from the command line
-and the API, and nothing yet says whether its result is valid.
+emits or that are read from its output, with explicit guardrails. The GUI has an Experiments
+view with a page for every run: status, coverage, live charts of metrics and resources,
+output, provenance, events and files. Validators are the next ticket: today a run shows what
+was measured, in the GUI, the command line and the API, and nothing yet says whether its
+result is valid.
 
 ## Requirements
 
@@ -54,8 +56,8 @@ over. Without a supervisor, runs stay queued.
 
 Open http://localhost:5173 with the API running.
 
-1. **New project**: give it a name, the research question and, optionally, the absolute path of
-   the research code (stored as a reference only).
+1. **New project**: give it a name, the research question and, to run experiments, the absolute
+   path of the project's Git repository.
 2. On the project page use **New card** (or the `+` of a column) to add typed cards: task,
    hypothesis, experiment, issue, decision.
 3. Move a card with its status select (to another column) or its up/down buttons (inside the
@@ -66,8 +68,24 @@ Open http://localhost:5173 with the API running.
    it. Its indicator says whether updates are pushed live. Changes made from another tab or from
    the CLI appear on their own.
 
+6. **Experiments** (the second tab of a project) needs `make worker` as well. It shows whether
+   execution is allowed in the project directory and whether a supervisor is alive. Allow
+   execution, then register a contract found in the repository with one click (or paste one).
+   For a first try, make this checkout the project's code path and register
+   `examples/heat2d-python/experiment.yaml`.
+7. On an **experiment**, read its contract in words, choose a value for each variable and queue
+   a run. Its runs are listed side by side with the last value of every declared metric.
+8. A **run page** follows the run while it goes on: how its process stands, how far the
+   observation reaches (process, parsers, instrumentation, validators), a chart per metric
+   with the bounds of the contract, CPU and memory of the process tree, the output on request,
+   exactly what ran, what happened to it and the files it left. A run that is going on can be
+   stopped from there; a run of an exact commit can be run again.
+
 The indicator in the top right corner shows the real connection to the backend. If the API stops,
 the GUI says so, marks what it shows as the last known state and disables every change.
+
+A run that ended normally is labelled "Ended normally", not "passed": that is a statement about
+the process. Until validators exist, every run page says that nothing has judged the result.
 
 ## Running an experiment
 

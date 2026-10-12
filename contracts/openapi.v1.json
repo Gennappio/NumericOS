@@ -529,6 +529,127 @@
         "title": "CommitInfo",
         "type": "object"
       },
+      "ContractFile": {
+        "description": "A file of the project's repository that is an experiment contract.",
+        "properties": {
+          "experiment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The experiment already registered with this name and exactly this content.",
+            "title": "Experiment Id"
+          },
+          "name": {
+            "description": "The experiment's name: 'name' in the file, else the file's.",
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "Relative to the project's code path.",
+            "title": "Path",
+            "type": "string"
+          },
+          "problems": {
+            "description": "Why it is not a valid contract, if it is not.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "question",
+          "valid",
+          "problems",
+          "experiment_id"
+        ],
+        "title": "ContractFile",
+        "type": "object"
+      },
+      "ContractFileList": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ContractFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "scanned": {
+            "description": "How many YAML files of the repository were looked at.",
+            "title": "Scanned",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "The repository has more YAML files than are scanned.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "files",
+          "scanned",
+          "truncated"
+        ],
+        "title": "ContractFileList",
+        "type": "object"
+      },
+      "ContractImport": {
+        "additionalProperties": false,
+        "description": "An experiment contract to register: as text, or as a file of the project directory.",
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Relative to the project's code path.",
+            "title": "Path"
+          },
+          "reuse": {
+            "default": true,
+            "description": "Return the experiment that already has this name and exactly this protocol.",
+            "title": "Reuse",
+            "type": "boolean"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 262144,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The contract itself, YAML or JSON.",
+            "title": "Text"
+          }
+        },
+        "title": "ContractImport",
+        "type": "object"
+      },
       "Coverage": {
         "description": "What of a run is observed and what is not. Nothing here says a result is valid.",
         "properties": {
@@ -1275,6 +1396,187 @@
           "limits"
         ],
         "title": "ExperimentProtocol",
+        "type": "object"
+      },
+      "ExperimentSeries": {
+        "description": "The summary of one metric of one run, for looking at the runs of an experiment together.",
+        "properties": {
+          "declared": {
+            "description": "Whether the experiment's contract declares the metric.",
+            "title": "Declared",
+            "type": "boolean"
+          },
+          "first_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Step"
+          },
+          "first_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Value"
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Arrival time of the last sample.",
+            "title": "Last At"
+          },
+          "last_non_finite": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nan",
+                  "inf",
+                  "-inf"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Non Finite"
+          },
+          "last_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Step"
+          },
+          "last_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Time"
+          },
+          "last_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Value"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Over the finite samples.",
+            "title": "Min Value"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "non_finite": {
+            "description": "How many samples were NaN or infinite.",
+            "title": "Non Finite",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "samples": {
+            "title": "Samples",
+            "type": "integer"
+          },
+          "source": {
+            "description": "instrumentation: records emitted by the program; parser: extracted from its output; supervisor: measured from outside.",
+            "enum": [
+              "instrumentation",
+              "parser",
+              "supervisor"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "stored": {
+            "description": "Samples kept in the series file; fewer if it was cut.",
+            "title": "Stored",
+            "type": "integer"
+          },
+          "unit": {
+            "description": "As declared in the contract; as sent, if it is not declared.",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "unit",
+          "source",
+          "declared",
+          "samples",
+          "non_finite",
+          "stored",
+          "run_id"
+        ],
+        "title": "ExperimentSeries",
+        "type": "object"
+      },
+      "ExperimentSeriesList": {
+        "properties": {
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentSeries"
+            },
+            "title": "Series",
+            "type": "array"
+          }
+        },
+        "required": [
+          "series"
+        ],
+        "title": "ExperimentSeriesList",
         "type": "object"
       },
       "FailureClass": {
@@ -4502,6 +4804,58 @@
         ]
       }
     },
+    "/v1/experiments/{experiment_id}/series": {
+      "get": {
+        "operationId": "list_experiment_series",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentSeriesList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The metric summaries of all runs of an experiment, to look at them together",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
     "/v1/health": {
       "get": {
         "operationId": "health",
@@ -5045,6 +5399,68 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/contract-files": {
+      "get": {
+        "operationId": "list_contract_files",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractFileList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Experiment contracts found as files in the project's repository",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/experiments": {
       "get": {
         "operationId": "list_experiments",
@@ -5197,6 +5613,101 @@
           }
         },
         "summary": "Define an experiment by its protocol",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/experiments:import": {
+      "post": {
+        "operationId": "import_experiment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "With reuse: the existing experiment with this name and protocol"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Register the experiment of a contract given as text or as a file of the project",
         "tags": [
           "experiments"
         ]

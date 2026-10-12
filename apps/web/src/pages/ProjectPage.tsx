@@ -1,6 +1,6 @@
 import { PencilIcon } from "lucide-react"
 import { useState } from "react"
-import { Link, useParams } from "react-router"
+import { Link, Outlet, useParams } from "react-router"
 import { ApiError } from "@/api/client"
 import { useBoard, useConnectionState, useProject, useRecentEvents } from "@/api/queries"
 import { useEventStream, type Transport } from "@/api/useEventStream"
@@ -13,24 +13,23 @@ import { EventStrip } from "@/components/timeline/EventStrip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { describeError } from "@/lib/errors"
+import { useProjectContext, type ProjectContext } from "@/pages/projectContext"
 
 export function ProjectPage() {
   const { projectId = "" } = useParams()
   // Keyed by project: switching project starts a clean page and a new event stream.
-  return <ProjectView key={projectId} projectId={projectId} />
+  return <ProjectFrame key={projectId} projectId={projectId} />
 }
 
-function ProjectView({ projectId }: { projectId: string }) {
+/** The frame of all views of one project: its name, its event stream, its view tabs. */
+function ProjectFrame({ projectId }: { projectId: string }) {
   const offline = useConnectionState().state === "unreachable"
   const stream = useEventStream(projectId)
   // Never claim live updates while the backend is known to be unreachable.
   const transport: Transport = offline && stream === "live" ? "reconnecting" : stream
   const live = transport === "live"
   const project = useProject(projectId, live)
-  const board = useBoard(projectId, live)
-  const events = useRecentEvents(projectId, live)
   const [editing, setEditing] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
 
   if (project.isPending) {
     return (
@@ -67,56 +66,72 @@ function ProjectView({ projectId }: { projectId: string }) {
   }
 
   const data = project.data
+  const context: ProjectContext = { project: data, transport, live, offline }
   return (
     <div className="space-y-5">
-      <header className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold break-words">{data.name}</h1>
-            {data.is_demo && <Badge variant="outline">Demo data</Badge>}
-          </div>
-          <Button variant="outline" onClick={() => setEditing(true)} disabled={offline}>
-            <PencilIcon data-icon="inline-start" />
-            Edit project
-          </Button>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold break-words">{data.name}</h1>
+          {data.is_demo && <Badge variant="outline">Demo data</Badge>}
         </div>
-        <dl className="grid gap-4 rounded-lg border border-border bg-card p-4 md:grid-cols-[2fr_1fr]">
-          <div className="min-w-0">
-            <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Research question
-            </dt>
-            <dd className="mt-1 text-base break-words">
-              {data.research_question || (
-                <span className="text-muted-foreground">Not stated yet</span>
-              )}
-            </dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Project reference
-            </dt>
-            <dd className="mt-1 font-mono text-sm break-all">
-              {data.root_path ?? (
-                <span className="font-sans text-muted-foreground">No code path linked</span>
-              )}
-            </dd>
-            <dd className="mt-1 font-mono text-xs break-all text-muted-foreground">{data.id}</dd>
-          </div>
-        </dl>
-        {data.description && (
-          <p className="max-w-prose text-sm whitespace-pre-line text-muted-foreground">
-            {data.description}
-          </p>
-        )}
+        <Button variant="outline" onClick={() => setEditing(true)} disabled={offline}>
+          <PencilIcon data-icon="inline-start" />
+          Edit project
+        </Button>
       </header>
 
-      <ViewTabs />
+      <ViewTabs projectId={data.id} />
+
+      <Outlet context={context} />
+
+      <ProjectDialog open={editing} onOpenChange={setEditing} project={data} />
+    </div>
+  )
+}
+
+/** The scientific board of a project, with what the project is about and its recent events. */
+export function BoardView() {
+  const { project, transport, live, offline } = useProjectContext()
+  const board = useBoard(project.id, live)
+  const events = useRecentEvents(project.id, live)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  return (
+    <div className="space-y-5">
+      <dl className="grid gap-4 rounded-lg border border-border bg-card p-4 md:grid-cols-[2fr_1fr]">
+        <div className="min-w-0">
+          <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Research question
+          </dt>
+          <dd className="mt-1 text-base break-words">
+            {project.research_question || (
+              <span className="text-muted-foreground">Not stated yet</span>
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Project reference
+          </dt>
+          <dd className="mt-1 font-mono text-sm break-all">
+            {project.root_path ?? (
+              <span className="font-sans text-muted-foreground">No code path linked</span>
+            )}
+          </dd>
+          <dd className="mt-1 font-mono text-xs break-all text-muted-foreground">{project.id}</dd>
+        </div>
+      </dl>
+      {project.description && (
+        <p className="max-w-prose text-sm whitespace-pre-line text-muted-foreground">
+          {project.description}
+        </p>
+      )}
 
       {notice && <Notice message={notice} onDismiss={() => setNotice(null)} />}
 
       {board.data ? (
         <Board
-          projectId={data.id}
+          projectId={project.id}
           board={board.data}
           disabled={offline}
           onError={(error) => setNotice(describeError(error))}
@@ -133,9 +148,7 @@ function ProjectView({ projectId }: { projectId: string }) {
         />
       )}
 
-      <EventStrip projectId={data.id} page={events.data} transport={transport} />
-
-      <ProjectDialog open={editing} onOpenChange={setEditing} project={data} />
+      <EventStrip projectId={project.id} page={events.data} transport={transport} />
     </div>
   )
 }

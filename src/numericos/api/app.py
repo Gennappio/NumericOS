@@ -57,8 +57,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-        allow_headers=["Content-Type", "X-Actor", "X-Correlation-ID"],
-        expose_headers=["X-Correlation-ID"],
+        allow_headers=["Content-Type", "X-Actor", "X-Correlation-ID", "Idempotency-Key"],
+        expose_headers=["X-Correlation-ID", "Idempotency-Replayed"],
     )
     app.add_middleware(CorrelationIdMiddleware)  # outermost: every response carries the ID
     install_error_handlers(app)

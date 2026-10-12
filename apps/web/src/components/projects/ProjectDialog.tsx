@@ -117,8 +117,8 @@ function ProjectForm({ project, onDone }: { project?: Project; onDone: () => voi
       </FormField>
       <FormField
         id={`${id}-root-path`}
-        label="Code reference"
-        hint="Optional absolute path of the research code. Stored as a reference only: NumericOS does not open or run it yet."
+        label="Code path"
+        hint="Absolute path of the project's Git repository. Experiments execute its code only after you allow it on the Experiments view. Changing the path withdraws that permission."
         error={errors.root_path}
       >
         <Input

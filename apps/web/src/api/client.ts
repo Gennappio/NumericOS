@@ -15,6 +15,36 @@ export type CardType = Schemas["CardType"]
 export type WorkflowStatus = Schemas["WorkflowStatus"]
 export type EventOut = Schemas["EventOut"]
 export type EventPage = Schemas["EventPage"]
+export type ExecutionTrust = Schemas["ExecutionTrust"]
+export type Experiment = Schemas["ExperimentOut"]
+export type ExperimentList = Schemas["ExperimentList"]
+export type ExperimentProtocol = Schemas["ExperimentProtocol"]
+export type ExperimentSeries = Schemas["ExperimentSeries"]
+export type ExperimentSeriesList = Schemas["ExperimentSeriesList"]
+export type ContractFile = Schemas["ContractFile"]
+export type ContractFileList = Schemas["ContractFileList"]
+export type ContractImport = Schemas["ContractImport"]
+export type Run = Schemas["RunOut"]
+export type RunList = Schemas["RunList"]
+export type RunCreate = Schemas["RunCreate"]
+export type RunStatus = Schemas["RunStatus"]
+export type FailureClass = Schemas["FailureClass"]
+export type CodeProvenance = Schemas["CodeProvenance"]
+export type RunMetrics = Schemas["RunMetrics"]
+export type SeriesSummary = Schemas["SeriesSummary"]
+export type Coverage = Schemas["Coverage"]
+export type CoverageLevel = Schemas["CoverageLevel"]
+export type MetricCoverage = Schemas["MetricCoverage"]
+export type Diagnostic = Schemas["Diagnostic"]
+export type MetricOverview = Schemas["MetricOverview"]
+export type MetricBucket = Schemas["MetricBucket"]
+export type LogLine = Schemas["LogLine"]
+export type LogPage = Schemas["LogPage"]
+export type ResourceSample = Schemas["ResourceSample"]
+export type ResourcePage = Schemas["ResourcePage"]
+export type Artifact = Schemas["ArtifactOut"]
+export type ArtifactList = Schemas["ArtifactList"]
+export type WorkerList = Schemas["WorkerList"]
 type ErrorBody = ErrorEnvelope["error"]
 
 const DEFAULT_API_URL = "http://127.0.0.1:8765"
@@ -94,6 +124,14 @@ const send = (method: "POST" | "PATCH", body: unknown): RequestInit => ({
 })
 const seg = encodeURIComponent
 
+/** Where a reading by cursor starts: at a cursor, or at the last `tail` records. */
+export type CursorStart = { after: number } | { tail: number }
+
+function cursorQuery(start: CursorStart, limit: number): string {
+  const position = "after" in start ? `after=${start.after}` : `tail=${start.tail}`
+  return `${position}&limit=${limit}`
+}
+
 /** One function per API operation; names follow the operation IDs of the contract. */
 export const api = {
   health: () => apiFetch<HealthOut>("/v1/health"),
@@ -110,6 +148,61 @@ export const api = {
   /** The newest entries of a project's ledger, newest first. */
   listRecentEvents: (projectId: string, limit: number) =>
     apiFetch<EventPage>(`/v1/events?project_id=${seg(projectId)}&order=desc&limit=${limit}`),
+
+  trustExecution: (projectId: string, body: ExecutionTrust) =>
+    apiFetch<Project>(`/v1/projects/${seg(projectId)}:trust-execution`, send("POST", body)),
+  listContractFiles: (projectId: string) =>
+    apiFetch<ContractFileList>(`/v1/projects/${seg(projectId)}/contract-files`),
+  importExperiment: (projectId: string, body: ContractImport) =>
+    apiFetch<Experiment>(`/v1/projects/${seg(projectId)}/experiments:import`, send("POST", body)),
+  listExperiments: (projectId: string) =>
+    apiFetch<ExperimentList>(`/v1/projects/${seg(projectId)}/experiments`),
+  getExperiment: (experimentId: string) =>
+    apiFetch<Experiment>(`/v1/experiments/${seg(experimentId)}`),
+  listExperimentRuns: (experimentId: string) =>
+    apiFetch<RunList>(`/v1/experiments/${seg(experimentId)}/runs`),
+  listExperimentSeries: (experimentId: string) =>
+    apiFetch<ExperimentSeriesList>(`/v1/experiments/${seg(experimentId)}/series`),
+  listProjectRuns: (projectId: string, limit: number) =>
+    apiFetch<RunList>(`/v1/projects/${seg(projectId)}/runs?limit=${limit}`),
+  /** The key makes a repeated submission (a double click, a retry) return the same run. */
+  createRun: (experimentId: string, body: RunCreate, idempotencyKey: string) =>
+    apiFetch<Run>(`/v1/experiments/${seg(experimentId)}/runs`, {
+      ...send("POST", body),
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
+  getRun: (runId: string) => apiFetch<Run>(`/v1/runs/${seg(runId)}`),
+  cancelRun: (runId: string, reason: string) =>
+    apiFetch<Run>(`/v1/runs/${seg(runId)}:cancel`, send("POST", { reason })),
+  /** A new run with the same commit, parameters and seed. */
+  rerun: (runId: string, idempotencyKey: string) =>
+    apiFetch<Run>(`/v1/runs/${seg(runId)}:rerun`, {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
+  getRunMetrics: (runId: string) => apiFetch<RunMetrics>(`/v1/runs/${seg(runId)}/metrics`),
+  getMetricOverview: (runId: string, name: string, buckets: number) =>
+    apiFetch<MetricOverview>(
+      `/v1/runs/${seg(runId)}/metrics/${seg(name)}/overview?buckets=${buckets}`,
+    ),
+  readLogs: (runId: string, start: CursorStart, limit: number) =>
+    apiFetch<LogPage>(`/v1/runs/${seg(runId)}/logs?${cursorQuery(start, limit)}`),
+  readResources: (runId: string, start: CursorStart, limit: number) =>
+    apiFetch<ResourcePage>(`/v1/runs/${seg(runId)}/resources?${cursorQuery(start, limit)}`),
+  listRunEvents: (runId: string) =>
+    apiFetch<EventPage>(`/v1/runs/${seg(runId)}/events?limit=1000`),
+  listArtifacts: (runId: string) => apiFetch<ArtifactList>(`/v1/runs/${seg(runId)}/artifacts`),
+  listWorkers: () => apiFetch<WorkerList>("/v1/workers"),
+}
+
+/** Download address of one file of a run. */
+export function artifactUrl(artifactId: string): string {
+  return `${API_URL}/v1/artifacts/${seg(artifactId)}/content`
+}
+
+/** The run with its provenance and protocol, as JSON: what is needed to repeat it. */
+export function runRecordUrl(runId: string): string {
+  return `${API_URL}/v1/runs/${seg(runId)}/record`
 }
 
 /** URL of the Server-Sent Events view of a project's ledger, starting after `cursor`. */

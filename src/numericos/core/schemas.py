@@ -24,6 +24,7 @@ from numericos.core.enums import (
 )
 from numericos.core.execution import LogLine, ResourceSample, ResourceSummary, RunOutcome
 from numericos.core.experiment import ExperimentProtocol, ParameterValue
+from numericos.core.metrics import SeriesSummary
 from numericos.core.provenance import CodeProvenance, EnvironmentRecord, InputRecord
 
 
@@ -269,6 +270,56 @@ class ExperimentOut(BaseModel):
 
 class ExperimentList(BaseModel):
     experiments: list[ExperimentOut]
+
+
+class ContractImport(StrictModel):
+    """An experiment contract to register: as text, or as a file of the project directory."""
+
+    path: str | None = Field(
+        default=None, max_length=1000, description="Relative to the project's code path."
+    )
+    text: str | None = Field(
+        default=None, max_length=262144, description="The contract itself, YAML or JSON."
+    )
+    reuse: bool = Field(
+        default=True,
+        description="Return the experiment that already has this name and exactly this protocol.",
+    )
+
+    @model_validator(mode="after")
+    def _one_source(self) -> Self:
+        if (self.path is None) == (self.text is None):
+            raise ValueError("give exactly one of 'path' and 'text'")
+        return self
+
+
+class ContractFile(BaseModel):
+    """A file of the project's repository that is an experiment contract."""
+
+    path: str = Field(description="Relative to the project's code path.")
+    name: str = Field(description="The experiment's name: 'name' in the file, else the file's.")
+    question: str
+    valid: bool
+    problems: list[str] = Field(description="Why it is not a valid contract, if it is not.")
+    experiment_id: str | None = Field(
+        description="The experiment already registered with this name and exactly this content."
+    )
+
+
+class ContractFileList(BaseModel):
+    files: list[ContractFile]
+    scanned: int = Field(description="How many YAML files of the repository were looked at.")
+    truncated: bool = Field(description="The repository has more YAML files than are scanned.")
+
+
+class ExperimentSeries(SeriesSummary):
+    """The summary of one metric of one run, for looking at the runs of an experiment together."""
+
+    run_id: str
+
+
+class ExperimentSeriesList(BaseModel):
+    series: list[ExperimentSeries]
 
 
 class RunCreate(StrictModel):

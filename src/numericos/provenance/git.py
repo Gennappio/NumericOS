@@ -145,6 +145,14 @@ def status(root: Path) -> TreeStatus:
     return TreeStatus(changed=sorted(changed), untracked=sorted(untracked))
 
 
+def list_files(root: Path, patterns: list[str]) -> list[str]:
+    """Paths of the files matching the patterns that are tracked, or new and not ignored."""
+    output = _git(
+        root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *patterns
+    ).stdout
+    return sorted({path for path in output.decode(errors="surrogateescape").split("\x00") if path})
+
+
 def diff_against_head(root: Path) -> bytes:
     """The uncommitted changes to tracked files as a binary patch (applies with ``git apply``)."""
     return _git(

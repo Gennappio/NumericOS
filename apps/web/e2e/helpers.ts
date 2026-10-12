@@ -1,4 +1,7 @@
 import { execFileSync } from "node:child_process"
+import { cpSync, mkdtempSync, realpathSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 import { API_URL } from "./urls"
 
@@ -64,4 +67,56 @@ export function cli<T>(...args: string[]): T {
     encoding: "utf8",
   })
   return JSON.parse(stdout) as T
+}
+
+/**
+ * A Git repository holding this repository's examples at the path they have here: the code
+ * of a research project, as far as an experiment is concerned.
+ */
+export function exampleRepository(): string {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "numericos-e2e-repo-")))
+  cpSync("../../examples", join(root, "examples"), { recursive: true })
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", root, ...args], {
+      env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
+    })
+  git("init", "-q", "-b", "main")
+  git("add", "-A")
+  git("-c", "user.name=Ada Lovelace", "-c", "user.email=ada@example.invalid", "commit", "-q", "-m", "examples")
+  return root
+}
+
+/** A project whose code path is a repository with the examples, allowed to execute. */
+export async function trustedExampleProject(request: APIRequestContext): Promise<ProjectRecord> {
+  const root = exampleRepository()
+  const project = await createProject(request, { root_path: root })
+  const response = await request.post(`${API_URL}/v1/projects/${project.id}:trust-execution`, {
+    data: { version: project.version, root_path: root },
+  })
+  expect(response.status()).toBe(200)
+  return (await response.json()) as ProjectRecord
+}
+
+export interface RunRecord {
+  id: string
+  status: string
+}
+
+/** Register a contract file of the project and queue one run of it, through the real API. */
+export async function queueRun(
+  request: APIRequestContext,
+  projectId: string,
+  contract: string,
+  parameters: Record<string, unknown>,
+): Promise<RunRecord> {
+  const registered = await request.post(`${API_URL}/v1/projects/${projectId}/experiments:import`, {
+    data: { path: contract },
+  })
+  expect([200, 201]).toContain(registered.status())
+  const experiment = (await registered.json()) as { id: string }
+  const queued = await request.post(`${API_URL}/v1/experiments/${experiment.id}/runs`, {
+    data: { parameters },
+  })
+  expect(queued.status()).toBe(201)
+  return (await queued.json()) as RunRecord
 }

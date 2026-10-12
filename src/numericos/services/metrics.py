@@ -19,6 +19,7 @@ from numericos.core.metrics import (
     RunMetrics,
     SeriesSummary,
 )
+from numericos.core.schemas import ExperimentSeries, ExperimentSeriesList
 from numericos.executor import layout
 from numericos.observability import files
 from numericos.observability.coverage import build_coverage
@@ -56,6 +57,17 @@ def run_metrics(uow: UnitOfWork, run_id: str) -> RunMetrics:
             for item in report.get("diagnostics", [])
         ],
     )
+
+
+def experiment_series(uow: UnitOfWork, experiment_id: str) -> ExperimentSeriesList:
+    """The summaries of every metric of every run of an experiment: what a table that puts
+    the runs side by side needs, in one request."""
+    with uow:
+        experiment = require_experiment(uow, experiment_id)
+        rows = uow.metric_series.list_for_experiment(experiment.id)
+        return ExperimentSeriesList(
+            series=[ExperimentSeries.model_validate(row, from_attributes=True) for row in rows]
+        )
 
 
 def _series_file(uow: UnitOfWork, data_dir: Path, run_id: str, name: str) -> tuple[Path, bool]:

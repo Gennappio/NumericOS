@@ -1,13 +1,44 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { api, type CardCreate, type CardPatch, type ProjectPatch } from "./client"
+import {
+  api,
+  type CardCreate,
+  type CardPatch,
+  type ContractImport,
+  type ProjectPatch,
+  type Run,
+  type RunCreate,
+  type RunStatus,
+} from "./client"
 
 export const queryKeys = {
   health: ["health"] as const,
+  workers: ["workers"] as const,
   projects: ["projects"] as const,
-  /** Prefix of everything that belongs to one project: the project, its board, its events. */
+  /**
+   * Prefix of everything that belongs to one project: the project, its board, its events,
+   * its experiments and its runs. An event of the project refreshes all of it.
+   */
   project: (projectId: string) => ["projects", projectId] as const,
   board: (projectId: string) => ["projects", projectId, "board"] as const,
   events: (projectId: string) => ["projects", projectId, "events"] as const,
+  contractFiles: (projectId: string) => ["projects", projectId, "contract-files"] as const,
+  experiments: (projectId: string) => ["projects", projectId, "experiments"] as const,
+  experiment: (projectId: string, experimentId: string) =>
+    ["projects", projectId, "experiments", experimentId] as const,
+  experimentRuns: (projectId: string, experimentId: string) =>
+    ["projects", projectId, "experiments", experimentId, "runs"] as const,
+  experimentSeries: (projectId: string, experimentId: string) =>
+    ["projects", projectId, "experiments", experimentId, "series"] as const,
+  projectRuns: (projectId: string) => ["projects", projectId, "runs"] as const,
+  run: (projectId: string, runId: string) => ["projects", projectId, "runs", runId] as const,
+  runMetrics: (projectId: string, runId: string) =>
+    ["projects", projectId, "runs", runId, "metrics"] as const,
+  metricOverview: (projectId: string, runId: string, name: string) =>
+    ["projects", projectId, "runs", runId, "metrics", name] as const,
+  runEvents: (projectId: string, runId: string) =>
+    ["projects", projectId, "runs", runId, "events"] as const,
+  artifacts: (projectId: string, runId: string) =>
+    ["projects", projectId, "runs", runId, "artifacts"] as const,
 }
 
 /**
@@ -131,5 +162,157 @@ export function useUpdateCard(projectId: string) {
     mutationFn: ({ cardId, patch }: { cardId: string; patch: CardPatch }) =>
       api.updateCard(cardId, { ...patch, project_id: projectId }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Experiments and runs. Their state changes in two ways: through ledger events (queued,
+// started, finished, ...), which the project's stream turns into a refresh, and silently while a
+// program runs (new samples, new output). So what belongs to a run that may still change is
+// also re-read at a short interval, and never once the run has ended.
+
+/** How often what a running program produces is re-read. */
+export const RUN_POLL_MS = 2_000
+
+const ACTIVE_STATUSES: readonly RunStatus[] = ["queued", "starting", "running"]
+
+/** The run may still change by itself. */
+export function isActive(status: RunStatus | undefined): boolean {
+  return status !== undefined && ACTIVE_STATUSES.includes(status)
+}
+
+export function useWorkers() {
+  return useQuery({ queryKey: queryKeys.workers, queryFn: api.listWorkers, refetchInterval: POLL_MS })
+}
+
+export function useContractFiles(projectId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.contractFiles(projectId),
+    queryFn: () => api.listContractFiles(projectId),
+    enabled,
+  })
+}
+
+export function useExperiments(projectId: string, live: boolean) {
+  return useQuery({
+    queryKey: queryKeys.experiments(projectId),
+    queryFn: () => api.listExperiments(projectId),
+    refetchInterval: live ? false : POLL_MS,
+  })
+}
+
+export function useExperiment(projectId: string, experimentId: string) {
+  return useQuery({
+    queryKey: queryKeys.experiment(projectId, experimentId),
+    queryFn: () => api.getExperiment(experimentId),
+  })
+}
+
+const anyActive = (runs: Run[] | undefined) => runs?.some((run) => isActive(run.status)) ?? false
+
+export function useExperimentRuns(projectId: string, experimentId: string) {
+  return useQuery({
+    queryKey: queryKeys.experimentRuns(projectId, experimentId),
+    queryFn: () => api.listExperimentRuns(experimentId),
+    refetchInterval: (query) => (anyActive(query.state.data?.runs) ? RUN_POLL_MS : false),
+  })
+}
+
+export function useExperimentSeries(projectId: string, experimentId: string, active: boolean) {
+  return useQuery({
+    queryKey: queryKeys.experimentSeries(projectId, experimentId),
+    queryFn: () => api.listExperimentSeries(experimentId),
+    refetchInterval: active ? RUN_POLL_MS : false,
+  })
+}
+
+export function useProjectRuns(projectId: string, limit = 25) {
+  return useQuery({
+    queryKey: queryKeys.projectRuns(projectId),
+    queryFn: () => api.listProjectRuns(projectId, limit),
+    refetchInterval: (query) => (anyActive(query.state.data?.runs) ? RUN_POLL_MS : false),
+  })
+}
+
+export function useRun(projectId: string, runId: string) {
+  return useQuery({
+    queryKey: queryKeys.run(projectId, runId),
+    queryFn: () => api.getRun(runId),
+    refetchInterval: (query) => (isActive(query.state.data?.status) ? RUN_POLL_MS : false),
+  })
+}
+
+export function useRunMetrics(projectId: string, runId: string, active: boolean) {
+  return useQuery({
+    queryKey: queryKeys.runMetrics(projectId, runId),
+    queryFn: () => api.getRunMetrics(runId),
+    refetchInterval: active ? RUN_POLL_MS : false,
+  })
+}
+
+/** How many buckets a chart asks for: more than its width in pixels would not be visible. */
+export const CHART_BUCKETS = 300
+
+export function useMetricOverview(projectId: string, runId: string, name: string, active: boolean) {
+  return useQuery({
+    queryKey: queryKeys.metricOverview(projectId, runId, name),
+    queryFn: () => api.getMetricOverview(runId, name, CHART_BUCKETS),
+    refetchInterval: active ? RUN_POLL_MS : false,
+  })
+}
+
+export function useRunEvents(projectId: string, runId: string) {
+  return useQuery({
+    queryKey: queryKeys.runEvents(projectId, runId),
+    queryFn: () => api.listRunEvents(runId),
+  })
+}
+
+export function useArtifacts(projectId: string, runId: string) {
+  return useQuery({
+    queryKey: queryKeys.artifacts(projectId, runId),
+    queryFn: () => api.listArtifacts(runId),
+  })
+}
+
+export function useTrustExecution(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { version: number; root_path: string }) =>
+      api.trustExecution(projectId, body),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+  })
+}
+
+export function useImportExperiment(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: ContractImport) => api.importExperiment(projectId, body),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+  })
+}
+
+export function useCreateRun(projectId: string, experimentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ body, key }: { body: RunCreate; key: string }) =>
+      api.createRun(experimentId, body, key),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+  })
+}
+
+export function useRerun(projectId: string, runId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) => api.rerun(runId, key),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
+  })
+}
+
+export function useCancelRun(projectId: string, runId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (reason: string) => api.cancelRun(runId, reason),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.run(projectId, runId) }),
   })
 }

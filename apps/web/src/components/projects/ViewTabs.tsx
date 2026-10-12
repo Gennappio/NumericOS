@@ -1,22 +1,42 @@
+import { Link, useLocation } from "react-router"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 
 /** Views promised by the roadmap. They stay disabled until their milestone ships. */
 const PLANNED_VIEWS = [
-  { name: "Experiments", milestone: "M3" },
   { name: "Timeline", milestone: "M3" },
   { name: "Agents", milestone: "M1" },
   { name: "Knowledge", milestone: "M2" },
 ] as const
 
-export function ViewTabs() {
+/** The views of a project. A view that does not exist yet is shown as such, never faked. */
+export function ViewTabs({ projectId }: { projectId: string }) {
+  const { pathname } = useLocation()
+  const base = `/projects/${projectId}`
+  // The pages of single experiments and runs belong to the experiments view.
+  const inExperiments =
+    pathname.startsWith(`${base}/experiments`) || pathname.startsWith(`${base}/runs/`)
+  const views = [
+    { name: "Board", to: base, current: !inExperiments },
+    { name: "Experiments", to: `${base}/experiments`, current: inExperiments },
+  ]
   return (
     <nav aria-label="Project views" className="flex gap-1 overflow-x-auto border-b border-border">
-      <span
-        aria-current="page"
-        className="-mb-px border-b-2 border-foreground px-3 py-2 text-sm font-medium"
-      >
-        Board
-      </span>
+      {views.map((view) => (
+        <Link
+          key={view.name}
+          to={view.to}
+          aria-current={view.current ? "page" : undefined}
+          className={cn(
+            "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm",
+            view.current
+              ? "border-foreground font-medium text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {view.name}
+        </Link>
+      ))}
       {PLANNED_VIEWS.map((view) => (
         <button
           key={view.name}

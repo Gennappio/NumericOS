@@ -60,4 +60,7 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "get_run_metrics",
         "read_metric",
         "get_metric_overview",
+        "list_contract_files",
+        "import_experiment",
+        "list_experiment_series",
     }

@@ -9,10 +9,13 @@ from fastapi import APIRouter, Header, Query, Response
 from numericos.api.deps import Context, Uow
 from numericos.api.errors import CONFLICT_RESPONSES
 from numericos.core.schemas import (
+    ContractFileList,
+    ContractImport,
     ExperimentCreate,
     ExperimentList,
     ExperimentOut,
     ExperimentPatch,
+    ExperimentSeriesList,
     HypothesisCreate,
     HypothesisList,
     HypothesisOut,
@@ -22,7 +25,7 @@ from numericos.core.schemas import (
     RunOut,
     RunRecord,
 )
-from numericos.services import experiments, hypotheses, runs
+from numericos.services import contracts, experiments, hypotheses, metrics, runs
 
 router = APIRouter()
 
@@ -112,6 +115,38 @@ def create_experiment(
 
 
 @router.get(
+    "/projects/{project_id}/contract-files",
+    tags=["experiments"],
+    summary="Experiment contracts found as files in the project's repository",
+    responses=CONFLICT_RESPONSES,
+)
+def list_contract_files(project_id: str, uow: Uow) -> ContractFileList:
+    return contracts.discover(uow, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/experiments:import",
+    status_code=201,
+    tags=["experiments"],
+    summary="Register the experiment of a contract given as text or as a file of the project",
+    responses={
+        200: {
+            "model": ExperimentOut,
+            "description": "With reuse: the existing experiment with this name and protocol",
+        },
+        **CONFLICT_RESPONSES,
+    },
+)
+def import_experiment(
+    project_id: str, body: ContractImport, uow: Uow, context: Context, response: Response
+) -> ExperimentOut:
+    experiment, created = contracts.import_contract(uow, project_id, body, context)
+    if not created:
+        response.status_code = 200
+    return experiment
+
+
+@router.get(
     "/projects/{project_id}/experiments",
     tags=["experiments"],
     summary="List a project's experiments in creation order",
@@ -123,6 +158,15 @@ def list_experiments(project_id: str, uow: Uow) -> ExperimentList:
 @router.get("/experiments/{experiment_id}", tags=["experiments"], summary="Get one experiment")
 def get_experiment(experiment_id: str, uow: Uow) -> ExperimentOut:
     return experiments.get_experiment(uow, experiment_id)
+
+
+@router.get(
+    "/experiments/{experiment_id}/series",
+    tags=["experiments"],
+    summary="The metric summaries of all runs of an experiment, to look at them together",
+)
+def list_experiment_series(experiment_id: str, uow: Uow) -> ExperimentSeriesList:
+    return metrics.experiment_series(uow, experiment_id)
 
 
 @router.patch(
