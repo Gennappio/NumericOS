@@ -30,3 +30,29 @@ def test_publish_targets_only_the_given_project() -> None:
             assert wake_2.is_set()
 
     asyncio.run(scenario())
+
+
+def test_a_head_moved_by_another_process_wakes_every_subscriber_once() -> None:
+    notifier = EventNotifier()
+
+    async def scenario() -> None:
+        with notifier.subscribe("prj_1") as wake_1, notifier.subscribe("prj_2") as wake_2:
+            notifier.publish("prj_1", 5)
+            await asyncio.sleep(0)
+            wake_1.clear()
+
+            known = notifier.announce_foreign(5)  # this process committed seq 5 itself
+            await asyncio.sleep(0)
+            assert known is False
+            assert not wake_1.is_set()
+            assert not wake_2.is_set()
+
+            news = notifier.announce_foreign(8)  # somebody else wrote: whose project is unknown
+            await asyncio.sleep(0)
+            assert news is True
+            assert wake_1.is_set()
+            assert wake_2.is_set()
+
+            assert notifier.announce_foreign(8) is False
+
+    asyncio.run(scenario())

@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
-from numericos.core.enums import EventType, RunStatus
+from numericos.core.enums import ACTIVE_RUN_STATUSES, EventType, RunStatus, Severity
 from numericos.core.errors import (
     IdempotencyConflictError,
     NotReproducibleError,
@@ -18,9 +19,10 @@ from numericos.core.errors import (
 )
 from numericos.core.experiment import ExperimentProtocol, render_command, resolve_parameters
 from numericos.core.ids import new_id
-from numericos.core.schemas import RunCreate, RunList, RunOut, RunRecord
+from numericos.core.schemas import RunCancel, RunCreate, RunList, RunOut, RunRecord
 from numericos.events.ledger import EventContext, build_event
-from numericos.persistence.engine import utcnow
+from numericos.executor import control, layout
+from numericos.persistence.engine import TIMESTAMP_FORMAT, utcnow
 from numericos.persistence.models import Run
 from numericos.persistence.unit_of_work import UnitOfWork
 from numericos.provenance.code import resolve_at_submission
@@ -110,6 +112,7 @@ def create_run(
                 code=code.model_dump(mode="json"),
                 code_sha=code.sha,
                 reproduces_run_id=reproduces_run_id,
+                correlation_id=context.correlation_id,
                 version=1,
                 created_at=now,
                 updated_at=now,
@@ -172,6 +175,81 @@ def list_runs(uow: UnitOfWork, experiment_id: str) -> RunList:
         return RunList(
             runs=[RunOut.model_validate(run) for run in uow.runs.list_for_experiment(experiment.id)]
         )
+
+
+def list_project_runs(uow: UnitOfWork, project_id: str, limit: int) -> RunList:
+    """The newest runs of a project across its experiments, newest first."""
+    with uow:
+        project = require_project(uow, project_id)
+        return RunList(
+            runs=[
+                RunOut.model_validate(run) for run in uow.runs.list_for_project(project.id, limit)
+            ]
+        )
+
+
+def cancel_run(
+    uow: UnitOfWork, run_id: str, body: RunCancel, context: EventContext, *, data_dir: Path
+) -> RunOut:
+    """Ask for a run to be stopped.
+
+    A queued run is cancelled at once. For a run that is starting or running the intent is
+    recorded and its monitor is told to stop the program (SIGTERM to the whole process group,
+    SIGKILL after the grace period); the run becomes ``cancelled`` when the monitor reports
+    that the program is gone. Cancelling a run that already ended changes nothing.
+    """
+    reason = body.reason or "cancelled on request"
+    with uow:
+        run = require_run(uow, run_id)
+        if RunStatus(run.status) not in ACTIVE_RUN_STATUSES or run.cancel_requested_at is not None:
+            return RunOut.model_validate(run)
+        now = utcnow()
+        run.cancel_requested_at = now
+        run.cancel_reason = reason
+        run.updated_at = now
+        run.version += 1
+        uow.record(
+            build_event(
+                event_type=EventType.RUN_CANCEL_REQUESTED,
+                project_id=run.project_id,
+                subject_id=run.id,
+                run_id=run.id,
+                payload={"reason": reason, "status_when_requested": run.status},
+                context=context,
+                severity=Severity.WARNING,
+            )
+        )
+        if run.status == RunStatus.QUEUED.value:
+            run.status = RunStatus.CANCELLED.value
+            run.status_reason = reason
+            run.finished_at = now
+            uow.record(
+                build_event(
+                    event_type=EventType.RUN_FINISHED,
+                    project_id=run.project_id,
+                    subject_id=run.id,
+                    run_id=run.id,
+                    payload={
+                        "status": run.status,
+                        "status_reason": reason,
+                        "failure_class": None,
+                        "exit_code": None,
+                        "signal": None,
+                        "wall_seconds": None,
+                        "program_seconds": None,
+                        "finished_at": now.strftime(TIMESTAMP_FORMAT),
+                        "code_sha": run.code_sha,
+                        "program_started": False,
+                    },
+                    context=context,
+                    severity=Severity.WARNING,
+                )
+            )
+        out = RunOut.model_validate(run)
+        uow.commit()
+    if RunStatus(out.status) in ACTIVE_RUN_STATUSES:
+        control.request_cancel(layout.run_dir(data_dir, run_id), reason=reason, actor=context.actor)
+    return out
 
 
 def get_run(uow: UnitOfWork, run_id: str) -> RunOut:

@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -172,6 +173,8 @@ def export(root: Path, sha: str, destination: Path) -> None:
     The files come from ``git archive``: exactly what the commit contains, nothing from the
     working tree. Submodules and Git LFS content are therefore not included. The export is
     assembled next to the destination and renamed, so a half-written tree is never visible.
+    Every file gets the time of the export as its modification time, so whatever is written
+    or changed later can be told apart from the commit's own files.
     """
     if destination.exists():
         raise GitError(f"{destination} already exists")
@@ -186,8 +189,11 @@ def export(root: Path, sha: str, destination: Path) -> None:
         )
         assert process.stdout is not None and process.stderr is not None
         try:
+            exported_at = time.time()
             with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
-                archive.extractall(staging, filter="data")
+                for member in archive:
+                    member.mtime = exported_at
+                    archive.extract(member, staging, filter="data")
         except tarfile.TarError as error:
             process.kill()
             raise GitError(f"could not unpack the archive of {sha}: {error}") from error

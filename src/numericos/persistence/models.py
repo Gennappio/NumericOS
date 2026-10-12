@@ -10,6 +10,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -186,9 +187,63 @@ class Run(Base):
     inputs: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     environment: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     reproduces_run_id: Mapped[str | None] = mapped_column(String(40))
+    #: Correlation ID of the request that queued the run; the supervisor's events reuse it.
+    correlation_id: Mapped[str | None] = mapped_column(String(64))
+    #: Supervision. A process is identified by PID *and* start time, never by PID alone.
+    worker_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    monitor_pid: Mapped[int | None] = mapped_column(Integer)
+    monitor_started_at: Mapped[float | None] = mapped_column(Float)
+    pid: Mapped[int | None] = mapped_column(Integer)
+    process_started_at: Mapped[float | None] = mapped_column(Float)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    cancel_reason: Mapped[str | None] = mapped_column(String(300))
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    exit_signal: Mapped[str | None] = mapped_column(String(20))
+    wall_seconds: Mapped[float | None] = mapped_column(Float)
+    #: What the monitor wrote when the program ended (``exit.json``).
+    outcome: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    #: Summary of the resource samples seen so far.
+    resources: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    #: How far the supervisor has read the monitor's files.
+    ingest: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class Worker(Base):
+    """A supervisor process. It is alive while it keeps its heartbeat and has not stopped."""
+
+    __tablename__ = "workers"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    pid: Mapped[int] = mapped_column(Integer)
+    hostname: Mapped[str] = mapped_column(String(255))
+    version: Mapped[str] = mapped_column(String(40))
+    max_parallel_runs: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    heartbeat_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    stopped_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class Artifact(Base):
+    """A file of a run, kept in the run directory, with its size and checksum."""
+
+    __tablename__ = "artifacts"
+    __table_args__ = (UniqueConstraint("run_id", "name", name="uq_artifacts_run_name"),)
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(40), ForeignKey("projects.id"))
+    run_id: Mapped[str] = mapped_column(String(40), ForeignKey("runs.id"))
+    kind: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(1000))
+    media_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
 class Event(Base):

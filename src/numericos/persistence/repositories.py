@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from numericos.core.enums import WORKFLOW_ORDER
 from numericos.persistence.models import (
+    Artifact,
     BoardCard,
     Event,
     Experiment,
     Hypothesis,
     Project,
     Run,
+    Worker,
 )
 from numericos.persistence.ordering import STEP, ranks
 
@@ -168,6 +170,57 @@ class RunRepository:
             Run.experiment_id == experiment_id, Run.idempotency_key == key
         )
         return self._session.scalars(statement).first()
+
+    def list_for_project(self, project_id: str, limit: int) -> list[Run]:
+        """The newest runs of a project, newest first."""
+        statement = (
+            select(Run)
+            .where(Run.project_id == project_id)
+            .order_by(Run.created_at.desc(), Run.id.desc())
+            .limit(limit)
+        )
+        return list(self._session.scalars(statement))
+
+    def with_status(self, statuses: Sequence[str], limit: int | None = None) -> list[Run]:
+        """Runs in the given states, oldest first: the order in which they are served."""
+        statement = select(Run).where(Run.status.in_(statuses)).order_by(Run.created_at, Run.id)
+        if limit is not None:
+            statement = statement.limit(limit)
+        return list(self._session.scalars(statement))
+
+
+class WorkerRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, worker: Worker) -> Worker:
+        self._session.add(worker)
+        self._session.flush()
+        return worker
+
+    def get(self, worker_id: str) -> Worker | None:
+        return self._session.get(Worker, worker_id)
+
+    def list(self, limit: int) -> list[Worker]:
+        """The newest workers, newest first."""
+        statement = select(Worker).order_by(Worker.started_at.desc(), Worker.id.desc()).limit(limit)
+        return list(self._session.scalars(statement))
+
+
+class ArtifactRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, artifact: Artifact) -> Artifact:
+        self._session.add(artifact)
+        return artifact
+
+    def get(self, artifact_id: str) -> Artifact | None:
+        return self._session.get(Artifact, artifact_id)
+
+    def list_for_run(self, run_id: str) -> list[Artifact]:
+        statement = select(Artifact).where(Artifact.run_id == run_id).order_by(Artifact.name)
+        return list(self._session.scalars(statement))
 
 
 class EventRepository:

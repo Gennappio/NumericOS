@@ -1,4 +1,4 @@
-"""The environment of a run: the host, the program file, probe outputs and variables."""
+"""The environment of a run: the host, probe outputs and variables."""
 
 from __future__ import annotations
 
@@ -6,20 +6,18 @@ import hashlib
 import os
 import platform
 import re
-import shutil
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import psutil
 
 from numericos import __version__
-from numericos.core.provenance import ExecutableRecord, HostFacts, ProbeRecord
-from numericos.provenance.code import file_digest
+from numericos.core.provenance import HostFacts, ProbeRecord
 
 PROBE_TIMEOUT_SECONDS = 30
-MAX_EXECUTABLE_HASH_BYTES = 512 * 1024 * 1024
 
 #: Always passed from the supervisor's environment to a run, when set.
 BASE_ENVIRONMENT = ("PATH", "HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "SHELL")
@@ -59,6 +57,21 @@ def host_facts() -> HostFacts:
     )
 
 
+def without_own_environment(path: str) -> str:
+    """``PATH`` without the directory of the virtual environment NumericOS itself runs in.
+
+    Started through ``uv run`` or from an activated environment, the supervisor has its own
+    interpreter first on ``PATH``. A run that says ``python3`` must get the user's Python, not
+    the interpreter and packages of the tool that supervises it.
+    """
+    if sys.prefix == sys.base_prefix:
+        return path
+    own = os.path.realpath(os.path.join(sys.prefix, "bin"))
+    return os.pathsep.join(
+        entry for entry in path.split(os.pathsep) if os.path.realpath(entry) != own
+    )
+
+
 def run_environment(
     declared: dict[str, str], inherit: list[str], extra: dict[str, str]
 ) -> dict[str, str]:
@@ -67,6 +80,8 @@ def run_environment(
     environment = {
         name: os.environ[name] for name in (*BASE_ENVIRONMENT, *inherit) if name in os.environ
     }
+    if "PATH" in environment:
+        environment["PATH"] = without_own_environment(environment["PATH"])
     environment.update(declared)
     environment.update(extra)
     return environment
@@ -78,22 +93,6 @@ def redact(environment: dict[str, str]) -> dict[str, str]:
         name: REDACTED if _SECRET_NAME.search(name) else value
         for name, value in sorted(environment.items())
     }
-
-
-def resolve_executable(argv0: str, environment: dict[str, str], cwd: Path) -> ExecutableRecord:
-    """The file ``argv0`` will run as, found the way the system finds it, with its digest."""
-    if os.sep in argv0:
-        candidate: str | None = str((cwd / argv0).resolve()) if not os.path.isabs(argv0) else argv0
-        if candidate is not None and not os.access(candidate, os.X_OK):
-            candidate = None
-    else:
-        candidate = shutil.which(argv0, path=environment.get("PATH", os.defpath))
-    if candidate is None:
-        return ExecutableRecord(argv0=argv0, path=None)
-    resolved = Path(candidate).resolve()
-    size = resolved.stat().st_size
-    sha256 = file_digest(resolved)[0] if size <= MAX_EXECUTABLE_HASH_BYTES else None
-    return ExecutableRecord(argv0=argv0, path=str(resolved), sha256=sha256, size_bytes=size)
 
 
 def run_probes(

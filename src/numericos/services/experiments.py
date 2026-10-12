@@ -61,13 +61,29 @@ def _require_hypothesis_of_project(uow: UnitOfWork, hypothesis_id: str, project_
 
 
 def create_experiment(
-    uow: UnitOfWork, project_id: str, data: ExperimentCreate, context: EventContext
-) -> ExperimentOut:
+    uow: UnitOfWork,
+    project_id: str,
+    data: ExperimentCreate,
+    context: EventContext,
+    *,
+    reuse: bool = False,
+) -> tuple[ExperimentOut, bool]:
+    """Define an experiment. Returns it and whether this call created it.
+
+    With ``reuse`` an experiment of the project that already has this name and exactly this
+    protocol is returned instead of creating a duplicate, so scripts can register repeatedly.
+    """
     now = utcnow()
+    digest = protocol_digest(data.protocol)
     with uow:
         project = require_project(uow, project_id)
         if data.hypothesis_id is not None:
             _require_hypothesis_of_project(uow, data.hypothesis_id, project.id)
+        if reuse:
+            for existing in uow.experiments.list_for_project(project.id):
+                if existing.name == data.name and existing.protocol_digest == digest:
+                    count = uow.runs.count_by_experiment([existing.id]).get(existing.id, 0)
+                    return to_out(existing, count), False
         experiment = uow.experiments.add(
             Experiment(
                 id=new_id("exp"),
@@ -75,7 +91,7 @@ def create_experiment(
                 hypothesis_id=data.hypothesis_id,
                 name=data.name,
                 protocol=data.protocol.to_json(),
-                protocol_digest=protocol_digest(data.protocol),
+                protocol_digest=digest,
                 version=1,
                 created_at=now,
                 updated_at=now,
@@ -92,7 +108,7 @@ def create_experiment(
             )
         )
         uow.commit()
-    return out
+    return out, True
 
 
 def list_experiments(uow: UnitOfWork, project_id: str) -> ExperimentList:

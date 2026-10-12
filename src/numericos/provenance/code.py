@@ -6,6 +6,7 @@ import hashlib
 import tarfile
 from pathlib import Path
 
+from numericos.core.digests import file_digest
 from numericos.core.errors import InvalidRequestError, NotAGitRepositoryError
 from numericos.core.experiment import CodeSpec
 from numericos.core.provenance import CodeProvenance, FileDigest
@@ -16,16 +17,6 @@ from numericos.provenance import git
 MAX_UNTRACKED_ARCHIVE_BYTES = 64 * 1024 * 1024
 DIFF_FILE = "code.diff"
 UNTRACKED_ARCHIVE = "untracked.tar"
-
-
-def file_digest(path: Path) -> tuple[str, int]:
-    """SHA-256 and size of a file, read in chunks."""
-    digest, size = hashlib.sha256(), 0
-    with path.open("rb") as handle:
-        while chunk := handle.read(1024 * 1024):
-            digest.update(chunk)
-            size += len(chunk)
-    return digest.hexdigest(), size
 
 
 def resolve_at_submission(root: Path, spec: CodeSpec, code_ref: str | None) -> CodeProvenance:
@@ -121,3 +112,25 @@ def capture_working_tree(root: Path, record: CodeProvenance, destination: Path) 
                     archive.add(root / item.path, arcname=item.path, recursive=False)
         update["untracked_archived"] = archived
     return record.model_copy(update=update)
+
+
+def working_tree_changed(record: CodeProvenance) -> bool | None:
+    """Whether the code a working-tree run started with is still the code that is there.
+
+    True when HEAD moved or the uncommitted changes to tracked files are no longer the recorded
+    ones. Files that appeared beside them do not count: a program writing its results next to
+    its sources is not an edit of the sources. None when nothing can be said: the run executed
+    an exact commit, or the repository can no longer be read.
+    """
+    if record.mode != "working_tree":
+        return None
+    root = Path(record.repository_root)
+    try:
+        if not git.is_toplevel(root):
+            return None  # moved or deleted: there is nothing to compare with
+        sha = git.head(root)
+        patch = git.diff_against_head(root) if sha and git.status(root).changed else b""
+    except git.GitError:
+        return None
+    digest = hashlib.sha256(patch).hexdigest() if patch else None
+    return sha != record.sha or digest != record.diff_sha256

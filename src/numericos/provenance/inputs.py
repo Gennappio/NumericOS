@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from numericos.core.digests import file_digest
 from numericos.core.experiment import InputSpec
 from numericos.core.provenance import InputRecord
-from numericos.provenance.code import file_digest
 
 
 class InputError(Exception):

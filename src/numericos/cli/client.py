@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from types import TracebackType
 from typing import Any
 
@@ -110,6 +111,18 @@ class ApiClient:
 
     def patch(self, path: str, json: Any) -> Any:
         return self._request("PATCH", path, json=json)
+
+    @contextmanager
+    def stream(self, path: str) -> Iterator[Iterator[bytes]]:
+        """The body of a file download, in chunks, once the server has answered with success."""
+        try:
+            with self._http.stream("GET", path, headers={"Accept": "*/*"}) as response:
+                if not response.is_success:
+                    response.read()
+                    raise ApiError(response.status_code, _envelope(response))
+                yield response.iter_bytes()
+        except httpx.TransportError as exc:
+            raise ApiUnreachable(self.base_url, exc) from exc
 
     def follow_events(self, project_id: str, after: int = 0) -> Iterator[dict[str, Any]]:
         """Replay a project's ledger after ``after``, then yield events as they are committed.

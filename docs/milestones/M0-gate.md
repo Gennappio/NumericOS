@@ -182,7 +182,7 @@ Narrow width: columns stack, card text wraps and is never cut off.
 
 ## Known limitations
 
-Listed in `docs/architecture.md` ("Known limitations of M0"). In short: single user and single
+Listed in `docs/architecture.md` ("Known limitations"). In short: single user and single
 API process on loopback, no idempotency keys, no delete or archive, `root_path` stored but never
 opened, project list polled, event list limited to the 20 newest entries, no drag and drop
 before M1, schema migrations need a manual restart of a `--reload` server.

@@ -55,6 +55,13 @@ class CodeProvenance(BaseModel):
     captured_at: datetime | None = Field(
         default=None, description="When the executed state was fixed."
     )
+    changed_during_run: bool | None = Field(
+        default=None,
+        description=(
+            "working_tree mode only: the tree was modified while the program ran, so the record "
+            "describes what the program started with, not everything it may have read."
+        ),
+    )
 
 
 class InputRecord(BaseModel):
@@ -65,10 +72,13 @@ class InputRecord(BaseModel):
 
 
 class ExecutableRecord(BaseModel):
-    """The program file that ``argv[0]`` resolved to."""
+    """The program file that ``argv[0]`` resolved to when the program was started, that is
+    after any build command: for a compiled program it identifies the binary that ran."""
 
     argv0: str
-    path: str | None = Field(description="Null when it could not be resolved.")
+    path: str | None = Field(
+        description="Null until the program starts, and when it could not be resolved."
+    )
     sha256: str | None = None
     size_bytes: int | None = None
 

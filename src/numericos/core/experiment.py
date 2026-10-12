@@ -175,11 +175,20 @@ class ExecutionSpec(Strict):
     )
     workdir: str = Field(default=".", max_length=1000, description="Inside the code root.")
     code: CodeSpec = Field(default_factory=CodeSpec)
-    env: dict[str, str] = Field(default_factory=dict, description="Environment set for the run.")
+    env: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Environment set for the run. These values are part of the contract and are stored "
+            "and exported as written: pass a secret with inherit_env instead."
+        ),
+    )
     inherit_env: list[str] = Field(
         default_factory=list,
         max_length=100,
-        description="Names passed through from the supervisor's environment.",
+        description=(
+            "Names passed through from the supervisor's environment. Their values are not part "
+            "of the contract; in the run record those of secret-looking names are redacted."
+        ),
     )
     inputs: list[InputSpec] = Field(default_factory=list, max_length=200)
     environment_probes: list[Command] = Field(
@@ -281,7 +290,8 @@ class ExperimentProtocol(Strict):
 
     @property
     def needs_seed(self) -> bool:
-        return any(SEED in placeholders(argument) for argument in self.execution.command)
+        commands = (self.execution.command, *self.execution.build)
+        return any(SEED in placeholders(argument) for command in commands for argument in command)
 
     def to_json(self) -> dict[str, Any]:
         """The stored and transmitted form (aliases applied)."""
@@ -349,23 +359,34 @@ def render_value(value: ParameterValue) -> str:
     return value if isinstance(value, str) else repr(value)
 
 
-def render_command(
+def _values(
     protocol: ExperimentProtocol, parameters: dict[str, ParameterValue], seed: int | None
-) -> list[str]:
+) -> dict[str, str]:
     values = {name: render_value(value) for name, value in parameters.items()}
     if protocol.needs_seed:
         if seed is None:
+            issue = {"loc": ["body", "seed"], "msg": "required by the command", "type": "missing"}
             raise InvalidRequestError(
-                "the command of this experiment uses {seed}",
-                details={
-                    "errors": [
-                        {
-                            "loc": ["body", "seed"],
-                            "msg": "required by the command",
-                            "type": "missing",
-                        }
-                    ]
-                },
+                "the command of this experiment uses {seed}", details={"errors": [issue]}
             )
         values[SEED] = str(seed)
+    return values
+
+
+def render_command(
+    protocol: ExperimentProtocol, parameters: dict[str, ParameterValue], seed: int | None
+) -> list[str]:
+    """The argument vector of one run: every {name} replaced by its parameter value."""
+    values = _values(protocol, parameters, seed)
     return [argument.format_map(values) for argument in protocol.execution.command]
+
+
+def render_build(
+    protocol: ExperimentProtocol, parameters: dict[str, ParameterValue], seed: int | None
+) -> list[list[str]]:
+    """The build commands of one run, with the same substitution as the program's command."""
+    values = _values(protocol, parameters, seed)
+    return [
+        [argument.format_map(values) for argument in command]
+        for command in protocol.execution.build
+    ]

@@ -10,8 +10,17 @@ from sqlalchemy.engine import Engine
 from numericos.persistence import migrate
 from numericos.persistence.engine import make_engine
 
-TABLES = {"projects", "board_cards", "events", "hypotheses", "experiments", "runs"}
-HEAD = "0003"
+TABLES = {
+    "projects",
+    "board_cards",
+    "events",
+    "hypotheses",
+    "experiments",
+    "runs",
+    "workers",
+    "artifacts",
+}
+HEAD = "0004"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:

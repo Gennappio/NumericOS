@@ -1,6 +1,80 @@
 {
   "components": {
     "schemas": {
+      "ArtifactList": {
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactOut"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "artifacts"
+        ],
+        "title": "ArtifactList",
+        "type": "object"
+      },
+      "ArtifactOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "description": "Path inside the run directory.",
+            "title": "Name",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for files too large to hash.",
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "kind",
+          "name",
+          "media_type",
+          "size_bytes",
+          "sha256",
+          "created_at"
+        ],
+        "title": "ArtifactOut",
+        "type": "object"
+      },
       "BoardOut": {
         "properties": {
           "cards": {
@@ -267,6 +341,18 @@
             ],
             "description": "When the executed state was fixed.",
             "title": "Captured At"
+          },
+          "changed_during_run": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "working_tree mode only: the tree was modified while the program ran, so the record describes what the program started with, not everything it may have read.",
+            "title": "Changed During Run"
           },
           "commit": {
             "anyOf": [
@@ -650,7 +736,7 @@
         "type": "object"
       },
       "ExecutableRecord": {
-        "description": "The program file that ``argv[0]`` resolved to.",
+        "description": "The program file that ``argv[0]`` resolved to when the program was started, that is\nafter any build command: for a compiled program it identifies the binary that ran.",
         "properties": {
           "argv0": {
             "title": "Argv0",
@@ -665,7 +751,7 @@
                 "type": "null"
               }
             ],
-            "description": "Null when it could not be resolved.",
+            "description": "Null until the program starts, and when it could not be resolved.",
             "title": "Path"
           },
           "sha256": {
@@ -736,7 +822,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Environment set for the run.",
+            "description": "Environment set for the run. These values are part of the contract and are stored and exported as written: pass a secret with inherit_env instead.",
             "title": "Env",
             "type": "object"
           },
@@ -757,7 +843,7 @@
             "type": "array"
           },
           "inherit_env": {
-            "description": "Names passed through from the supervisor's environment.",
+            "description": "Names passed through from the supervisor's environment. Their values are not part of the contract; in the run record those of secret-looking names are redacted.",
             "items": {
               "type": "string"
             },
@@ -1087,6 +1173,7 @@
           "code_error",
           "resource_limit",
           "numerical_instability",
+          "data_problem",
           "infrastructure",
           "unknown"
         ],
@@ -1695,6 +1782,82 @@
         "title": "Limits",
         "type": "object"
       },
+      "LogLine": {
+        "properties": {
+          "cut": {
+            "default": false,
+            "description": "The line was longer than the limit and cut.",
+            "title": "Cut",
+            "type": "boolean"
+          },
+          "metric": {
+            "default": false,
+            "description": "The line was consumed as a metric record.",
+            "title": "Metric",
+            "type": "boolean"
+          },
+          "stream": {
+            "enum": [
+              "stdout",
+              "stderr",
+              "build"
+            ],
+            "title": "Stream",
+            "type": "string"
+          },
+          "t": {
+            "description": "Epoch seconds when the monitor received the line.",
+            "title": "T",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "stream",
+          "text"
+        ],
+        "title": "LogLine",
+        "type": "object"
+      },
+      "LogPage": {
+        "description": "Output lines after a cursor. ``complete`` means the run ended and nothing follows.",
+        "properties": {
+          "complete": {
+            "description": "The run ended and every line has been returned.",
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "has_more": {
+            "description": "More lines are already recorded after 'next_cursor'.",
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/LogLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as 'after' to continue. It is a byte offset.",
+            "title": "Next Cursor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "lines",
+          "next_cursor",
+          "has_more",
+          "complete"
+        ],
+        "title": "LogPage",
+        "type": "object"
+      },
       "MetricSpec": {
         "additionalProperties": false,
         "description": "A quantity the experiment measures, with its unit and who measures it.",
@@ -1754,6 +1917,40 @@
           }
         },
         "title": "ObservabilitySpec",
+        "type": "object"
+      },
+      "OutputSummary": {
+        "properties": {
+          "build_lines": {
+            "title": "Build Lines",
+            "type": "integer"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "stderr_lines": {
+            "title": "Stderr Lines",
+            "type": "integer"
+          },
+          "stdout_lines": {
+            "title": "Stdout Lines",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "Output beyond the run's limit was seen but not stored.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stdout_lines",
+          "stderr_lines",
+          "build_lines",
+          "bytes",
+          "truncated"
+        ],
+        "title": "OutputSummary",
         "type": "object"
       },
       "ParserSpec": {
@@ -1855,6 +2052,31 @@
           "seconds"
         ],
         "title": "ProbeRecord",
+        "type": "object"
+      },
+      "ProcessUsage": {
+        "description": "What the operating system measured for the program and the descendants it waited for,\nexact at exit. The build commands are not included.",
+        "properties": {
+          "cpu_system_seconds": {
+            "title": "Cpu System Seconds",
+            "type": "number"
+          },
+          "cpu_user_seconds": {
+            "title": "Cpu User Seconds",
+            "type": "number"
+          },
+          "max_rss_bytes": {
+            "description": "Largest resident set of a single process of the program's tree.",
+            "title": "Max Rss Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu_user_seconds",
+          "cpu_system_seconds",
+          "max_rss_bytes"
+        ],
+        "title": "ProcessUsage",
         "type": "object"
       },
       "ProjectCreate": {
@@ -2075,6 +2297,163 @@
         "title": "ProjectVersion",
         "type": "object"
       },
+      "ResourcePage": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceSample"
+            },
+            "title": "Samples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "samples",
+          "next_cursor",
+          "has_more",
+          "complete"
+        ],
+        "title": "ResourcePage",
+        "type": "object"
+      },
+      "ResourceSample": {
+        "description": "One sample of the program's process tree.",
+        "properties": {
+          "cpu_percent": {
+            "description": "CPU the process tree used since the previous sample (the first: since the command started), as a percentage of one core.",
+            "title": "Cpu Percent",
+            "type": "number"
+          },
+          "cpu_seconds": {
+            "description": "CPU seconds seen so far in this phase.",
+            "title": "Cpu Seconds",
+            "type": "number"
+          },
+          "elapsed": {
+            "description": "Seconds since the monitor started.",
+            "title": "Elapsed",
+            "type": "number"
+          },
+          "io_read_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null where the platform does not report it.",
+            "title": "Io Read Bytes"
+          },
+          "io_write_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Io Write Bytes"
+          },
+          "phase": {
+            "description": "Whether a build command or the program was running.",
+            "enum": [
+              "build",
+              "program"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "processes": {
+            "title": "Processes",
+            "type": "integer"
+          },
+          "rss_bytes": {
+            "title": "Rss Bytes",
+            "type": "integer"
+          },
+          "t": {
+            "description": "Epoch seconds when the sample was taken.",
+            "title": "T",
+            "type": "number"
+          },
+          "threads": {
+            "title": "Threads",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "t",
+          "elapsed",
+          "phase",
+          "cpu_percent",
+          "cpu_seconds",
+          "rss_bytes",
+          "processes",
+          "threads",
+          "io_read_bytes",
+          "io_write_bytes"
+        ],
+        "title": "ResourceSample",
+        "type": "object"
+      },
+      "ResourceSummary": {
+        "description": "The resource samples recorded so far, in short.",
+        "properties": {
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceSample"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest sample, of the build or of the program."
+          },
+          "max_rss_bytes": {
+            "default": 0,
+            "description": "Largest sum over the process tree in one of those samples.",
+            "title": "Max Rss Bytes",
+            "type": "integer"
+          },
+          "samples": {
+            "default": 0,
+            "description": "Samples taken while the program ran.",
+            "title": "Samples",
+            "type": "integer"
+          }
+        },
+        "title": "ResourceSummary",
+        "type": "object"
+      },
+      "RunCancel": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RunCancel",
+        "type": "object"
+      },
       "RunCreate": {
         "additionalProperties": false,
         "properties": {
@@ -2163,6 +2542,30 @@
             "title": "Argv",
             "type": "array"
           },
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the run was asked to stop, if it was.",
+            "title": "Cancel Reason"
+          },
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
           "code": {
             "anyOf": [
               {
@@ -2190,6 +2593,28 @@
             ],
             "description": "Host, program file, probes and variables. Null until the run starts."
           },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "exit_signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Signal"
+          },
           "experiment_id": {
             "title": "Experiment Id",
             "type": "string"
@@ -2203,6 +2628,31 @@
                 "type": "null"
               }
             ]
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When a supervisor last recorded progress of this run.",
+            "title": "Heartbeat At"
           },
           "id": {
             "title": "Id",
@@ -2227,6 +2677,17 @@
             "title": "Label",
             "type": "string"
           },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the program ended, as its monitor recorded it. Null until then."
+          },
           "parameters": {
             "additionalProperties": {
               "anyOf": [
@@ -2248,6 +2709,18 @@
             "title": "Parameters",
             "type": "object"
           },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Process ID of the program while it runs.",
+            "title": "Pid"
+          },
           "project_id": {
             "title": "Project Id",
             "type": "string"
@@ -2268,6 +2741,17 @@
             "description": "The run this one repeats with the same code, parameters and seed.",
             "title": "Reproduces Run Id"
           },
+          "resources": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Summary of the resource samples taken so far."
+          },
           "seed": {
             "anyOf": [
               {
@@ -2278,6 +2762,19 @@
               }
             ],
             "title": "Seed"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the program started, not when queued.",
+            "title": "Started At"
           },
           "status": {
             "$ref": "#/components/schemas/RunStatus",
@@ -2302,6 +2799,29 @@
           "version": {
             "title": "Version",
             "type": "integer"
+          },
+          "wall_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Seconds"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The supervisor currently responsible for the run.",
+            "title": "Worker Id"
           }
         },
         "required": [
@@ -2320,11 +2840,111 @@
           "inputs",
           "environment",
           "reproduces_run_id",
+          "worker_id",
+          "pid",
+          "started_at",
+          "finished_at",
+          "heartbeat_at",
+          "cancel_requested_at",
+          "cancel_reason",
+          "exit_code",
+          "exit_signal",
+          "wall_seconds",
+          "outcome",
+          "resources",
           "version",
           "created_at",
           "updated_at"
         ],
         "title": "RunOut",
+        "type": "object"
+      },
+      "RunOutcome": {
+        "description": "How the program ended, as recorded by its monitor (``exit.json``).",
+        "properties": {
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Of the program; null if it never ran.",
+            "title": "Exit Code"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "string"
+          },
+          "observed": {
+            "additionalProperties": true,
+            "title": "Observed",
+            "type": "object"
+          },
+          "output": {
+            "$ref": "#/components/schemas/OutputSummary"
+          },
+          "program_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wall time of the program alone, from just before it was started until its exit was noticed. Null if it never ran.",
+            "title": "Program Seconds"
+          },
+          "rusage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null if the program never ran."
+          },
+          "sampled": {
+            "$ref": "#/components/schemas/SampledUsage"
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The signal that ended the program, if one did.",
+            "title": "Signal"
+          },
+          "termination": {
+            "$ref": "#/components/schemas/Termination"
+          },
+          "wall_seconds": {
+            "description": "From the start of the monitor to its end: build commands and program.",
+            "title": "Wall Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "exit_code",
+          "signal",
+          "finished_at",
+          "wall_seconds",
+          "program_seconds",
+          "termination",
+          "rusage",
+          "sampled",
+          "output"
+        ],
+        "title": "RunOutcome",
         "type": "object"
       },
       "RunRecord": {
@@ -2371,6 +2991,157 @@
         "title": "RunStatus",
         "type": "string"
       },
+      "SampledUsage": {
+        "description": "What the periodic samples saw while the program ran. A peak between two samples is\nmissed; a run shorter than the sampling interval has no sample at all.",
+        "properties": {
+          "max_rss_bytes": {
+            "description": "Largest sum over the process tree in one sample.",
+            "title": "Max Rss Bytes",
+            "type": "integer"
+          },
+          "samples": {
+            "title": "Samples",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "samples",
+          "max_rss_bytes"
+        ],
+        "title": "SampledUsage",
+        "type": "object"
+      },
+      "Termination": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "reason": {
+            "description": "'exited': the program ended by itself; otherwise who stopped it and why.",
+            "enum": [
+              "exited",
+              "cancelled",
+              "limit_wall",
+              "limit_rss",
+              "guardrail",
+              "build_failed",
+              "launch_failed",
+              "monitor_terminated",
+              "monitor_error"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "sigkill_sent": {
+            "title": "Sigkill Sent",
+            "type": "boolean"
+          },
+          "sigterm_sent": {
+            "title": "Sigterm Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reason",
+          "detail",
+          "sigterm_sent",
+          "sigkill_sent"
+        ],
+        "title": "Termination",
+        "type": "object"
+      },
+      "WorkerList": {
+        "properties": {
+          "alive": {
+            "description": "How many supervisors can currently start queued runs.",
+            "title": "Alive",
+            "type": "integer"
+          },
+          "workers": {
+            "items": {
+              "$ref": "#/components/schemas/WorkerOut"
+            },
+            "title": "Workers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "workers",
+          "alive"
+        ],
+        "title": "WorkerList",
+        "type": "object"
+      },
+      "WorkerOut": {
+        "properties": {
+          "active_runs": {
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "alive": {
+            "description": "It has not stopped and its heartbeat is recent.",
+            "title": "Alive",
+            "type": "boolean"
+          },
+          "heartbeat_at": {
+            "format": "date-time",
+            "title": "Heartbeat At",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "max_parallel_runs": {
+            "title": "Max Parallel Runs",
+            "type": "integer"
+          },
+          "pid": {
+            "title": "Pid",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "stopped_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "pid",
+          "hostname",
+          "version",
+          "max_parallel_runs",
+          "started_at",
+          "heartbeat_at",
+          "stopped_at",
+          "alive",
+          "active_runs"
+        ],
+        "title": "WorkerOut",
+        "type": "object"
+      },
       "WorkflowStatus": {
         "enum": [
           "backlog",
@@ -2391,6 +3162,69 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/artifacts/{artifact_id}/content": {
+      "get": {
+        "operationId": "download_artifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The file, served with its own media type"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The file is no longer in its run directory"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Download one artifact",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
     "/v1/cards/{card_id}": {
       "get": {
         "operationId": "get_card",
@@ -3612,6 +4446,18 @@
             }
           },
           {
+            "description": "Return an existing experiment of the project with this name and exactly this protocol (200) instead of creating a duplicate.",
+            "in": "query",
+            "name": "reuse",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Return an existing experiment of the project with this name and exactly this protocol (200) instead of creating a duplicate.",
+              "title": "Reuse",
+              "type": "boolean"
+            }
+          },
+          {
             "description": "Label of the calling surface, stored on every event it causes.",
             "in": "header",
             "name": "x-actor",
@@ -3636,6 +4482,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "With reuse: the existing experiment with this name and protocol"
+          },
           "201": {
             "content": {
               "application/json": {
@@ -3805,6 +4661,70 @@
         "summary": "State a hypothesis",
         "tags": [
           "hypotheses"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/runs": {
+      "get": {
+        "operationId": "list_project_runs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The newest runs of a project across its experiments",
+        "tags": [
+          "runs"
         ]
       }
     },
@@ -4030,6 +4950,292 @@
         ]
       }
     },
+    "/v1/runs/{run_id}/artifacts": {
+      "get": {
+        "operationId": "list_artifacts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Files of a finished run with size and checksum",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "list_run_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Ledger events of one run, in sequence order",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/logs": {
+      "get": {
+        "operationId": "read_logs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cursor returned by the previous page (a byte offset).",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor returned by the previous page (a byte offset).",
+              "title": "After"
+            }
+          },
+          {
+            "description": "Start from the last N records instead of a cursor.",
+            "in": "query",
+            "name": "tail",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 10000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start from the last N records instead of a cursor.",
+              "title": "Tail"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only these streams. Repeat the parameter for several.",
+            "in": "query",
+            "name": "stream",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "stdout",
+                      "stderr",
+                      "build"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only these streams. Repeat the parameter for several.",
+              "title": "Stream"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is beyond what is recorded"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Output lines of a run with arrival time and stream, by cursor",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
     "/v1/runs/{run_id}/record": {
       "get": {
         "operationId": "export_run_record",
@@ -4077,6 +5283,201 @@
           }
         },
         "summary": "Export the run with its provenance and protocol, to repeat it elsewhere",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/resources": {
+      "get": {
+        "operationId": "read_resources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cursor returned by the previous page (a byte offset).",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor returned by the previous page (a byte offset).",
+              "title": "After"
+            }
+          },
+          {
+            "description": "Start from the last N records instead of a cursor.",
+            "in": "query",
+            "name": "tail",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 10000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start from the last N records instead of a cursor.",
+              "title": "Tail"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is beyond what is recorded"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Samples of the run's process tree (CPU, memory, processes), by cursor",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}:cancel": {
+      "post": {
+        "operationId": "cancel_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RunCancel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Ask for a run to be stopped; returns at once",
         "tags": [
           "runs"
         ]
@@ -4183,6 +5584,47 @@
         "summary": "Queue a run with the same commit, parameters and seed",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/v1/workers": {
+      "get": {
+        "operationId": "list_workers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Supervisor processes and whether any is alive to start queued runs",
+        "tags": [
+          "observability"
         ]
       }
     }

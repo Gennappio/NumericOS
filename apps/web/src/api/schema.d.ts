@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/v1/artifacts/{artifact_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download one artifact */
+        get: operations["download_artifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -216,6 +233,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest runs of a project across its experiments */
+        get: operations["list_project_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}:revoke-execution-trust": {
         parameters: {
             query?: never;
@@ -267,6 +301,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/runs/{run_id}/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Files of a finished run with size and checksum */
+        get: operations["list_artifacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ledger events of one run, in sequence order */
+        get: operations["list_run_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Output lines of a run with arrival time and stream, by cursor */
+        get: operations["read_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs/{run_id}/record": {
         parameters: {
             query?: never;
@@ -278,6 +363,40 @@ export interface paths {
         get: operations["export_run_record"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Samples of the run's process tree (CPU, memory, processes), by cursor */
+        get: operations["read_resources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}:cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask for a run to be stopped; returns at once */
+        post: operations["cancel_run"];
         delete?: never;
         options?: never;
         head?: never;
@@ -301,10 +420,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Supervisor processes and whether any is alive to start queued runs */
+        get: operations["list_workers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArtifactList */
+        ArtifactList: {
+            /** Artifacts */
+            artifacts: components["schemas"]["ArtifactOut"][];
+        };
+        /** ArtifactOut */
+        ArtifactOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Media Type */
+            media_type: string;
+            /**
+             * Name
+             * @description Path inside the run directory.
+             */
+            name: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Sha256
+             * @description Null for files too large to hash.
+             */
+            sha256: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** BoardOut */
         BoardOut: {
             /** Cards */
@@ -407,6 +576,11 @@ export interface components {
              * @description When the executed state was fixed.
              */
             captured_at?: string | null;
+            /**
+             * Changed During Run
+             * @description working_tree mode only: the tree was modified while the program ran, so the record describes what the program started with, not everything it may have read.
+             */
+            changed_during_run?: boolean | null;
             commit?: components["schemas"]["CommitInfo"] | null;
             /** Diff Bytes */
             diff_bytes?: number | null;
@@ -583,14 +757,15 @@ export interface components {
         };
         /**
          * ExecutableRecord
-         * @description The program file that ``argv[0]`` resolved to.
+         * @description The program file that ``argv[0]`` resolved to when the program was started, that is
+         *     after any build command: for a compiled program it identifies the binary that ran.
          */
         ExecutableRecord: {
             /** Argv0 */
             argv0: string;
             /**
              * Path
-             * @description Null when it could not be resolved.
+             * @description Null until the program starts, and when it could not be resolved.
              */
             path: string | null;
             /** Sha256 */
@@ -613,7 +788,7 @@ export interface components {
             command: string[];
             /**
              * Env
-             * @description Environment set for the run.
+             * @description Environment set for the run. These values are part of the contract and are stored and exported as written: pass a secret with inherit_env instead.
              */
             env?: {
                 [key: string]: string;
@@ -625,7 +800,7 @@ export interface components {
             environment_probes?: string[][];
             /**
              * Inherit Env
-             * @description Names passed through from the supervisor's environment.
+             * @description Names passed through from the supervisor's environment. Their values are not part of the contract; in the run record those of secret-looking names are redacted.
              */
             inherit_env?: string[];
             /** Inputs */
@@ -761,7 +936,7 @@ export interface components {
          * @description Why a run did not end normally. The classes call for different reactions.
          * @enum {string}
          */
-        FailureClass: "code_error" | "resource_limit" | "numerical_instability" | "infrastructure" | "unknown";
+        FailureClass: "code_error" | "resource_limit" | "numerical_instability" | "data_problem" | "infrastructure" | "unknown";
         /** FileDigest */
         FileDigest: {
             /** Path */
@@ -1001,6 +1176,56 @@ export interface components {
             /** Wall Seconds */
             wall_seconds: number;
         };
+        /** LogLine */
+        LogLine: {
+            /**
+             * Cut
+             * @description The line was longer than the limit and cut.
+             * @default false
+             */
+            cut?: boolean;
+            /**
+             * Metric
+             * @description The line was consumed as a metric record.
+             * @default false
+             */
+            metric?: boolean;
+            /**
+             * Stream
+             * @enum {string}
+             */
+            stream: "stdout" | "stderr" | "build";
+            /**
+             * T
+             * @description Epoch seconds when the monitor received the line.
+             */
+            t: number;
+            /** Text */
+            text: string;
+        };
+        /**
+         * LogPage
+         * @description Output lines after a cursor. ``complete`` means the run ended and nothing follows.
+         */
+        LogPage: {
+            /**
+             * Complete
+             * @description The run ended and every line has been returned.
+             */
+            complete: boolean;
+            /**
+             * Has More
+             * @description More lines are already recorded after 'next_cursor'.
+             */
+            has_more: boolean;
+            /** Lines */
+            lines: components["schemas"]["LogLine"][];
+            /**
+             * Next Cursor
+             * @description Pass as 'after' to continue. It is a byte offset.
+             */
+            next_cursor: number;
+        };
         /**
          * MetricSpec
          * @description A quantity the experiment measures, with its unit and who measures it.
@@ -1034,6 +1259,22 @@ export interface components {
              * @default 1
              */
             resource_interval_seconds?: number;
+        };
+        /** OutputSummary */
+        OutputSummary: {
+            /** Build Lines */
+            build_lines: number;
+            /** Bytes */
+            bytes: number;
+            /** Stderr Lines */
+            stderr_lines: number;
+            /** Stdout Lines */
+            stdout_lines: number;
+            /**
+             * Truncated
+             * @description Output beyond the run's limit was seen but not stored.
+             */
+            truncated: boolean;
         };
         /**
          * ParserSpec
@@ -1074,6 +1315,22 @@ export interface components {
             output_sha256?: string | null;
             /** Seconds */
             seconds: number;
+        };
+        /**
+         * ProcessUsage
+         * @description What the operating system measured for the program and the descendants it waited for,
+         *     exact at exit. The build commands are not included.
+         */
+        ProcessUsage: {
+            /** Cpu System Seconds */
+            cpu_system_seconds: number;
+            /** Cpu User Seconds */
+            cpu_user_seconds: number;
+            /**
+             * Max Rss Bytes
+             * @description Largest resident set of a single process of the program's tree.
+             */
+            max_rss_bytes: number;
         };
         /** ProjectCreate */
         ProjectCreate: {
@@ -1165,6 +1422,90 @@ export interface components {
              */
             version: number;
         };
+        /** ResourcePage */
+        ResourcePage: {
+            /** Complete */
+            complete: boolean;
+            /** Has More */
+            has_more: boolean;
+            /** Next Cursor */
+            next_cursor: number;
+            /** Samples */
+            samples: components["schemas"]["ResourceSample"][];
+        };
+        /**
+         * ResourceSample
+         * @description One sample of the program's process tree.
+         */
+        ResourceSample: {
+            /**
+             * Cpu Percent
+             * @description CPU the process tree used since the previous sample (the first: since the command started), as a percentage of one core.
+             */
+            cpu_percent: number;
+            /**
+             * Cpu Seconds
+             * @description CPU seconds seen so far in this phase.
+             */
+            cpu_seconds: number;
+            /**
+             * Elapsed
+             * @description Seconds since the monitor started.
+             */
+            elapsed: number;
+            /**
+             * Io Read Bytes
+             * @description Null where the platform does not report it.
+             */
+            io_read_bytes: number | null;
+            /** Io Write Bytes */
+            io_write_bytes: number | null;
+            /**
+             * Phase
+             * @description Whether a build command or the program was running.
+             * @enum {string}
+             */
+            phase: "build" | "program";
+            /** Processes */
+            processes: number;
+            /** Rss Bytes */
+            rss_bytes: number;
+            /**
+             * T
+             * @description Epoch seconds when the sample was taken.
+             */
+            t: number;
+            /** Threads */
+            threads: number;
+        };
+        /**
+         * ResourceSummary
+         * @description The resource samples recorded so far, in short.
+         */
+        ResourceSummary: {
+            /** @description The latest sample, of the build or of the program. */
+            last?: components["schemas"]["ResourceSample"] | null;
+            /**
+             * Max Rss Bytes
+             * @description Largest sum over the process tree in one of those samples.
+             * @default 0
+             */
+            max_rss_bytes?: number;
+            /**
+             * Samples
+             * @description Samples taken while the program ran.
+             * @default 0
+             */
+            samples?: number;
+        };
+        /** RunCancel */
+        RunCancel: {
+            /**
+             * Reason
+             * @default
+             */
+            reason?: string;
+        };
         /** RunCreate */
         RunCreate: {
             /**
@@ -1199,6 +1540,13 @@ export interface components {
              * @description The exact argument vector of the program.
              */
             argv: string[];
+            /**
+             * Cancel Reason
+             * @description Why the run was asked to stop, if it was.
+             */
+            cancel_reason: string | null;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
             /** @description The exact code this run executes. */
             code: components["schemas"]["CodeProvenance"] | null;
             /**
@@ -1208,9 +1556,20 @@ export interface components {
             created_at: string;
             /** @description Host, program file, probes and variables. Null until the run starts. */
             environment: components["schemas"]["EnvironmentRecord"] | null;
+            /** Exit Code */
+            exit_code: number | null;
+            /** Exit Signal */
+            exit_signal: string | null;
             /** Experiment Id */
             experiment_id: string;
             failure_class: components["schemas"]["FailureClass"] | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Heartbeat At
+             * @description When a supervisor last recorded progress of this run.
+             */
+            heartbeat_at: string | null;
             /** Id */
             id: string;
             /**
@@ -1220,6 +1579,8 @@ export interface components {
             inputs: components["schemas"]["InputRecord"][] | null;
             /** Label */
             label: string;
+            /** @description How the program ended, as its monitor recorded it. Null until then. */
+            outcome: components["schemas"]["RunOutcome"] | null;
             /**
              * Parameters
              * @description The complete assignment: controls and the chosen independent values.
@@ -1227,6 +1588,11 @@ export interface components {
             parameters: {
                 [key: string]: boolean | number | string;
             };
+            /**
+             * Pid
+             * @description Process ID of the program while it runs.
+             */
+            pid: number | null;
             /** Project Id */
             project_id: string;
             /** Protocol Digest */
@@ -1236,8 +1602,15 @@ export interface components {
              * @description The run this one repeats with the same code, parameters and seed.
              */
             reproduces_run_id: string | null;
+            /** @description Summary of the resource samples taken so far. */
+            resources: components["schemas"]["ResourceSummary"] | null;
             /** Seed */
             seed: number | null;
+            /**
+             * Started At
+             * @description When the program started, not when queued.
+             */
+            started_at: string | null;
             /** @description Operational state. 'succeeded' is a normal process end, not a valid result. */
             status: components["schemas"]["RunStatus"];
             /** Status Reason */
@@ -1249,6 +1622,50 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+            /** Wall Seconds */
+            wall_seconds: number | null;
+            /**
+             * Worker Id
+             * @description The supervisor currently responsible for the run.
+             */
+            worker_id: string | null;
+        };
+        /**
+         * RunOutcome
+         * @description How the program ended, as recorded by its monitor (``exit.json``).
+         */
+        RunOutcome: {
+            /**
+             * Exit Code
+             * @description Of the program; null if it never ran.
+             */
+            exit_code: number | null;
+            /** Finished At */
+            finished_at: string;
+            /** Observed */
+            observed?: {
+                [key: string]: unknown;
+            };
+            output: components["schemas"]["OutputSummary"];
+            /**
+             * Program Seconds
+             * @description Wall time of the program alone, from just before it was started until its exit was noticed. Null if it never ran.
+             */
+            program_seconds: number | null;
+            /** @description Null if the program never ran. */
+            rusage: components["schemas"]["ProcessUsage"] | null;
+            sampled: components["schemas"]["SampledUsage"];
+            /**
+             * Signal
+             * @description The signal that ended the program, if one did.
+             */
+            signal: string | null;
+            termination: components["schemas"]["Termination"];
+            /**
+             * Wall Seconds
+             * @description From the start of the monitor to its end: build commands and program.
+             */
+            wall_seconds: number;
         };
         /**
          * RunRecord
@@ -1277,6 +1694,77 @@ export interface components {
          */
         RunStatus: "queued" | "starting" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "lost";
         /**
+         * SampledUsage
+         * @description What the periodic samples saw while the program ran. A peak between two samples is
+         *     missed; a run shorter than the sampling interval has no sample at all.
+         */
+        SampledUsage: {
+            /**
+             * Max Rss Bytes
+             * @description Largest sum over the process tree in one sample.
+             */
+            max_rss_bytes: number;
+            /** Samples */
+            samples: number;
+        };
+        /** Termination */
+        Termination: {
+            /** Detail */
+            detail: string;
+            /**
+             * Reason
+             * @description 'exited': the program ended by itself; otherwise who stopped it and why.
+             * @enum {string}
+             */
+            reason: "exited" | "cancelled" | "limit_wall" | "limit_rss" | "guardrail" | "build_failed" | "launch_failed" | "monitor_terminated" | "monitor_error";
+            /** Sigkill Sent */
+            sigkill_sent: boolean;
+            /** Sigterm Sent */
+            sigterm_sent: boolean;
+        };
+        /** WorkerList */
+        WorkerList: {
+            /**
+             * Alive
+             * @description How many supervisors can currently start queued runs.
+             */
+            alive: number;
+            /** Workers */
+            workers: components["schemas"]["WorkerOut"][];
+        };
+        /** WorkerOut */
+        WorkerOut: {
+            /** Active Runs */
+            active_runs: number;
+            /**
+             * Alive
+             * @description It has not stopped and its heartbeat is recent.
+             */
+            alive: boolean;
+            /**
+             * Heartbeat At
+             * Format: date-time
+             */
+            heartbeat_at: string;
+            /** Hostname */
+            hostname: string;
+            /** Id */
+            id: string;
+            /** Max Parallel Runs */
+            max_parallel_runs: number;
+            /** Pid */
+            pid: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Stopped At */
+            stopped_at: string | null;
+            /** Version */
+            version: string;
+        };
+        /**
          * WorkflowStatus
          * @enum {string}
          */
@@ -1290,6 +1778,55 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    download_artifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file, served with its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The file is no longer in its run directory */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_card: {
         parameters: {
             query?: never;
@@ -2095,7 +2632,10 @@ export interface operations {
     };
     create_experiment: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Return an existing experiment of the project with this name and exactly this protocol (200) instead of creating a duplicate. */
+                reuse?: boolean;
+            };
             header?: {
                 /** @description Label of the calling surface, stored on every event it causes. */
                 "x-actor"?: string;
@@ -2111,6 +2651,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description With reuse: the existing experiment with this name and protocol */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
             /** @description Successful Response */
             201: {
                 headers: {
@@ -2214,6 +2763,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HypothesisOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_project_runs: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunList"];
                 };
             };
             /** @description Resource not found */
@@ -2388,6 +2979,147 @@ export interface operations {
             };
         };
     };
+    list_artifacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_run_events: {
+        parameters: {
+            query?: {
+                after?: number | null;
+                limit?: number;
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPage"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    read_logs: {
+        parameters: {
+            query?: {
+                /** @description Cursor returned by the previous page (a byte offset). */
+                after?: number | null;
+                /** @description Start from the last N records instead of a cursor. */
+                tail?: number | null;
+                limit?: number;
+                /** @description Only these streams. Repeat the parameter for several. */
+                stream?: ("stdout" | "stderr" | "build")[] | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogPage"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The cursor is beyond what is recorded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     export_run_record: {
         parameters: {
             query?: never;
@@ -2406,6 +3138,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunRecord"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    read_resources: {
+        parameters: {
+            query?: {
+                /** @description Cursor returned by the previous page (a byte offset). */
+                after?: number | null;
+                /** @description Start from the last N records instead of a cursor. */
+                tail?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourcePage"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The cursor is beyond what is recorded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancel_run: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RunCancel"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
                 };
             };
             /** @description Resource not found */
@@ -2473,6 +3307,44 @@ export interface operations {
             };
             /** @description Stale version or project mismatch */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_workers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

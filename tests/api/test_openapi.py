@@ -49,4 +49,12 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "rerun",
         "trust_execution",
         "revoke_execution_trust",
+        "list_project_runs",
+        "cancel_run",
+        "read_logs",
+        "read_resources",
+        "list_run_events",
+        "list_artifacts",
+        "download_artifact",
+        "list_workers",
     }

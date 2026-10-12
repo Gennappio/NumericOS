@@ -17,6 +17,7 @@ dependencies = [
   "sse-starlette>=2.1",
   "pyyaml>=6.0",
   "psutil>=6.0",
+  "watchfiles>=0.21",
 ]
 
 [project.scripts]

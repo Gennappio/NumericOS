@@ -13,16 +13,21 @@ from fastapi.routing import APIRoute
 from numericos import __version__
 from numericos.api.errors import ERROR_RESPONSES, install_error_handlers
 from numericos.api.middleware import CorrelationIdMiddleware
-from numericos.api.routes import cards, events, health, projects, research
+from numericos.api.routes import cards, events, execution, health, projects, research
 from numericos.config import Settings
 from numericos.events.notifier import EventNotifier
+from numericos.events.watcher import LedgerWatcher
 from numericos.persistence import migrate
 from numericos.persistence.engine import make_engine, make_session_factory
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Events committed by other processes (the supervisor) reach subscribers through this.
+    watcher = LedgerWatcher(app.state.settings.db_path, app.state.notifier)
+    watcher.start()
     yield
+    watcher.stop()
     app.state.engine.dispose()
 
 
@@ -62,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         projects.router,
         cards.router,
         research.router,
+        execution.router,
         events.router,
     ):
         app.include_router(router, prefix="/v1", responses=ERROR_RESPONSES)

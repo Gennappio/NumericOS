@@ -3,8 +3,10 @@
 Status: **M0 accepted** on 2026-10-12 (tag `m0-gate`, evidence in
 `docs/milestones/M0-gate.md`). The active milestone is M3; ADR-0004 records why it precedes M1
 and M2. M3 so far: T01 (typed hypotheses, experiments and runs; the experiment contract; queued
-runs) and T02 (provenance of code, inputs and environment; explicit execution trust). **Runs are
-not executed yet**: the supervisor arrives with M3-T03. Everything below describes
+runs), T02 (provenance of code, inputs and environment; explicit execution trust) and T03 (the
+supervisor: runs are executed, observed, bounded, cancellable and recovered after a restart).
+Scientific metrics and validators arrive with T04 and T05: until then a run shows what its
+process did, not whether its result is valid. Everything below describes
 what exists; later milestones extend this file instead of replacing it. Roadmap and acceptance
 gates live in `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md` and `milestones/`.
 
@@ -20,9 +22,14 @@ src/numericos/
   events/                      ledger row builder, in-process wake-up notifier, replay-then-live
                                iteration (`stream.follow`)
   provenance/                  read-only Git access, code capture, input checksums, environment
-  services/                    use cases (projects, cards, events): the only business logic
+  executor/                    the per-run monitor, the worker, launch preparation, outcome
+                               classification, artifact collection
+  observability/               cursor reads of the files a monitor appends to
+  services/                    use cases (projects, cards, research entities, runs,
+                               observations): the only business logic
   api/                         FastAPI app factory, routers, error envelope, correlation middleware
-  cli/                         `numericos` command line (HTTP client; `serve`/`db` are server side)
+  cli/                         `numericos` command line (HTTP client; `serve`, `db` and
+                               `worker run` are server side)
 tests/                         pytest: unit, persistence, api (TestClient), cli and integration
                                (real server subprocess)
 contracts/openapi.v1.json      exported public contract (generated, committed, drift-checked)
@@ -35,6 +42,10 @@ docs/, milestones/, skills/    specification pack (product invariants, briefs, c
 
 Dependency direction inside `src/numericos`: `core <- persistence <- events <- services <- api`;
 `cli` only speaks HTTP (it shares `core` vocabularies, never `persistence` or `services`).
+`executor` uses `core`, `persistence`, `events` and `provenance`; services read its file layout
+and write cancellation requests, and the worker never imports services. The monitor imports
+only the layout, its specification and the executable lookup, so it starts quickly and needs
+no database.
 
 ## Configuration
 
@@ -50,7 +61,11 @@ Dependency direction inside `src/numericos`: `core <- persistence <- events <- s
 
 `numericos serve --ephemeral` uses a fresh temporary data directory (demos, e2e tests).
 `numericos serve --reload` (what `make api` runs) restarts the server when a file of the
-`numericos` package changes; migrations are applied once, at startup.
+`numericos` package changes; migrations are applied at startup and after every restart.
+`numericos worker run --reload` (what `make worker` runs) does the same for the supervisor.
+Restarting a supervisor never interrupts a run. A supervisor does not migrate the database: it
+waits (`--schema-timeout`, 60 s by default) until the API has brought it to the schema it
+expects, and exits with an explanation otherwise.
 
 Tooling: `uv` manages the Python environment in `./.venv`; the Makefile and the Playwright config
 export `UV_PROJECT_ENVIRONMENT` explicitly because a global value in the developer's shell would
@@ -74,17 +89,18 @@ naive datetimes are rejected at bind time.
 
 Vocabularies (`core/enums.py`): card types `task | hypothesis | experiment | issue | decision`;
 workflow statuses `backlog | planned | active | review | completed | blocked` (operational, never
-scientific validity); event types `PROJECT_CREATED | PROJECT_UPDATED | CARD_CREATED |
-CARD_UPDATED | CARD_MOVED` (UPPER_SNAKE like the adapter contract); severities
+scientific validity); event types in UPPER_SNAKE like the adapter contract (`PROJECT_CREATED`,
+`CARD_MOVED`, `RUN_FINISHED`, ...; the full list is in "Use cases and their events"); severities
 `debug | info | warning | error`.
 
-IDs are `<prefix>_<ULID>` strings: `prj_`, `card_`, `evt_`, `cor_` in use; `hyp_`, `exp_`,
-`run_`, `res_`, `ases_`, `msg_`, `ann_`, `ctx_`, `art_` reserved for later entities
+IDs are `<prefix>_<ULID>` strings: `prj_`, `card_`, `evt_`, `cor_`, `hyp_`, `exp_`, `run_`,
+`wrk_` and `art_` in use; `res_`, `ases_`, `msg_`, `ann_`, `ctx_` reserved for later entities
 (`core/ids.py`). No empty tables are created ahead of their milestone.
 
 ### Unit of work and ordering
 
-`UnitOfWork` (one per mutation) exposes `projects`, `cards` and `events` repositories;
+`UnitOfWork` (one per mutation) exposes one repository per table (`projects`, `cards`,
+`events`, `hypotheses`, `experiments`, `runs`, `workers`, `artifacts`);
 `record()` appends the ledger row inside the transaction and `commit()` performs one COMMIT, then
 wakes subscribers. Card placement is computed by `persistence/ordering.place()` and persisted by
 `CardRepository.reindex()`, which renumbers the destination column (`index * 1000`) and writes
@@ -103,7 +119,8 @@ migrations cannot drift. Authoring a revision: `uv run alembic revision --autoge
 
 Revisions: `0001` projects, board cards, events; `0002` hypotheses, experiments, runs and
 `events.run_id`; `0003` run provenance (code, inputs, environment, reproduced run) and
-`projects.execution_trusted_at`.
+`projects.execution_trusted_at`; `0004` run supervision (worker, process identities, times,
+cancellation, exit, outcome, resource summary, read offsets), `workers` and `artifacts`.
 
 ## Events
 
@@ -116,6 +133,12 @@ so delivery can never precede durability.
 `seq` order, then each new one as it is committed. It clears the wake flag before each read (a
 commit during the read is not lost) and re-reads after every heartbeat, which bounds the delay
 for events committed by another process (ADR-0003).
+
+The supervisor commits from its own process. `events/watcher.py` lets the API notice: one
+thread asks SQLite for `PRAGMA data_version`, which changes whenever another connection
+commits, and reports the new ledger head to the notifier, which wakes every subscriber. Nothing
+is delivered from there; subscribers still read by cursor. Run events therefore reach an open
+stream within a fraction of a second instead of at the next heartbeat.
 
 ### Event stream
 
@@ -188,15 +211,24 @@ working tree had uncommitted changes at submission, the run says so and also say
 executed. An experiment may instead choose `working_tree` mode; the supervisor then records, at
 start, the commit under the tree, a binary patch of the uncommitted changes with its SHA-256,
 and the untracked files (digests, plus an archive up to 64 MB), which together rebuild the
-executed tree.
+executed tree. When such a run ends, the supervisor checks whether HEAD or the changes to
+tracked files are still the recorded ones and says so on the run (`changed_during_run`,
+`RUN_SOURCE_CHANGED`); files the program wrote beside its sources do not count as an edit.
 
 **Which inputs.** Declared input files are hashed when the run starts; an expected SHA-256 in
 the protocol is enforced.
 
 **Which environment.** Host facts (platform, CPU, cores, memory), the program file that
 `argv[0]` resolves to with its digest, the outputs of the protocol's probe commands, and the
-run's environment variables. A run gets a small base environment plus what the protocol
-declares or asks to inherit, nothing else; secret-looking values are redacted in the record.
+run's environment variables. The program file is looked up when the program starts, after the
+build commands, so a compiled program is identified by the binary that ran. A run gets a small
+base environment plus what the protocol declares or asks to inherit, nothing else;
+secret-looking values are redacted in the record. Values written in the protocol's `env` are
+part of the contract and are stored as written: a secret is passed with `inherit_env`. The
+directory of the Python environment NumericOS itself runs in is removed from the inherited
+`PATH`: a run that says `python3` gets the user's interpreter, not the one of the tool that
+supervises it. A project with its own environment names its interpreter in the command, or
+creates it in a build command (`build: [[uv, sync, --frozen]]`, then `.venv/bin/python`).
 
 NumericOS only reads the user's repository (`provenance/git.py`): no checkout, reset, clean,
 stash, commit or fetch, and no index refresh.
@@ -210,6 +242,73 @@ Running an experiment runs the project's code with the user's permissions. No ru
 until the project's `root_path` has been trusted by an explicit action that repeats the exact
 path. The path must be the top of a Git work tree. Changing `root_path` withdraws the trust.
 There is no sandbox: trust means the command runs as the user.
+
+## Execution and observation of runs (M3-T03)
+
+ADR-0006 records the decisions; this section describes what runs.
+
+```text
+numericos serve            API: queues runs, records cancellation requests, serves observations
+numericos worker run       supervisor: prepares runs, starts monitors, records what they write
+  python -m numericos.executor.monitor RUN_DIR      one per run, detached, files only
+    the program            in its own process group
+```
+
+**Life of a run.** `POST /v1/experiments/{id}/runs` creates it `queued` and returns. A worker
+claims it (`starting`), prepares its directory, and starts its monitor. The monitor runs the
+build commands, then the program (`running`, `RUN_STARTED`). When the program has ended the
+monitor writes the outcome and the worker closes the run (`RUN_FINISHED`) as `succeeded`,
+`failed`, `timed_out` or `cancelled`. `lost` is the end of a run whose monitor and program are
+both gone without a recorded outcome. Each status and failure class is defined in ADR-0006.
+
+**Run directory** `<data_dir>/runs/<run_id>/`:
+
+| File | Written by | Content |
+| --- | --- | --- |
+| `spec.json` (0600) | worker | argument vector, working directory, real environment, build commands, limits |
+| `monitor.json` | monitor | its PID and start time; created exclusively, so a run has one monitor |
+| `launch.stamp` | monitor | touched just before the program starts |
+| `started.json` | monitor | PID, start time and process group of the program; the program file with its digest |
+| `output.jsonl` | monitor | one record per output line: arrival time, stream (`o`, `e`, build `b`), text |
+| `resources.jsonl` | monitor | samples of the process tree: CPU, resident memory, processes, threads, I/O |
+| `journal.jsonl` | monitor | what the monitor did: limits exceeded, signals sent, output cut, leftovers |
+| `exit.json` | monitor | exit code or signal of the program, why it ended, usage totals, output counts |
+| `cancel.json` | API or worker | a request to stop the program |
+| `code/` | worker | the exported commit (`ref` mode); the program's working directory is inside it |
+| `outputs/` | the program | results; its path is `$NUMERICOS_OUTPUT_DIR` |
+| `environment/`, `code.diff`, `untracked.tar` | worker | probe outputs; the working-tree record |
+
+The program also gets `NUMERICOS_RUN_ID`, `NUMERICOS_RUN_DIR`, `NUMERICOS_CODE_DIR` and
+`NUMERICOS_PROJECT_ROOT`, and `PYTHONUNBUFFERED=1` unless the protocol sets it otherwise.
+
+**What is observed (level L0).**
+
+- Output lines with arrival time and stream; a line longer than 1 MiB is cut and marked.
+- Exit code or signal of the program.
+- Two durations. `wall_seconds` runs from the start of the monitor to its end, build commands
+  included, and is what the wall-clock limit bounds. `program_seconds` is the program alone,
+  from just before it was started to the moment its exit was noticed (a `SIGCHLD` wake-up
+  makes that immediate).
+- Exact totals for the program: its CPU time (user and system) and the largest resident set of
+  one of its processes, as the operating system reports them when the program is reaped
+  (`wait4`). They cover the program and the descendants it waited for, not the build.
+- Samples of the process tree at the protocol's interval: CPU use since the previous sample,
+  resident memory summed over the tree, processes, threads and, where the platform offers it,
+  I/O. Each is tagged `build` or `program`. The first comes one interval after the command
+  started, so a run shorter than the interval has exact totals and no samples. A peak between
+  two samples is missed: the sampled maximum is tree-wide but approximate.
+
+Nothing numerical is inferred from these: metrics come with T04.
+
+**Limits and stopping.** See ADR-0006, decision 5. The wall-clock limit covers the build
+commands and the program.
+
+**Recovery.** See ADR-0006, decision 7. Workers are listed by `GET /v1/workers` with whether
+they are alive; without a live one queued runs wait, and the CLI says so.
+
+**Artifacts.** Registered when the run ends (`GET /v1/runs/{id}/artifacts`), each with kind,
+media type, size and SHA-256, and downloadable. Kinds: `output`, `resources`, `journal`,
+`outcome`, `monitor_log`, `code_diff`, `untracked_files`, `environment_probe`, `result`.
 
 ## Use cases and their events
 
@@ -227,7 +326,23 @@ bumps no version.
 | state / reword a hypothesis | `HYPOTHESIS_CREATED` / `HYPOTHESIS_UPDATED` | `hypothesis`, `changed_fields` |
 | define / change an experiment | `EXPERIMENT_CREATED` / `EXPERIMENT_UPDATED` | `experiment`, `changed_fields` |
 | queue a run | `RUN_QUEUED` | `run`; the event carries `run_id` |
+| ask for a run to be stopped | `RUN_CANCEL_REQUESTED` (and `RUN_FINISHED` at once if it was still queued) | `reason`, `status_when_requested` |
 | trust / revoke execution for a project | `PROJECT_EXECUTION_TRUSTED` / `PROJECT_EXECUTION_TRUST_REVOKED` | `project` |
+
+Events of a run written by the supervisor (`producer: worker`, actor `worker:<id>`, the
+correlation ID of the request that queued the run, `run_id` set):
+
+| Event | When | Payload |
+| --- | --- | --- |
+| `RUN_STARTED` | the program is running | `pid`, `argv`, `code_sha` |
+| `RUN_FINISHED` | the run reached a final status | `status`, `failure_class`, `status_reason`, `exit_code`, `signal`, `wall_seconds`, `code_sha`, `program_started`, `results_not_listed` if any |
+| `RUN_LIMIT_EXCEEDED` | a limit was passed and the program is being stopped | `limit`, `value`, `threshold` |
+| `RUN_OUTPUT_TRUNCATED` | output beyond the limit is no longer stored | `limit_bytes` |
+| `RUN_LEFTOVER_PROCESSES` | the program ended and left processes behind, which were stopped | |
+| `RUN_SOURCE_CHANGED` | working-tree run: HEAD or the tracked changes moved while it ran | `detail` |
+| `RUN_ADOPTED` | another worker took the run over | `previous_worker_id`, `worker_id` |
+| `RUN_REQUEUED` | its worker stopped before the program was started | `reason` |
+| `RUN_MONITOR_LOST` | the monitor is gone while the program still runs | `pid` |
 
 `project` and `card` are the public representations after the change. Placement rules: a new
 `workflow_status` moves the card to `position` in that column (appended when omitted); `position`
@@ -245,8 +360,15 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `POST /v1/projects/{project_id}/cards` | create a typed card at the end of its column |
 | `GET /v1/cards/{card_id}`, `PATCH /v1/cards/{card_id}` | read, edit and/or move (needs `version`; optional `project_id` assertion) |
 | `POST`, `GET /v1/projects/{project_id}/hypotheses`; `GET`, `PATCH /v1/hypotheses/{id}` | state, list, read, reword (needs `version`) |
-| `POST`, `GET /v1/projects/{project_id}/experiments`; `GET`, `PATCH /v1/experiments/{id}` | define by protocol, list, read; rename, relink or replace the protocol while there are no runs |
+| `POST`, `GET /v1/projects/{project_id}/experiments`; `GET`, `PATCH /v1/experiments/{id}` | define by protocol (`?reuse=true` returns the experiment that already has this name and exactly this protocol), list, read; rename, relink or replace the protocol while there are no runs |
 | `POST`, `GET /v1/experiments/{id}/runs`; `GET /v1/runs/{id}` | queue a run (optional `Idempotency-Key`, optional `code_ref`), list, read |
+| `GET /v1/projects/{id}/runs?limit=` | the newest runs of a project across its experiments |
+| `POST /v1/runs/{id}:cancel` | ask for a run to be stopped (optional `reason`); returns at once |
+| `GET /v1/runs/{id}/logs?after=&tail=&limit=&stream=` | output lines by cursor: `lines`, `next_cursor`, `has_more`, `complete` |
+| `GET /v1/runs/{id}/resources?after=&tail=&limit=` | resource samples by cursor, same shape |
+| `GET /v1/runs/{id}/events?after=&limit=&order=` | the ledger events of one run |
+| `GET /v1/runs/{id}/artifacts`; `GET /v1/artifacts/{id}/content` | the files a finished run left; download one |
+| `GET /v1/workers` | supervisors, whether each is alive, and how many can start queued runs |
 | `GET /v1/runs/{id}/record`; `POST /v1/runs/{id}:rerun` | export the run record; queue a repetition with the same commit, parameters and seed |
 | `POST /v1/projects/{id}:trust-execution`, `:revoke-execution-trust` | allow, or stop allowing, commands to be executed in the project directory |
 | `GET /v1/events?project_id=&after=&before=&limit=&order=&run_id=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
@@ -272,8 +394,9 @@ clients get stable method names.
   the experiment already has runs), `IDEMPOTENCY_CONFLICT` (409, a key reused for another
   request), `EXECUTION_NOT_TRUSTED` (409, the project directory was not trusted for execution),
   `NOT_A_GIT_REPOSITORY` (409), `NOT_REPRODUCIBLE` (409, a working-tree run cannot be rerun
-  automatically), `CURSOR_AHEAD` (409, a stream cursor beyond the ledger head),
-  `METHOD_NOT_ALLOWED` (405), `INTERNAL_ERROR` (500).
+  automatically), `CURSOR_AHEAD` (409, a cursor beyond the ledger head or beyond what a run
+  has recorded), `ARTIFACT_MISSING` (409, a registered file is no longer in its run
+  directory), `METHOD_NOT_ALLOWED` (405), `INTERNAL_ERROR` (500).
 - `X-Correlation-ID`: accepted from the client when it matches `[A-Za-z0-9_.-]{1,64}`, otherwise a
   `cor_<ULID>` is generated; always echoed on the response and stored on every event.
 - `X-Actor`: label of the calling surface in the form `<surface>:<name>` (`web:local`,
@@ -281,17 +404,22 @@ clients get stable method names.
   it is recorded, not trusted, on a loopback-only service. A malformed value is a 422.
 - Request bodies reject unknown fields (`extra="forbid"`), so typos never silently no-op. In a
   PATCH an absent field means "keep"; `null` is accepted only for nullable fields.
-- Updates require the record `version` (optimistic locking). Idempotency keys are deferred to the
-  asynchronous submissions of M3-M5.
+- Updates require the record `version` (optimistic locking). Run submissions accept an
+  `Idempotency-Key`; other creations do not yet.
 - Timestamps are UTC with a `Z` suffix. Neither IDs nor timestamps depend on the host timezone
   or locale (CI runs the tests under a non-UTC `TZ`).
 
 ## CLI conventions
 
 `numericos` is an HTTP client of the API, never a second backend. Server-side commands are
-limited to `serve` and `db upgrade|current`. With `--json`, stdout carries exactly one JSON
-document and diagnostics go to stderr. Exit codes: `0` success, `1` API error (the envelope is
-printed on stderr), `2` usage error, `3` API unreachable.
+limited to `serve`, `db upgrade|current` and `worker run`. With `--json`, stdout carries exactly
+one JSON document and diagnostics go to stderr. Exit codes: `0` success, `1` API error (the
+envelope is printed on stderr), `2` usage error, `3` API unreachable.
+
+A command that waits for a run (`run watch`, `run submit --watch`, `experiment run`) ends with
+how the run ended: `0` succeeded, `10` failed, `11` cancelled, `12` timed out, `13` lost, `14`
+not finished when `--timeout` expired (the run goes on). While waiting it prints the program's
+output as it arrives; with `--json` that output goes to stderr and stdout carries the run.
 
 | Command | Purpose |
 | --- | --- |
@@ -305,6 +433,13 @@ printed on stderr), `2` usage error, `3` API unreachable.
 | `numericos experiment add FILE -p PROJECT` / `list -p PROJECT` / `show ID` | experiments from a contract file (YAML or JSON; it may carry `name` and `hypothesis_id`) |
 | `numericos run submit EXPERIMENT_ID -P name=value [--seed N] [--label L] [--code-ref REF] [--idempotency-key K]` / `list -e EXPERIMENT` / `show ID` | queue and inspect runs |
 | `numericos run export ID [-o FILE]` / `rerun ID` | the run record as JSON; a repetition with the same commit, parameters and seed |
+| `numericos experiment run FILE -p PROJECT [-P name=value] [--detach]` | register the contract (reusing an identical one), queue one run and follow it to its end |
+| `numericos run submit ... --watch` / `run watch ID [--timeout S] [--quiet]` | follow a run to its end; the exit code says how it ended |
+| `numericos run status ID` / `run list -p PROJECT` / `run cancel ID [--reason R]` | status and reason; newest runs of a project; ask for a stop |
+| `numericos run logs ID [-f] [--tail N] [-s STREAM] [--plain]` | output lines with arrival time and stream; `-f` follows until the run ends |
+| `numericos run resources ID [--tail N]` / `run events ID` | resource samples; the ledger events of the run |
+| `numericos artifact list -r RUN` / `artifact get ID [-o FILE]` | the files a run left; download one |
+| `numericos worker run [--max-parallel N] [--data-dir D] [--reload]` / `worker list` | start a supervisor (server side); list supervisors and whether one is alive |
 | `numericos project trust ID [--yes]` / `untrust ID` | allow or stop allowing execution in the project directory |
 
 `update` and `move` use optimistic locking: without `--version` they read the latest version
@@ -364,6 +499,7 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Persistence | pytest on a migrated temp SQLite | migrations (fresh, idempotent, round trip, `alembic check`), PRAGMAs, repositories, constraints, unit of work, publish-after-commit, sequence continuity across restarts |
 | API | pytest + `TestClient` | projects, cards, placement, events paging, envelope, headers, CORS, health states, contract snapshot |
 | Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, `events follow`, startup migration, concurrent writers, event stream (replay, `Last-Event-ID`, push, another process writing, refused cursors, prompt stop with subscribers), state and ledger across a restart |
+| Execution | pytest with real monitor processes and real programs from a real Git repository; `LiveWorker` (real `numericos worker run` subprocess) where a supervisor must die | the monitor (output, limits, signals, process tree, leftovers, build, one monitor per run); the worker (recording, classification, cancellation, trust and input checks, working tree against commit, results next to the sources, binary identity, parallelism); recovery (supervisor killed and run taken over with complete output, orderly hand-over, lost monitor, re-queue, two supervisors competing for the queue, overtaken readings); API restarted during a run; run events on an open stream |
 | Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions, event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers) |
 | Browser | Playwright against a real API (`--ephemeral`) and the Vite dev server | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state |
 
@@ -371,10 +507,14 @@ No fixtures or mocks live in application code; the GUI shows the real backend co
 
 ## Security defaults
 
-Loopback binding, CORS limited to the GUI origin, no secrets in fixtures or logs, no execution of
-project code in M0. `NUMERICOS_DATA_DIR` is created on demand by `serve`/`db`; a project
-`root_path` is validated as absolute, stored as a reference and never opened or executed before
-the M3 supervisor defines a trust boundary.
+Loopback binding, CORS limited to the GUI origin, no secrets in fixtures or logs.
+`NUMERICOS_DATA_DIR` is created on demand by `serve`/`db`/`worker run`. Project code is executed
+only for a project whose directory was explicitly trusted, as an argument vector, never through
+a shell, with a small base environment plus what the protocol declares or asks to inherit.
+Trust is checked again when a run starts. There is no sandbox: a trusted command runs with the
+user's permissions. `spec.json`, the one file that holds a run's real environment, is readable
+by the user only; records and exports redact the values of secret-looking names. A downloaded
+artifact is served as an attachment from inside its run directory and nowhere else.
 
 ## Deferred boundaries (documented, not built)
 
@@ -386,23 +526,34 @@ the M3 supervisor defines a trust boundary.
 - **SkillRegistry** (M1): `skill_id`, version or Git revision, `source_path`, SHA-256 content
   digest, compatibility flags, installation receipt; design in `docs/SKILL_ARCHITECTURE.md`.
 
-## Known limitations of M0
+## Known limitations
 
 - **Single user, single API process.** No authentication; the API binds to loopback. Live
-  wake-ups need `uvicorn --workers 1`; another process writing to the database is seen by
-  subscribers within one heartbeat.
-- **No idempotency keys.** Updates are protected by optimistic locking (`version`); a retried
-  `POST` creates a second record. Idempotency keys arrive with asynchronous submissions (M3-M5).
+  wake-ups need `uvicorn --workers 1`. What a supervisor commits from its own process reaches
+  subscribers through the ledger watcher within a fraction of a second, and at the next
+  heartbeat at the latest.
+- **Idempotency keys only for run submissions.** Other creations are protected by nothing but
+  the caller: a retried `POST` of a project, card, hypothesis or experiment creates a second
+  record (an experiment can be registered with `?reuse=true` instead).
 - **No delete or archive** for projects and cards, and no cross-project move of a card.
 - **Execution has no sandbox.** A trusted project's commands run with the user's permissions.
   `root_path` must be the top of a Git work tree; submodule and Git LFS contents are not part of
   an exported commit.
+- **Supervision is local and by observation.** One host; limits are checked at the sampling
+  interval, not enforced by the kernel; no CPU-core or GPU limit; no automatic retry; exports
+  of commits are not pruned; a working-tree run's files in the project directory are not
+  collected. ADR-0006 lists the consequences in full.
 - **The list of projects is polled** every 5 seconds; only project pages have an event stream.
 - **The event strip shows the 20 newest entries.** Older ones are read with
   `numericos events list` / `follow`. A full timeline view belongs to M3.
 - **No drag and drop yet** (M1): cards move through their status select and up/down buttons.
-- **SQLite transactions serialise writers and readers** (`BEGIN IMMEDIATE`). Invisible for one
-  local user; to be measured when the job supervisor writes telemetry in M3.
+- **SQLite transactions serialise writers and readers** (`BEGIN IMMEDIATE`). Output and
+  resource samples go to files, not to the database; the supervisor writes one short
+  transaction per run and round. Measured on the development machine (2026-10-12, four runs in
+  parallel, 200 output lines and 20 resource samples per second in total): `GET /v1/runs/{id}`
+  took 0.7 ms at the median and 0.9 ms at the 99th percentile (5.4 ms at worst), a card
+  creation 1.1 ms and 2.3 ms (7.4 ms at worst), the same as with no run in progress. Not
+  measured: many more parallel runs, or a slow disk.
 
 ## Decisions
 
@@ -415,3 +566,5 @@ the M3 supervisor defines a trust boundary.
   agents (M1), knowledge (M2) and any further board work.
 - ADR-0005: a run executes an exact commit exported for it (or, by explicit choice, the recorded
   working tree); NumericOS only reads the repository; execution needs explicit trust.
+- ADR-0006: one monitor process per run and a worker that turns its files into durable state;
+  process identity, stopping, status and failure classes, recovery, fenced transactions.

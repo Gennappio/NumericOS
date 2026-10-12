@@ -9,6 +9,7 @@ import pytest
 from numericos import __version__
 from numericos.core.experiment import InputSpec
 from numericos.provenance import environment
+from numericos.provenance.executable import resolve_executable
 from numericos.provenance.inputs import InputError, checksum_inputs
 
 
@@ -98,9 +99,9 @@ def test_the_program_file_is_resolved_and_digested(tmp_path: Path) -> None:
     tool.chmod(0o755)
     env = {"PATH": str(tool.parent)}
 
-    on_path = environment.resolve_executable("solve", env, tmp_path)
-    relative = environment.resolve_executable("bin/solve", env, tmp_path)
-    missing = environment.resolve_executable("no-such-solver", env, tmp_path)
+    on_path = resolve_executable("solve", env, tmp_path)
+    relative = resolve_executable("bin/solve", env, tmp_path)
+    missing = resolve_executable("no-such-solver", env, tmp_path)
 
     assert (on_path.path, on_path.sha256, on_path.size_bytes) == (str(tool.resolve()), digest, 17)
     assert relative.path == str(tool.resolve())
@@ -126,3 +127,27 @@ def test_probes_record_what_they_print_and_what_went_wrong(tmp_path: Path) -> No
     assert failed.exit_code == 3
     assert (absent.exit_code, absent.output_file) == (None, None)
     assert absent.error is not None and "FileNotFoundError" in absent.error
+
+
+def test_a_run_does_not_inherit_the_environment_numericos_itself_runs_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The tests run inside a virtual environment, as a supervisor started with `uv run` does.
+    assert sys.prefix != sys.base_prefix
+    own = f"{sys.prefix}/bin"
+    monkeypatch.setenv("PATH", f"{own}:/usr/local/bin:/usr/bin:/bin")
+
+    inherited = environment.run_environment({}, [], {})
+    declared = environment.run_environment({"PATH": f"{own}:/opt/solver/bin"}, [], {})
+
+    assert inherited["PATH"] == "/usr/local/bin:/usr/bin:/bin"
+    assert declared["PATH"] == f"{own}:/opt/solver/bin"  # what the protocol says is kept
+    assert "VIRTUAL_ENV" not in inherited
+
+
+def test_outside_a_virtual_environment_the_path_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "base_prefix", sys.prefix)
+
+    assert environment.without_own_environment("/a/bin:/b/bin") == "/a/bin:/b/bin"

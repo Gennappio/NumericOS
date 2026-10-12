@@ -65,6 +65,13 @@ class NotReproducibleError(DomainError):
     status_code = 409
 
 
+class ArtifactMissingError(DomainError):
+    """An artifact is registered but its file is no longer in the run directory."""
+
+    code = "ARTIFACT_MISSING"
+    status_code = 409
+
+
 class ExecutionNotTrustedError(DomainError):
     """Commands may be executed only for a project whose directory was explicitly trusted."""
 

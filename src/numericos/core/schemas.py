@@ -22,6 +22,7 @@ from numericos.core.enums import (
     RunStatus,
     WorkflowStatus,
 )
+from numericos.core.execution import LogLine, ResourceSample, ResourceSummary, RunOutcome
 from numericos.core.experiment import ExperimentProtocol, ParameterValue
 from numericos.core.provenance import CodeProvenance, EnvironmentRecord, InputRecord
 
@@ -317,6 +318,24 @@ class RunOut(BaseModel):
     reproduces_run_id: str | None = Field(
         description="The run this one repeats with the same code, parameters and seed."
     )
+    worker_id: str | None = Field(description="The supervisor currently responsible for the run.")
+    pid: int | None = Field(description="Process ID of the program while it runs.")
+    started_at: datetime | None = Field(description="When the program started, not when queued.")
+    finished_at: datetime | None
+    heartbeat_at: datetime | None = Field(
+        description="When a supervisor last recorded progress of this run."
+    )
+    cancel_requested_at: datetime | None
+    cancel_reason: str | None = Field(description="Why the run was asked to stop, if it was.")
+    exit_code: int | None
+    exit_signal: str | None
+    wall_seconds: float | None
+    outcome: RunOutcome | None = Field(
+        description="How the program ended, as its monitor recorded it. Null until then."
+    )
+    resources: ResourceSummary | None = Field(
+        description="Summary of the resource samples taken so far."
+    )
     version: int
     created_at: datetime
     updated_at: datetime
@@ -324,6 +343,61 @@ class RunOut(BaseModel):
 
 class RunList(BaseModel):
     runs: list[RunOut]
+
+
+class RunCancel(StrictModel):
+    reason: str = Field(default="", max_length=300)
+
+
+class LogPage(BaseModel):
+    """Output lines after a cursor. ``complete`` means the run ended and nothing follows."""
+
+    lines: list[LogLine]
+    next_cursor: int = Field(description="Pass as 'after' to continue. It is a byte offset.")
+    has_more: bool = Field(description="More lines are already recorded after 'next_cursor'.")
+    complete: bool = Field(description="The run ended and every line has been returned.")
+
+
+class ResourcePage(BaseModel):
+    samples: list[ResourceSample]
+    next_cursor: int
+    has_more: bool
+    complete: bool
+
+
+class ArtifactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    run_id: str
+    kind: str
+    name: str = Field(description="Path inside the run directory.")
+    media_type: str
+    size_bytes: int
+    sha256: str | None = Field(description="Null for files too large to hash.")
+    created_at: datetime
+
+
+class ArtifactList(BaseModel):
+    artifacts: list[ArtifactOut]
+
+
+class WorkerOut(BaseModel):
+    id: str
+    pid: int
+    hostname: str
+    version: str
+    max_parallel_runs: int
+    started_at: datetime
+    heartbeat_at: datetime
+    stopped_at: datetime | None
+    alive: bool = Field(description="It has not stopped and its heartbeat is recent.")
+    active_runs: int
+
+
+class WorkerList(BaseModel):
+    workers: list[WorkerOut]
+    alive: int = Field(description="How many supervisors can currently start queued runs.")
 
 
 class RunRecord(BaseModel):

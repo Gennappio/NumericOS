@@ -18,6 +18,7 @@ class EventNotifier:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._subscribers: dict[str, set[Subscriber]] = {}
+        self._head = 0  # highest seq this process knows to be committed
 
     @contextmanager
     def subscribe(self, project_id: str) -> Iterator[asyncio.Event]:
@@ -38,7 +39,27 @@ class EventNotifier:
     def publish(self, project_id: str, seq: int) -> None:
         """Called by the committing thread *after* a durable commit. Safe from any thread."""
         with self._lock:
+            self._head = max(self._head, seq)
             targets = list(self._subscribers.get(project_id, ()))
+        self._wake(targets)
+
+    def announce_foreign(self, head: int) -> bool:
+        """The ledger head as another process left it. Wakes every subscriber if it is news.
+
+        A commit made by another process (a worker) cannot call ``publish`` here. Whoever
+        notices it reports the new head; it is unknown which projects are concerned, so all
+        subscribers re-read. Returns whether anybody was woken.
+        """
+        with self._lock:
+            if head <= self._head:
+                return False
+            self._head = head
+            targets = [subscriber for group in self._subscribers.values() for subscriber in group]
+        self._wake(targets)
+        return True
+
+    @staticmethod
+    def _wake(targets: list[Subscriber]) -> None:
         for loop, wake in targets:
             if not loop.is_closed():
                 loop.call_soon_threadsafe(wake.set)

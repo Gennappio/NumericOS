@@ -140,3 +140,41 @@ def test_untracked_files_beyond_the_size_limit_are_digested_but_not_stored(
     assert len(record.untracked[0].sha256) == 64
     assert record.untracked_archived is False  # the record admits it is not self-sufficient
     assert not (tmp_path / "run" / code.UNTRACKED_ARCHIVE).exists()
+
+
+def test_a_working_tree_is_changed_by_edits_to_tracked_files_not_by_new_files_beside_them(
+    repo: Repo, tmp_path: Path
+) -> None:
+    repo.write(SOLVER_PATH, "edited before the run\n")
+    submitted = code.resolve_at_submission(repo.root, CodeSpec(mode="working_tree"), None)
+    started_with = code.capture_working_tree(repo.root, submitted, tmp_path / "run")
+    unchanged = code.working_tree_changed(started_with)
+
+    repo.write("output/field.dat", "written by the program\n")
+    with_results = code.working_tree_changed(started_with)
+    repo.write(SOLVER_PATH, "edited again while it ran\n")
+    edited = code.working_tree_changed(started_with)
+
+    assert (unchanged, with_results, edited) == (False, False, True)
+
+
+def test_a_commit_made_during_a_working_tree_run_is_a_change(repo: Repo, tmp_path: Path) -> None:
+    submitted = code.resolve_at_submission(repo.root, CodeSpec(mode="working_tree"), None)
+    started_with = code.capture_working_tree(repo.root, submitted, tmp_path / "run")
+
+    repo.write("README.md", "a new commit\n")
+    repo.commit("meanwhile")
+
+    assert code.working_tree_changed(started_with) is True
+
+
+def test_nothing_is_said_about_a_run_of_an_exact_commit_or_an_unreadable_repository(
+    repo: Repo, tmp_path: Path
+) -> None:
+    exact = code.resolve_at_submission(repo.root, CodeSpec(), None)
+    submitted = code.resolve_at_submission(repo.root, CodeSpec(mode="working_tree"), None)
+    started_with = code.capture_working_tree(repo.root, submitted, tmp_path / "run")
+    moved_away = started_with.model_copy(update={"repository_root": str(tmp_path / "gone")})
+
+    assert code.working_tree_changed(exact) is None
+    assert code.working_tree_changed(moved_away) is None

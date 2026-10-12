@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Header, Response
+from fastapi import APIRouter, Header, Query, Response
 
 from numericos.api.deps import Context, Uow
 from numericos.api.errors import CONFLICT_RESPONSES
@@ -81,12 +81,34 @@ def update_hypothesis(
     status_code=201,
     tags=["experiments"],
     summary="Define an experiment by its protocol",
-    responses=CONFLICT_RESPONSES,
+    responses={
+        200: {
+            "model": ExperimentOut,
+            "description": "With reuse: the existing experiment with this name and protocol",
+        },
+        **CONFLICT_RESPONSES,
+    },
 )
 def create_experiment(
-    project_id: str, body: ExperimentCreate, uow: Uow, context: Context
+    project_id: str,
+    body: ExperimentCreate,
+    uow: Uow,
+    context: Context,
+    response: Response,
+    reuse: Annotated[
+        bool,
+        Query(
+            description=(
+                "Return an existing experiment of the project with this name and exactly "
+                "this protocol (200) instead of creating a duplicate."
+            )
+        ),
+    ] = False,
 ) -> ExperimentOut:
-    return experiments.create_experiment(uow, project_id, body, context)
+    experiment, created = experiments.create_experiment(uow, project_id, body, context, reuse=reuse)
+    if not created:
+        response.status_code = 200
+    return experiment
 
 
 @router.get(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -127,6 +128,20 @@ def test_export_writes_exactly_the_commit(repo: Repo, tmp_path: Path) -> None:
     assert not (destination / "scratch.txt").exists()
     assert not (destination / ".git").exists()
     assert sorted(path.name for path in destination.iterdir()) == [".gitignore", "bin", "examples"]
+
+
+def test_exported_files_carry_the_time_of_the_export_not_of_the_commit(
+    repo: Repo, tmp_path: Path
+) -> None:
+    repo.git("commit", "-q", "--amend", "--no-edit", "--date", "2001-01-01T00:00:00Z")
+    before = time.time()
+
+    git.export(repo.root, repo.head, tmp_path / "export")
+
+    stamps = [path.stat().st_mtime for path in (tmp_path / "export").rglob("*") if path.is_file()]
+    assert stamps
+    assert all(before - 2 <= stamp <= time.time() + 2 for stamp in stamps)
+    assert len({round(stamp, 3) for stamp in stamps}) == 1  # one moment for the whole tree
 
 
 def test_export_of_an_older_commit_ignores_what_came_later(repo: Repo, tmp_path: Path) -> None:

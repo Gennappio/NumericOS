@@ -577,6 +577,7 @@ dependencies = [
     { name = "sse-starlette" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "watchfiles" },
 ]
 
 [package.dev-dependencies]
@@ -602,6 +603,7 @@ requires-dist = [
     { name = "sse-starlette", specifier = ">=2.1" },
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+    { name = "watchfiles", specifier = ">=0.21" },
 ]
 
 [package.metadata.requires-dev]
