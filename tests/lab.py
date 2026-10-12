@@ -174,6 +174,38 @@ class Lab:
     def cancel_turn(self, message_id: str, reason: str = "") -> Json:
         return self._send("POST", f"/v1/messages/{message_id}:cancel", 200, {"reason": reason})
 
+    # ------------------------------------------------------------------ documents
+
+    def generate(self, what: str, instructions: str | None = None) -> Json:
+        """Ask the agent for the theory or the plan; returns the document, marked pending."""
+        body = {} if instructions is None else {"instructions": instructions}
+        return self._send("POST", f"/v1/projects/{self.project['id']}/{what}:generate", 202, body)
+
+    def single(self, what: str) -> Json | None:
+        document: Json | None = self.get(f"/v1/projects/{self.project['id']}/{what}")["document"]
+        return document
+
+    def files(self) -> Json:
+        return self.get(f"/v1/projects/{self.project['id']}/files")
+
+    def file(self, path: str) -> Json:
+        return next(entry for entry in self.files()["files"] if entry["path"] == path)
+
+    def describe(self, **body: Any) -> Json:
+        return self._send("POST", f"/v1/projects/{self.project['id']}/files:describe", 202, body)
+
+    def description(self, path: str) -> Json:
+        response = self.http.get(
+            f"/v1/projects/{self.project['id']}/files/description", params={"path": path}
+        )
+        assert response.status_code == 200, response.text
+        result: Json = response.json()
+        return result
+
+    def board(self) -> list[Json]:
+        cards: list[Json] = self.get(f"/v1/projects/{self.project['id']}/board")["cards"]
+        return cards
+
 
 def drive(worker: Worker, until: Callable[[], Any], timeout: float = 20.0) -> Any:
     """Let an in-process supervisor work until ``until()`` is truthy; return that value."""

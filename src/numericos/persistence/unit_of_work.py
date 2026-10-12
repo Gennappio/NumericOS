@@ -17,6 +17,7 @@ from numericos.persistence.repositories import (
     AgentSessionRepository,
     ArtifactRepository,
     CardRepository,
+    DocumentRepository,
     EventRepository,
     ExperimentRepository,
     HypothesisRepository,
@@ -48,6 +49,7 @@ class UnitOfWork:
         self.agent_sessions = AgentSessionRepository(self.session)
         self.messages = MessageRepository(self.session)
         self.agent_policies = AgentPolicyRepository(self.session)
+        self.documents = DocumentRepository(self.session)
         return self
 
     def __exit__(

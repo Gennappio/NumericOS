@@ -13,7 +13,16 @@ from fastapi.routing import APIRoute
 from numericos import __version__
 from numericos.api.errors import ERROR_RESPONSES, install_error_handlers
 from numericos.api.middleware import CorrelationIdMiddleware
-from numericos.api.routes import agents, cards, events, execution, health, projects, research
+from numericos.api.routes import (
+    agents,
+    cards,
+    documents,
+    events,
+    execution,
+    health,
+    projects,
+    research,
+)
 from numericos.config import Settings
 from numericos.events.notifier import EventNotifier
 from numericos.events.watcher import LedgerWatcher
@@ -69,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         research.router,
         execution.router,
         agents.router,
+        documents.router,
         events.router,
     ):
         app.include_router(router, prefix="/v1", responses=ERROR_RESPONSES)

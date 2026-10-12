@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from numericos.agents.claude_code import SUGGESTED_POLICY
 from numericos.persistence.models import AgentMessage, AgentSession
 
 
@@ -11,8 +12,11 @@ def choice_for(
     session: AgentSession, policy_tasks: dict[str, Any] | None
 ) -> tuple[str | None, str | None]:
     """The model and effort a turn of ``session`` is started with: the session's own choice,
-    else the policy's for its task, else nothing (the provider's default)."""
-    chosen = (policy_tasks or {}).get(session.task) or {}
+    else the policy's for its task (the suggested policy while none was saved), else nothing
+    (the provider's default)."""
+    chosen = (policy_tasks if policy_tasks is not None else SUGGESTED_POLICY).get(
+        session.task
+    ) or {}
     model = session.model or chosen.get("model")
     effort = session.effort or chosen.get("effort")
     return (model if isinstance(model, str) and model else None), (

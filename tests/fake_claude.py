@@ -5,12 +5,18 @@ Directives in the prompt (one per line, anywhere in it) drive what it does:
 
     READ <path>            read the file (relative to the working directory) through a Read tool
     WRITE <path>::<text>   write the file through a Write tool; refused in read-only mode
+    OMIT <path>            leave that file out of a structured answer about files
+    JSON <json>            give exactly this as the structured answer
     SLEEP <seconds>        wait before answering (to be stopped meanwhile)
     FAIL <text>            end with ``is_error`` true and that text
     EXIT <code>            leave with that exit code and no result record
     ECHO <text>            answer with that text instead of the default note
 
 ``--version`` prints a version line, as the real command does.
+
+A prompt that starts with a NumericOS task line is answered in the shape of that task: the
+theory as a short paper, files with one entry per listed path (the first with an absolute
+path, as the real agent gives them), a plan with two cards.
 """
 
 from __future__ import annotations
@@ -22,6 +28,33 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+THEORY = """# Explicit scheme for the 2D heat equation
+
+**Abstract.** The project integrates the heat equation on the unit square with an explicit
+finite-difference scheme and studies when it is stable.
+
+## Mathematical model
+
+The temperature $u(x, y, t)$ obeys
+
+$$\\frac{\\partial u}{\\partial t} = \\alpha \\nabla^2 u \\tag{1}$$
+
+with homogeneous Dirichlet boundary conditions.
+
+## Numerical method
+
+Forward Euler in time and central differences in space; equation (1) becomes an update that
+is stable when $\\alpha\\,\\Delta t / \\Delta x^2 \\le 1/4$.
+
+![The grid of the solver](docs/grid.png)
+
+## From theory to code
+
+| Element | File |
+| --- | --- |
+| update of (1) | `examples/heat2d-python/heat2d.py` |
+"""
 
 VERSION = "9.9.9 (fake claude)"
 MODEL = "fake-model"
@@ -109,6 +142,8 @@ def main() -> int:
     answer: str | None = None
     failure: str | None = None
     denials: list[dict[str, Any]] = []
+    omitted: set[str] = set()
+    forced: Any | None = None
     turns = 1
     for line in prompt.splitlines():
         word, _, rest = line.strip().partition(" ")
@@ -148,8 +183,19 @@ def main() -> int:
             return int(rest or 1)
         elif word == "ECHO":
             answer = rest
+        elif word == "OMIT":
+            omitted.add(rest)
+        elif word == "JSON":
+            forced = json.loads(rest)
 
     first_line = next((line for line in prompt.splitlines() if line.strip()), "").strip()
+    task = (
+        first_line.removeprefix("[NumericOS task: ").removesuffix("]")
+        if first_line.startswith("[NumericOS task: ")
+        else None
+    )
+    if answer is None and task == "theory":
+        answer = THEORY
     if answer is None:
         answer = (
             f"You asked: {first_line}\n\n"
@@ -159,7 +205,53 @@ def main() -> int:
         )
     structured: Any | None = None
     if "--json-schema" in options:
-        structured = {"echo": first_line}
+        if forced is not None:
+            structured = forced
+        elif task == "file_description":
+            listed = [
+                line[2:]
+                for line in prompt.split("Files to describe:\n", 1)[1].splitlines()
+                if line.startswith("- ")
+            ]
+            entries = []
+            for index, path in enumerate(listed):
+                turns += 1
+                call = tool_use("Read", {"file_path": str(cwd / path)})
+                emit(assistant(session_id, [call]))
+                emit(tool_result(session_id, call["id"], "...", (cwd / path).is_file()))
+                if path in omitted:
+                    continue
+                entries.append(
+                    {
+                        "path": str(cwd / path) if index == 0 else path,
+                        "category": "image" if path.endswith(".png") else "code",
+                        "summary": f"Fake summary of {path}.",
+                        "description": (
+                            f"`{path}` holds $u_t = \\alpha \\nabla^2 u$.\n\n- read by the solver"
+                        ),
+                    }
+                )
+            structured = {"files": entries}
+        elif task == "plan":
+            structured = {
+                "rationale": "Check stability **first**, then accuracy.",
+                "cards": [
+                    {
+                        "type": "experiment",
+                        "title": "Run the stability sweep",
+                        "description": "Vary dt across the CFL limit. Done when both sides ran.",
+                        "status": "planned",
+                    },
+                    {
+                        "type": "hypothesis",
+                        "title": "The scheme is first order in time",
+                        "description": "Halving dt halves the error.",
+                        "status": "backlog",
+                    },
+                ],
+            }
+        else:
+            structured = {"echo": first_line}
         answer = json.dumps(structured)
     if failure is not None:
         answer = failure

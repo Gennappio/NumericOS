@@ -14,6 +14,7 @@ from numericos.persistence.models import (
     AgentSession,
     Artifact,
     BoardCard,
+    Document,
     Event,
     Experiment,
     Hypothesis,
@@ -268,13 +269,12 @@ class AgentSessionRepository:
     def get(self, session_id: str) -> AgentSession | None:
         return self._session.get(AgentSession, session_id)
 
-    def list_for_project(self, project_id: str) -> list[AgentSession]:
-        """The sessions of a project, newest first."""
-        statement = (
-            select(AgentSession)
-            .where(AgentSession.project_id == project_id)
-            .order_by(AgentSession.created_at.desc(), AgentSession.id.desc())
-        )
+    def list_for_project(self, project_id: str, task: str | None = None) -> list[AgentSession]:
+        """The sessions of a project, newest first; of one task, or of all."""
+        statement = select(AgentSession).where(AgentSession.project_id == project_id)
+        if task is not None:
+            statement = statement.where(AgentSession.task == task)
+        statement = statement.order_by(AgentSession.created_at.desc(), AgentSession.id.desc())
         return list(self._session.scalars(statement))
 
 
@@ -289,6 +289,40 @@ class AgentPolicyRepository:
 
     def get(self, project_id: str) -> AgentPolicy | None:
         return self._session.get(AgentPolicy, project_id)
+
+
+class DocumentRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, document: Document) -> Document:
+        self._session.add(document)
+        self._session.flush()
+        return document
+
+    def get(self, document_id: str) -> Document | None:
+        return self._session.get(Document, document_id)
+
+    def by_key(self, project_id: str, kind: str, key: str) -> Document | None:
+        statement = select(Document).where(
+            Document.project_id == project_id, Document.kind == kind, Document.key == key
+        )
+        return self._session.scalars(statement).first()
+
+    def list_for_project(self, project_id: str, kind: str) -> list[Document]:
+        statement = (
+            select(Document)
+            .where(Document.project_id == project_id, Document.kind == kind)
+            .order_by(Document.key)
+        )
+        return list(self._session.scalars(statement))
+
+    def pending_for_message(self, message_id: str) -> list[Document]:
+        """The documents a turn is writing."""
+        statement = (
+            select(Document).where(Document.pending_message_id == message_id).order_by(Document.key)
+        )
+        return list(self._session.scalars(statement))
 
 
 class MessageRepository:

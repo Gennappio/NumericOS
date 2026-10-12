@@ -1,9 +1,13 @@
-import { ChevronDownIcon, ChevronUpIcon } from "lucide-react"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon } from "lucide-react"
 import type { Card, WorkflowStatus } from "@/api/client"
 import { TypeBadge } from "@/components/TypeBadge"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { STATUS_LABELS } from "@/lib/labels"
+import { cn } from "@/lib/utils"
 
 /** Where a card should go: another column (appended), or another index in its column. */
 export interface Placement {
@@ -24,7 +28,8 @@ interface CardItemProps {
 
 /**
  * One typed card. It shows the card's type and workflow status and nothing about validity:
- * a card in "Completed" is finished work, not a supported claim.
+ * a card in "Completed" is finished work, not a supported claim. It is moved by dragging its
+ * handle, or without a pointer by its status select and its up and down buttons.
  */
 export function CardItem({
   card,
@@ -35,12 +40,40 @@ export function CardItem({
   onOpen,
   onMove,
 }: CardItemProps) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id: card.id, disabled })
   return (
     <article
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
       aria-label={card.title}
-      className="space-y-2 rounded-md border border-border bg-card p-3 shadow-xs"
+      data-origin={card.origin}
+      className={cn(
+        "space-y-2 rounded-md border border-border bg-card p-3 shadow-xs",
+        isDragging && "relative z-10 opacity-80 shadow-md",
+      )}
     >
-      <TypeBadge type={card.type} />
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <TypeBadge type={card.type} />
+          {card.origin === "agent" && (
+            <Badge variant="outline" title="Put on the board by the agent when it was asked to plan">
+              agent
+            </Badge>
+          )}
+        </span>
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Drag ${card.title}`}
+          disabled={disabled}
+          className="cursor-grab touch-none rounded-sm p-0.5 text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <GripVerticalIcon className="size-4" />
+        </button>
+      </div>
       <button
         type="button"
         onClick={onOpen}

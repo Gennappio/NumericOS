@@ -105,3 +105,10 @@ class SessionBusyError(DomainError):
 
     code = "SESSION_BUSY"
     status_code = 409
+
+
+class GenerationPendingError(DomainError):
+    """The agent is already writing this document."""
+
+    code = "GENERATION_PENDING"
+    status_code = 409

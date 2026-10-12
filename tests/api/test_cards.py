@@ -29,6 +29,7 @@ CARD_FIELDS = {
     "workflow_status",
     "sort_order",
     "entity_ref",
+    "origin",
     "version",
     "created_at",
     "updated_at",

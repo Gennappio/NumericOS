@@ -16,10 +16,15 @@ export function ViewTabs({ projectId }: { projectId: string }) {
   const inExperiments =
     pathname.startsWith(`${base}/experiments`) || pathname.startsWith(`${base}/runs/`)
   const inAgent = pathname.startsWith(`${base}/agent`)
+  const inTheory = pathname.startsWith(`${base}/theory`)
+  const inFiles = pathname.startsWith(`${base}/files`)
+  // What the project is (theory, files), what is to be done (plan), then the work itself.
   const views = [
-    { name: "Board", to: base, current: !inExperiments && !inAgent },
-    { name: "Experiments", to: `${base}/experiments`, current: inExperiments },
+    { name: "Plan", to: base, current: !inExperiments && !inAgent && !inTheory && !inFiles },
+    { name: "Theory", to: `${base}/theory`, current: inTheory },
+    { name: "Files", to: `${base}/files`, current: inFiles },
     { name: "Agent", to: `${base}/agent`, current: inAgent },
+    { name: "Experiments", to: `${base}/experiments`, current: inExperiments },
   ]
   return (
     <nav aria-label="Project views" className="flex gap-1 overflow-x-auto border-b border-border">

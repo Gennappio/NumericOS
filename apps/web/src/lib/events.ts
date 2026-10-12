@@ -103,6 +103,23 @@ function describeAgentEvent(event: EventOut): string | undefined {
     }
     case "AGENT_TURN_CANCEL_REQUESTED":
       return `Stop requested: ${text(payload.reason)}`
+    case "AGENT_POLICY_UPDATED":
+      return "Models and effort per task changed"
+    case "DOCUMENT_GENERATION_QUEUED":
+      return `Agent asked for ${documentWords(payload.kind, payload.keys)}`
+    case "DOCUMENT_GENERATION_FINISHED": {
+      const written = Array.isArray(payload.written) ? payload.written : []
+      const failed = fields(payload.failed) ?? {}
+      const failures = Object.keys(failed).length
+      if (payload.kind === "plan" && written.length > 0) {
+        return `Plan of the agent put on the board: ${text(payload.cards_created)} card(s) added, ${text(payload.cards_changed)} changed`
+      }
+      if (written.length === 0) {
+        return `Agent did not write ${documentWords(payload.kind, Object.keys(failed))}: ${String(Object.values(failed)[0] ?? "no reason recorded")}`
+      }
+      const rest = failures > 0 ? `; ${failures} not written` : ""
+      return `Agent wrote ${documentWords(payload.kind, written)}${rest}`
+    }
     case "AGENT_TURN_ADOPTED":
       return "Another supervisor took the agent turn over"
     case "AGENT_TURN_REQUEUED":
@@ -110,6 +127,16 @@ function describeAgentEvent(event: EventOut): string | undefined {
     default:
       return undefined
   }
+}
+
+/** "the theory", "the plan", "the description of solver.py", "the descriptions of 8 files". */
+function documentWords(kind: unknown, keys: unknown): string {
+  if (kind === "theory") return "the theory"
+  if (kind === "plan") return "a plan"
+  const paths = Array.isArray(keys) ? keys : []
+  return paths.length === 1
+    ? `the description of ${String(paths[0])}`
+    : `the descriptions of ${paths.length} files`
 }
 
 function named(value: unknown, field: string): string {

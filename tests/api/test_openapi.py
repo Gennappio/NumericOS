@@ -74,4 +74,13 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "cancel_message",
         "get_agent_policy",
         "put_agent_policy",
+        "get_theory",
+        "generate_theory",
+        "get_plan",
+        "generate_plan",
+        "list_files",
+        "describe_files",
+        "get_file_description",
+        "get_file_content",
+        "get_document",
     }

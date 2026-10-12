@@ -182,3 +182,45 @@
 .markdown img { max-width: 100%; height: auto; }
 .markdown hr { border-color: var(--border); }
 .markdown .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.25rem 0; }
+
+/* A document written like a paper (the theory of a project): a measure made for reading,
+   serif text, a centred title, figures with captions. */
+.paper {
+    max-width: 46rem;
+    margin-inline: auto;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    font-size: 1.0625rem;
+    line-height: 1.7;
+}
+.paper > * + * { margin-top: 1rem; }
+.paper h1 {
+    font-size: 1.75rem;
+    line-height: 1.25;
+    text-align: center;
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+}
+.paper h2 {
+    font-size: 1.3rem;
+    margin-top: 2rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
+}
+.paper h3 { font-size: 1.125rem; margin-top: 1.5rem; }
+.paper p { text-align: justify; hyphens: auto; }
+.paper table { margin-inline: auto; font-family: var(--font-sans); }
+.paper .katex-display { margin: 1.25rem 0; }
+.markdown .md-figure { display: block; margin: 1.25rem auto; text-align: center; }
+.markdown .md-figure img {
+    display: inline-block;
+    max-height: 28rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+}
+.markdown .md-caption {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.9em;
+    font-style: italic;
+    color: var(--muted-foreground);
+}

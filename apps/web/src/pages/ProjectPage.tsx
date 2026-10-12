@@ -4,7 +4,9 @@ import { Link, Outlet, useParams } from "react-router"
 import { ApiError } from "@/api/client"
 import { useBoard, useConnectionState, useProject, useRecentEvents } from "@/api/queries"
 import { useEventStream, type Transport } from "@/api/useEventStream"
+import { useAgentReadiness } from "@/components/agent/readiness"
 import { Board } from "@/components/board/Board"
+import { PlanPanel } from "@/components/board/PlanPanel"
 import { ErrorPanel } from "@/components/ErrorPanel"
 import { Notice } from "@/components/Notice"
 import { ProjectDialog } from "@/components/projects/ProjectDialog"
@@ -94,6 +96,7 @@ export function BoardView() {
   const { project, transport, live, offline } = useProjectContext()
   const board = useBoard(project.id, live)
   const events = useRecentEvents(project.id, live)
+  const readiness = useAgentReadiness(project, offline)
   const [notice, setNotice] = useState<string | null>(null)
 
   return (
@@ -128,6 +131,13 @@ export function BoardView() {
       )}
 
       {notice && <Notice message={notice} onDismiss={() => setNotice(null)} />}
+
+      <PlanPanel
+        project={project}
+        live={live}
+        readiness={readiness}
+        onError={(error) => setNotice(describeError(error))}
+      />
 
       {board.data ? (
         <Board

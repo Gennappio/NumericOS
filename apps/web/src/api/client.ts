@@ -62,6 +62,14 @@ export type AgentTask = Schemas["AgentTask"]
 export type TaskPolicy = Schemas["TaskPolicy"]
 export type AgentPolicy = Schemas["AgentPolicyOut"]
 export type AgentPolicyPut = Schemas["AgentPolicyPut"]
+export type DocumentOut = Schemas["DocumentOut"]
+export type DocumentSlot = Schemas["DocumentSlot"]
+export type DocumentStatus = Schemas["DocumentStatus"]
+export type FileList = Schemas["FileList"]
+export type FileEntry = Schemas["FileEntry"]
+export type FileCategory = Schemas["FileCategory"]
+export type DescribeRequest = Schemas["DescribeRequest"]
+export type DescribeOut = Schemas["DescribeOut"]
 type ErrorBody = ErrorEnvelope["error"]
 
 const DEFAULT_API_URL = "http://127.0.0.1:8765"
@@ -212,8 +220,9 @@ export const api = {
   listWorkers: () => apiFetch<WorkerList>("/v1/workers"),
 
   getAgentCapabilities: () => apiFetch<AgentCapabilities>("/v1/agents/capabilities"),
-  listAgentSessions: (projectId: string) =>
-    apiFetch<AgentSessionList>(`/v1/projects/${seg(projectId)}/agent-sessions`),
+  /** The conversations of a project; with `task`, the sessions of that task instead. */
+  listAgentSessions: (projectId: string, task: AgentTask | "all" = "conversation") =>
+    apiFetch<AgentSessionList>(`/v1/projects/${seg(projectId)}/agent-sessions?task=${task}`),
   createAgentSession: (projectId: string, body: AgentSessionCreate) =>
     apiFetch<AgentSession>(`/v1/projects/${seg(projectId)}/agent-sessions`, send("POST", body)),
   getAgentSession: (sessionId: string) =>
@@ -228,6 +237,27 @@ export const api = {
   getMessage: (messageId: string) => apiFetch<Message>(`/v1/messages/${seg(messageId)}`),
   cancelMessage: (messageId: string, reason: string) =>
     apiFetch<Message>(`/v1/messages/${seg(messageId)}:cancel`, send("POST", { reason })),
+  getTheory: (projectId: string) =>
+    apiFetch<DocumentSlot>(`/v1/projects/${seg(projectId)}/theory`),
+  /** `instructions` undefined keeps the ones of the previous request. */
+  generateTheory: (projectId: string, instructions?: string) =>
+    apiFetch<DocumentOut>(
+      `/v1/projects/${seg(projectId)}/theory:generate`,
+      send("POST", instructions === undefined ? {} : { instructions }),
+    ),
+  getPlan: (projectId: string) => apiFetch<DocumentSlot>(`/v1/projects/${seg(projectId)}/plan`),
+  generatePlan: (projectId: string, instructions?: string) =>
+    apiFetch<DocumentOut>(
+      `/v1/projects/${seg(projectId)}/plan:generate`,
+      send("POST", instructions === undefined ? {} : { instructions }),
+    ),
+  listFiles: (projectId: string) => apiFetch<FileList>(`/v1/projects/${seg(projectId)}/files`),
+  describeFiles: (projectId: string, body: DescribeRequest) =>
+    apiFetch<DescribeOut>(`/v1/projects/${seg(projectId)}/files:describe`, send("POST", body)),
+  getFileDescription: (projectId: string, path: string) =>
+    apiFetch<DocumentOut>(
+      `/v1/projects/${seg(projectId)}/files/description?path=${seg(path)}`,
+    ),
   getAgentPolicy: (projectId: string) =>
     apiFetch<AgentPolicy>(`/v1/projects/${seg(projectId)}/agent-policy`),
   putAgentPolicy: (projectId: string, body: AgentPolicyPut) =>
@@ -235,6 +265,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+}
+
+/** Address of one file of the project directory, to show it (an image, a figure). */
+export function fileContentUrl(projectId: string, path: string): string {
+  return `${API_URL}/v1/projects/${seg(projectId)}/files/content?path=${seg(path)}`
 }
 
 /** Download address of one file of a run. */

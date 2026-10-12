@@ -203,8 +203,13 @@ def test_the_policy_names_a_model_and_effort_per_task(client: TestClient, repo: 
         "execution_description",
         "plan",
     }
-    assert all(choice == {"model": None, "effort": None} for choice in before["tasks"].values())
-    assert before["available"] == ["conversation"]
+    # Before anything is saved the provider's suggestions apply: light models where a task is
+    # many small turns or a short structured answer, the provider's default elsewhere.
+    assert before["tasks"]["conversation"] == {"model": None, "effort": None}
+    assert before["tasks"]["theory"] == {"model": None, "effort": None}
+    assert before["tasks"]["file_description"] == {"model": "claude-sonnet-5-5", "effort": "low"}
+    assert before["tasks"]["plan"] == {"model": "claude-sonnet-5-5", "effort": "medium"}
+    assert before["available"] == ["conversation", "theory", "file_description", "plan"]
     assert saved.status_code == 200, saved.text
     assert saved.json()["version"] == 1
     assert again["tasks"]["conversation"] == {"model": "claude-sonnet-5-5", "effort": "low"}

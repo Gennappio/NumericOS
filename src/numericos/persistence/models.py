@@ -24,7 +24,10 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from numericos.core.enums import (
     AgentProvider,
     AgentTask,
+    CardOrigin,
     CardType,
+    DocumentKind,
+    DocumentStatus,
     EpistemicStatus,
     FailureClass,
     MessageRole,
@@ -81,6 +84,7 @@ class BoardCard(Base):
     __table_args__ = (
         CheckConstraint(one_of("card_type", CardType), name="card_type"),
         CheckConstraint(one_of("workflow_status", WorkflowStatus), name="workflow_status"),
+        CheckConstraint(one_of("origin", CardOrigin), name="origin"),
         CheckConstraint("length(title) BETWEEN 1 AND 300", name="title_length"),
         Index("ix_board_cards_project_status_order", "project_id", "workflow_status", "sort_order"),
     )
@@ -95,6 +99,8 @@ class BoardCard(Base):
     workflow_status: Mapped[str] = mapped_column(String(20))
     sort_order: Mapped[int] = mapped_column(Integer)
     entity_ref: Mapped[str | None] = mapped_column(String(40))
+    #: Who put the card on the board: the researcher, or the agent when it was asked to plan.
+    origin: Mapped[str] = mapped_column(String(10), default=CardOrigin.USER.value)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
@@ -349,6 +355,8 @@ class AgentMessage(Base):
     prompt_message_id: Mapped[str | None] = mapped_column(String(40))
     #: Correlation ID of the request that queued the turn; the supervisor's events reuse it.
     correlation_id: Mapped[str | None] = mapped_column(String(64))
+    #: Assistant: the JSON schema the answer must follow, if the turn asks for structure.
+    json_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     #: What the turn was started with, resolved from the session and the policy.
     model_requested: Mapped[str | None] = mapped_column(String(100))
     effort: Mapped[str | None] = mapped_column(String(20))
@@ -376,6 +384,50 @@ class AgentMessage(Base):
     exit_code: Mapped[int | None] = mapped_column(Integer)
     #: How far the supervisor has read the turn's files.
     ingest: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class Document(Base):
+    """A document the agent wrote about the project: its theory, the description of one file,
+    the notes of its plan. One row per project, kind and key; regenerating replaces the content."""
+
+    __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint(one_of("kind", DocumentKind), name="kind"),
+        CheckConstraint(one_of("status", DocumentStatus), name="status"),
+        UniqueConstraint("project_id", "kind", "doc_key", name="uq_documents_project_kind_key"),
+        Index("ix_documents_pending_message_id", "pending_message_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[str] = mapped_column(String(30))
+    #: The path of the file for a file description; the kind itself for a single document.
+    key: Mapped[str] = mapped_column("doc_key", String(1000))
+    title: Mapped[str] = mapped_column(String(300), default="")
+    #: One sentence; shown in lists.
+    summary: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str | None] = mapped_column(String(20))
+    markdown: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20))
+    status_reason: Mapped[str | None] = mapped_column(String(300))
+    #: What the researcher added to the request ("write in Italian", ...); reused on updates.
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    #: File description: the content hash of the file when the description was asked for.
+    subject_sha: Mapped[str | None] = mapped_column(String(64))
+    #: ``[{"path": ..., "sha": ...}]``: the files the content was written from. A file whose
+    #: content hash differs today makes the document stale.
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    session_id: Mapped[str | None] = mapped_column(String(40))
+    #: The turn that wrote the current content, and the turn that is writing the next one.
+    message_id: Mapped[str | None] = mapped_column(String(40))
+    pending_message_id: Mapped[str | None] = mapped_column(String(40))
+    model: Mapped[str | None] = mapped_column(String(100))
+    generated_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)

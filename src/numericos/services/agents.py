@@ -11,8 +11,11 @@ import shutil
 import subprocess
 import uuid
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 from numericos.agents import claude_code
+from numericos.agents import documents as agent_documents
 from numericos.agents.records import finished_payload
 from numericos.config import Settings
 from numericos.core.agents import AgentCapabilities
@@ -44,7 +47,7 @@ from numericos.core.schemas import (
 )
 from numericos.events.ledger import EventContext, build_event
 from numericos.persistence.engine import utcnow
-from numericos.persistence.models import AgentMessage, AgentPolicy, AgentSession
+from numericos.persistence.models import AgentMessage, AgentPolicy, AgentSession, Project
 from numericos.persistence.unit_of_work import UnitOfWork
 from numericos.services.guards import (
     check_version,
@@ -119,7 +122,7 @@ def _probe(command: tuple[str, ...]) -> AgentCapabilities:
     )
 
 
-def _require_available(settings: Settings) -> AgentCapabilities:
+def require_available(settings: Settings) -> AgentCapabilities:
     found = capabilities(settings)
     if not found.available:
         raise AgentUnavailableError(
@@ -158,7 +161,8 @@ def _check_choice(
 
 
 def _policy_out(project_id: str, row: AgentPolicy | None) -> AgentPolicyOut:
-    stored = row.tasks if row is not None else {}
+    # Until a policy is saved, the provider's suggestions are what turns are started with.
+    stored = row.tasks if row is not None else claude_code.SUGGESTED_POLICY
     return AgentPolicyOut(
         project_id=project_id,
         provider=AgentProvider(row.provider) if row is not None else AgentProvider.CLAUDE_CODE,
@@ -184,7 +188,7 @@ def put_policy(
     *,
     settings: Settings,
 ) -> AgentPolicyOut:
-    found = _require_available(settings)
+    found = require_available(settings)
     for task, choice in data.tasks.items():
         _check_choice(found, choice.model, choice.effort, ["body", "tasks", task.value])
     # Stored in one shape for every task, so that saving the same choices again is a no-op.
@@ -247,48 +251,116 @@ def create_session(
     settings: Settings,
 ) -> AgentSessionOut:
     """Open a conversation. The agent will work in the project's trusted directory."""
-    found = _require_available(settings)
+    found = require_available(settings)
     _check_choice(found, data.model, data.effort, ["body"])
-    now = utcnow()
     with uow:
         project = require_project(uow, project_id)
         root = require_trusted_root(project)
-        session = uow.agent_sessions.add(
-            AgentSession(
-                id=new_id("ases"),
-                project_id=project.id,
-                title=data.title or DEFAULT_TITLE,
-                provider=AgentProvider.CLAUDE_CODE.value,
-                permission_mode=data.permission_mode.value,
-                task=AgentTask.CONVERSATION.value,
-                model=data.model,
-                effort=data.effort,
-                native_session_id=str(uuid.uuid4()),
-                cwd=str(root),
-                system_prompt=claude_code.system_prompt(project.name, project.research_question),
-                version=1,
-                created_at=now,
-                updated_at=now,
-            )
+        session = open_session(
+            uow,
+            project,
+            root,
+            task=AgentTask.CONVERSATION,
+            mode=data.permission_mode,
+            title=data.title or DEFAULT_TITLE,
+            context=context,
+            model=data.model,
+            effort=data.effort,
         )
         out = _session_out(session, 0)
-        uow.record(
-            build_event(
-                event_type=EventType.AGENT_SESSION_STARTED,
-                project_id=project.id,
-                subject_id=session.id,
-                payload={"session": out.model_dump(mode="json")},
-                context=context,
-            )
-        )
         uow.commit()
     return out
 
 
-def list_sessions(uow: UnitOfWork, project_id: str) -> AgentSessionList:
+def open_session(
+    uow: UnitOfWork,
+    project: Project,
+    root: Path,
+    *,
+    task: AgentTask,
+    mode: PermissionMode,
+    title: str,
+    context: EventContext,
+    model: str | None = None,
+    effort: str | None = None,
+) -> AgentSession:
+    """Add a session of ``task`` to the open transaction, with its event."""
+    now = utcnow()
+    session = uow.agent_sessions.add(
+        AgentSession(
+            id=new_id("ases"),
+            project_id=project.id,
+            title=_excerpt(title, TITLE_MAX),
+            provider=AgentProvider.CLAUDE_CODE.value,
+            permission_mode=mode.value,
+            task=task.value,
+            model=model,
+            effort=effort,
+            native_session_id=str(uuid.uuid4()),
+            cwd=str(root),
+            system_prompt=claude_code.system_prompt(project.name, project.research_question),
+            version=1,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    uow.record(
+        build_event(
+            event_type=EventType.AGENT_SESSION_STARTED,
+            project_id=project.id,
+            subject_id=session.id,
+            payload={"session": _session_out(session, 0).model_dump(mode="json")},
+            context=context,
+        )
+    )
+    return session
+
+
+def queue_turn(
+    uow: UnitOfWork,
+    session: AgentSession,
+    content: str,
+    context: EventContext,
+    *,
+    json_schema: dict[str, Any] | None = None,
+) -> AgentMessage:
+    """Add a prompt and the turn that answers it to the open transaction, with its event."""
+    now = utcnow()
+    prompt = uow.messages.add(
+        _message(session, MessageRole.USER, MessageStatus.FINAL, content, context, now)
+    )
+    turn = uow.messages.add(
+        _message(session, MessageRole.ASSISTANT, MessageStatus.QUEUED, "", context, now)
+    )
+    turn.prompt_message_id = prompt.id
+    turn.json_schema = json_schema
+    uow.record(
+        build_event(
+            event_type=EventType.AGENT_TURN_QUEUED,
+            project_id=session.project_id,
+            subject_id=turn.id,
+            payload={
+                "session_id": session.id,
+                "task": session.task,
+                "prompt_message_id": prompt.id,
+                "prompt_excerpt": _excerpt(content, EXCERPT_MAX),
+                "permission_mode": session.permission_mode,
+            },
+            context=context,
+        )
+    )
+    return turn
+
+
+def list_sessions(
+    uow: UnitOfWork, project_id: str, task: AgentTask | None = AgentTask.CONVERSATION
+) -> AgentSessionList:
+    """The sessions of one task (the conversations, by default), or of all with ``None``."""
     with uow:
         project = require_project(uow, project_id)
-        sessions = uow.agent_sessions.list_for_project(project.id)
+        sessions = uow.agent_sessions.list_for_project(
+            project.id, task.value if task is not None else None
+        )
         counts = uow.messages.count_by_session([session.id for session in sessions])
         return AgentSessionList(
             sessions=[_session_out(session, counts.get(session.id, 0)) for session in sessions]
@@ -310,7 +382,7 @@ def update_session(
     settings: Settings,
 ) -> AgentSessionOut:
     if patch.model is not None or patch.effort is not None:
-        _check_choice(_require_available(settings), patch.model, patch.effort, ["body"])
+        _check_choice(require_available(settings), patch.model, patch.effort, ["body"])
     with uow:
         session = require_agent_session(uow, session_id)
         check_version("agent_session", session.id, current=session.version, provided=patch.version)
@@ -354,7 +426,7 @@ def send_message(
     settings: Settings,
 ) -> MessageOut:
     """Record the prompt and queue the agent's turn. Returns the queued assistant message."""
-    _require_available(settings)
+    require_available(settings)
     now = utcnow()
     with uow:
         session = require_agent_session(uow, session_id)
@@ -365,32 +437,12 @@ def send_message(
                 details={"session_id": session.id, "message_id": busy.id, "status": busy.status},
             )
         count = uow.messages.count_by_session([session.id]).get(session.id, 0)
-        prompt = uow.messages.add(
-            _message(session, MessageRole.USER, MessageStatus.FINAL, data.content, context, now)
-        )
-        turn = uow.messages.add(
-            _message(session, MessageRole.ASSISTANT, MessageStatus.QUEUED, "", context, now)
-        )
-        turn.prompt_message_id = prompt.id
+        turn = queue_turn(uow, session, data.content, context)
         if count == 0 and session.title == DEFAULT_TITLE:
             session.title = _excerpt(data.content, TITLE_MAX)
             session.version += 1
             session.updated_at = now
         out = MessageOut.model_validate(turn)
-        uow.record(
-            build_event(
-                event_type=EventType.AGENT_TURN_QUEUED,
-                project_id=session.project_id,
-                subject_id=turn.id,
-                payload={
-                    "session_id": session.id,
-                    "prompt_message_id": prompt.id,
-                    "prompt_excerpt": _excerpt(data.content, EXCERPT_MAX),
-                    "permission_mode": session.permission_mode,
-                },
-                context=context,
-            )
-        )
         uow.commit()
     return out
 
@@ -480,6 +532,22 @@ def cancel_message(
                     context=context,
                     severity=Severity.WARNING,
                 )
+            )
+            project_id = message.project_id
+            # No supervisor will end this turn: the documents it was to write are told here.
+            agent_documents.complete(
+                uow,
+                message,
+                cwd=Path("."),
+                hashes={},
+                make_event=lambda event_type, subject, payload, severity: build_event(
+                    event_type=event_type,
+                    project_id=project_id,
+                    subject_id=subject,
+                    payload=payload,
+                    context=context,
+                    severity=severity,
+                ),
             )
         out = MessageOut.model_validate(message)
         uow.commit()

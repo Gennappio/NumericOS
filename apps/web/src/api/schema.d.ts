@@ -92,6 +92,23 @@ export interface paths {
         patch: operations["update_card"];
         trace?: never;
     };
+    "/v1/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one document */
+        get: operations["get_document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/events": {
         parameters: {
             query?: never;
@@ -389,6 +406,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The files of the project, each with its description if it has one */
+        get: operations["list_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/files/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The content of one file of the project directory, to show it */
+        get: operations["get_file_content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/files/description": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The description of one file */
+        get: operations["get_file_description"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/files:describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the agent to describe files: the ones named, or all in a state */
+        post: operations["describe_files"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/hypotheses": {
         parameters: {
             query?: never;
@@ -407,6 +492,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The notes of the plan the agent last proposed; its cards are on the board */
+        get: operations["get_plan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/plan:generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the agent for a plan; its cards are put on the board when its turn ends */
+        post: operations["generate_plan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/runs": {
         parameters: {
             query?: never;
@@ -418,6 +537,40 @@ export interface paths {
         get: operations["list_project_runs"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/theory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The theory of the project as the agent wrote it, and whether it is still current */
+        get: operations["get_theory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/theory:generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the agent to write, or write again, the theory of the project */
+        post: operations["generate_theory"];
         delete?: never;
         options?: never;
         head?: never;
@@ -934,6 +1087,11 @@ export interface components {
             /** @default backlog */
             workflow_status?: components["schemas"]["WorkflowStatus"];
         };
+        /**
+         * CardOrigin
+         * @enum {string}
+         */
+        CardOrigin: "user" | "agent";
         /** CardOut */
         CardOut: {
             /**
@@ -947,6 +1105,11 @@ export interface components {
             entity_ref: string | null;
             /** Id */
             id: string;
+            /**
+             * @description Who put the card on the board: you or the agent.
+             * @default user
+             */
+            origin?: components["schemas"]["CardOrigin"];
             /** Project Id */
             project_id: string;
             /** Sort Order */
@@ -1199,6 +1362,43 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** DescribeOut */
+        DescribeOut: {
+            /**
+             * Left
+             * @description Files of the scope beyond the bound of one request.
+             */
+            left: number;
+            /** Message Ids */
+            message_ids: string[];
+            /**
+             * Queued
+             * @description Files the agent was asked to describe.
+             */
+            queued: number;
+            /**
+             * Skipped
+             * @description Files left out because they are being described already.
+             */
+            skipped: number;
+            /**
+             * Turns
+             * @description Agent turns queued for them.
+             */
+            turns: number;
+        };
+        /** DescribeRequest */
+        DescribeRequest: {
+            /** Instructions */
+            instructions?: string | null;
+            /** Paths */
+            paths?: string[] | null;
+            /**
+             * Scope
+             * @description Instead of paths: every file in that state.
+             */
+            scope?: ("undescribed" | "stale" | "all") | null;
+        };
         /**
          * Diagnostic
          * @description Something about the program's records or the parsers that needs a person's attention.
@@ -1216,6 +1416,107 @@ export interface components {
              */
             message: string;
         };
+        /**
+         * DocumentKind
+         * @description What a document written by the agent is about.
+         * @enum {string}
+         */
+        DocumentKind: "theory" | "file_description" | "plan";
+        /**
+         * DocumentOut
+         * @description A document the agent wrote about the project.
+         */
+        DocumentOut: {
+            category: components["schemas"]["FileCategory"] | null;
+            /**
+             * Changed Sources
+             * @description Those files, as they are found now.
+             */
+            changed_sources?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Generated At */
+            generated_at: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Instructions
+             * @description What the researcher added to the request.
+             */
+            instructions: string;
+            /**
+             * Key
+             * @description The file's path for a file description; else the kind.
+             */
+            key: string;
+            kind: components["schemas"]["DocumentKind"];
+            /** Markdown */
+            markdown: string;
+            /**
+             * Message Id
+             * @description The turn that wrote the current content.
+             */
+            message_id: string | null;
+            /** Model */
+            model: string | null;
+            /**
+             * Pending Message Id
+             * @description The turn that is writing the next content, while there is one.
+             */
+            pending_message_id: string | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Session Id
+             * @description The conversation in which it was written.
+             */
+            session_id: string | null;
+            /**
+             * Sources
+             * @description The files the content was written from.
+             */
+            sources: components["schemas"]["SourceRef"][];
+            /**
+             * Stale
+             * @description A file it was written from has changed since, or is gone.
+             * @default false
+             */
+            stale?: boolean;
+            status: components["schemas"]["DocumentStatus"];
+            /** Status Reason */
+            status_reason: string | null;
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Version
+             * @description How many times the content was written; 0 before the first.
+             */
+            version: number;
+        };
+        /**
+         * DocumentSlot
+         * @description A document that exists once per project (the theory, the plan notes), or nothing yet.
+         */
+        DocumentSlot: {
+            document: components["schemas"]["DocumentOut"] | null;
+        };
+        /**
+         * DocumentStatus
+         * @description Whether a document has content. Whether its content is still current is not a status:
+         *     it is computed from the files it was written from, every time it is read.
+         * @enum {string}
+         */
+        DocumentStatus: "generating" | "ready" | "failed";
         /** EnvironmentRecord */
         EnvironmentRecord: {
             executable: components["schemas"]["ExecutableRecord"];
@@ -1557,6 +1858,56 @@ export interface components {
          * @enum {string}
          */
         FailureClass: "code_error" | "resource_limit" | "numerical_instability" | "data_problem" | "infrastructure" | "unknown";
+        /**
+         * FileCategory
+         * @description What a file of the project is. ``data`` is what can be told from the name alone; the
+         *     agent's description says whether it is read (input) or written (output).
+         * @enum {string}
+         */
+        FileCategory: "code" | "input" | "output" | "data" | "image" | "config" | "documentation" | "other";
+        /** FileCounts */
+        FileCounts: {
+            /**
+             * Described
+             * @description Described and unchanged since.
+             */
+            described: number;
+            /** Failed */
+            failed: number;
+            /** Generating */
+            generating: number;
+            /** Stale */
+            stale: number;
+            /** Total */
+            total: number;
+            /** Undescribed */
+            undescribed: number;
+        };
+        /** FileDescriptionState */
+        FileDescriptionState: {
+            /** Document Id */
+            document_id: string;
+            /**
+             * Pending
+             * @description The agent is describing it now.
+             */
+            pending: boolean;
+            /**
+             * Stale
+             * @description The file has changed since it was described.
+             */
+            stale: boolean;
+            status: components["schemas"]["DocumentStatus"];
+            /** Status Reason */
+            status_reason: string | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** FileDigest */
         FileDigest: {
             /** Path */
@@ -1565,6 +1916,44 @@ export interface components {
             sha256: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /** FileEntry */
+        FileEntry: {
+            /** @description From the description when there is one, else guessed from the name. */
+            category: components["schemas"]["FileCategory"];
+            description: components["schemas"]["FileDescriptionState"] | null;
+            /** Path */
+            path: string;
+            /**
+             * Sha
+             * @description Content hash of the file as it is now.
+             */
+            sha: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Viewable Image */
+            viewable_image: boolean;
+        };
+        /** FileList */
+        FileList: {
+            counts: components["schemas"]["FileCounts"];
+            /** Files */
+            files: components["schemas"]["FileEntry"][];
+            /** Root */
+            root: string;
+            /**
+             * Truncated
+             * @description The project has more files than are listed.
+             */
+            truncated: boolean;
+        };
+        /** GenerateRequest */
+        GenerateRequest: {
+            /**
+             * Instructions
+             * @description Added to what the agent is asked (a language, an emphasis). Absent keeps the instructions of the previous request.
+             */
+            instructions?: string | null;
         };
         /**
          * GuardrailRule
@@ -2741,6 +3130,16 @@ export interface components {
              */
             unit: string;
         };
+        /** SourceRef */
+        SourceRef: {
+            /** Path */
+            path: string;
+            /**
+             * Sha
+             * @description Content hash of the file when the document was written.
+             */
+            sha: string | null;
+        };
         /**
          * TaskPolicy
          * @description The model and effort for one kind of task; null takes the provider's default.
@@ -3232,6 +3631,46 @@ export interface operations {
             };
             /** @description Stale version or project mismatch */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4055,7 +4494,10 @@ export interface operations {
     };
     list_agent_sessions: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sessions of this task; the conversations by default. The sessions in which documents were written are those of the other tasks. */
+                task?: components["schemas"]["AgentTask"] | "all";
+            };
             header?: never;
             path: {
                 project_id: string;
@@ -4458,6 +4900,188 @@ export interface operations {
             };
         };
     };
+    list_files: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_file_content: {
+        parameters: {
+            query: {
+                /** @description Path relative to the project root. */
+                path: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_file_description: {
+        parameters: {
+            query: {
+                /** @description Path relative to the project root. */
+                path: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    describe_files: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DescribeOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_hypotheses: {
         parameters: {
             query?: never;
@@ -4545,6 +5169,102 @@ export interface operations {
             };
         };
     };
+    get_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSlot"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    generate_plan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GenerateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_project_runs: {
         parameters: {
             query?: {
@@ -4569,6 +5289,102 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_theory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSlot"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    generate_theory: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GenerateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

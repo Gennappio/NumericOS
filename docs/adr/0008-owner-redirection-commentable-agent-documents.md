@@ -98,6 +98,15 @@ The owner answered three questions about how this should behave:
 | M1-T06 | The execution description: what happens when the program runs, from the code and from what the M3 supervisor observed; no instrumentation of the source | 3 |
 | M1-T07 | The plan as a board: structured plan from the agent, cards editable, the board fed back to the agent | 6 |
 
+## Order as delivered
+
+The owner, seeing only the conversations after M1-T01, asked for the pages first ("non vedo la
+board con la spiegazione dei file, la teoria, i trello del piano"). The pages were therefore
+delivered before the comments: the theory (T04), the file descriptions with staleness (T05, and
+requirement 4 as "marked and updated with one click", not yet by itself) and the plan on the
+board with drag and drop (T07). Comments with Clarify and Resolve (T02, T03) and the execution
+description (T06) follow.
+
 ## Consequences
 
 - `CURRENT_MILESTONE.md` points to M1 and to this record; `milestones/M3` stays as it is.

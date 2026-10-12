@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router"
 import type { AgentCapabilities, AgentPolicy, PermissionMode } from "@/api/client"
 import {
   isTurnActive,
-  useAgentCapabilities,
   useAgentPolicy,
   useAgentSession,
   useAgentSessions,
@@ -11,16 +10,15 @@ import {
   useCreateAgentSession,
   useMessages,
   useSendMessage,
-  useWorkers,
 } from "@/api/queries"
 import { Composer } from "@/components/agent/Composer"
 import { MessageCard } from "@/components/agent/MessageCard"
 import { PolicyPanel } from "@/components/agent/PolicyPanel"
 import { SessionList } from "@/components/agent/SessionList"
+import { AgentPreconditions } from "@/components/agent/Preconditions"
+import { useAgentReadiness } from "@/components/agent/readiness"
 import { ErrorPanel } from "@/components/ErrorPanel"
-import { ExecutionPanel } from "@/components/experiments/ExecutionPanel"
 import { Notice } from "@/components/Notice"
-import { Section } from "@/components/Section"
 import { describeError } from "@/lib/errors"
 import { useProjectContext } from "@/pages/projectContext"
 
@@ -33,16 +31,12 @@ export function AgentView() {
   const { project, live, offline } = useProjectContext()
   const { sessionId } = useParams()
   const navigate = useNavigate()
-  const capabilities = useAgentCapabilities()
+  const readiness = useAgentReadiness(project, offline)
+  const { blocked, supervisorAlive, capabilities } = readiness
   const policy = useAgentPolicy(project.id, live)
   const sessions = useAgentSessions(project.id, live)
-  const workers = useWorkers()
   const create = useCreateAgentSession(project.id)
   const [notice, setNotice] = useState<string | null>(null)
-
-  const trusted = Boolean(project.execution_trusted_at)
-  const blocked = blockedBy(project.root_path, trusted, capabilities.data)
-  const supervisorAlive = (workers.data?.alive ?? 0) > 0
   const currentId = sessionId ?? sessions.data?.sessions[0]?.id
 
   function startConversation(mode: PermissionMode) {
@@ -59,14 +53,7 @@ export function AgentView() {
     <div className="space-y-5">
       {notice && <Notice message={notice} onDismiss={() => setNotice(null)} />}
 
-      {(blocked !== null || !supervisorAlive) && (
-        <Section title="Before the agent can work">
-          <div className="space-y-3">
-            <ExecutionPanel project={project} disabled={offline} purpose="agent" />
-            <AgentPanel capabilities={capabilities.data} error={capabilities.error} />
-          </div>
-        </Section>
-      )}
+      <AgentPreconditions project={project} offline={offline} readiness={readiness} />
 
       <details className="group rounded-lg border border-border bg-muted/30">
         <summary className="cursor-pointer px-4 py-2 text-sm font-medium">
@@ -82,7 +69,7 @@ export function AgentView() {
               key={policy.data.version}
               projectId={project.id}
               policy={policy.data}
-              capabilities={capabilities.data}
+              capabilities={capabilities}
               disabled={offline}
               onError={(error) => setNotice(describeError(error))}
             />
@@ -127,9 +114,9 @@ export function AgentView() {
             projectId={project.id}
             sessionId={currentId}
             policy={policy.data}
-            capabilities={capabilities.data}
+            capabilities={capabilities}
             supervisorAlive={supervisorAlive}
-            blocked={offline ? "The NumericOS API is not reachable." : blocked}
+            blocked={blocked}
             onError={(error) => setNotice(describeError(error))}
           />
         ) : (
@@ -139,58 +126,6 @@ export function AgentView() {
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-/** Why nothing can be sent to the agent right now, if anything stands in the way. */
-function blockedBy(
-  rootPath: string | null,
-  trusted: boolean,
-  capabilities: AgentCapabilities | undefined,
-): string | null {
-  if (rootPath === null) return "This project has no code path: set it with Edit project."
-  if (!trusted) return "Execution in the project directory is not allowed yet (see above)."
-  if (capabilities && !capabilities.available) {
-    return `The agent command is not available: ${capabilities.problem ?? "unknown reason"}`
-  }
-  return null
-}
-
-function AgentPanel({
-  capabilities,
-  error,
-}: {
-  capabilities: AgentCapabilities | undefined
-  error: unknown
-}) {
-  return (
-    <div
-      data-state={capabilities ? (capabilities.available ? "available" : "unavailable") : "checking"}
-      className="space-y-1 rounded-lg border border-border bg-card p-4"
-    >
-      <h3 className="text-sm font-medium">Coding agent</h3>
-      {capabilities ? (
-        capabilities.available ? (
-          <p className="text-sm">
-            Claude Code {capabilities.version}{" "}
-            <span className="font-mono text-xs break-all text-muted-foreground">
-              {capabilities.path}
-            </span>
-          </p>
-        ) : (
-          <p className="text-sm">
-            <span className="font-medium text-amber-800">Not available.</span>{" "}
-            {capabilities.problem}
-          </p>
-        )
-      ) : error ? (
-        <p className="text-sm text-muted-foreground">{describeError(error)}</p>
-      ) : (
-        <p role="status" className="text-sm text-muted-foreground">
-          Checking…
-        </p>
-      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { cpSync, mkdtempSync, realpathSync } from "node:fs"
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test"
@@ -9,7 +9,14 @@ export interface ProjectRecord {
   id: string
   name: string
   version: number
+  root_path: string | null
 }
+
+/** A 16 by 16 grey square: a real image for the pages that show the figures of a project. */
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGNsaGhgIAUwkaR6VMPQ0QAAVW4BoCQvvEYAAAAASUVORK5CYII=",
+  "base64",
+)
 
 export interface CardRecord {
   id: string
@@ -76,6 +83,8 @@ export function cli<T>(...args: string[]): T {
 export function exampleRepository(): string {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "numericos-e2e-repo-")))
   cpSync("../../examples", join(root, "examples"), { recursive: true })
+  mkdirSync(join(root, "docs"))
+  writeFileSync(join(root, "docs", "grid.png"), PNG)
   const git = (...args: string[]) =>
     execFileSync("git", ["-C", root, ...args], {
       env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },

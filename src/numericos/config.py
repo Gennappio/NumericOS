@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     agent_max_parallel: int = Field(
         default=2, ge=1, le=16, description="Agent turns a supervisor serves at the same time."
     )
+    agent_files_per_turn: int = Field(
+        default=8, ge=1, le=50, description="Files the agent is asked to describe in one turn."
+    )
 
     @field_validator("data_dir")
     @classmethod

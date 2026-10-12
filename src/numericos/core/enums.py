@@ -94,7 +94,50 @@ class AgentTask(StrEnum):
 
 #: Tasks that a built feature uses today. The policy keeps a choice for the others ahead of
 #: their ticket; the GUI says they are not available yet.
-AVAILABLE_TASKS: frozenset[AgentTask] = frozenset({AgentTask.CONVERSATION})
+AVAILABLE_TASKS: frozenset[AgentTask] = frozenset(
+    {
+        AgentTask.CONVERSATION,
+        AgentTask.THEORY,
+        AgentTask.FILE_DESCRIPTION,
+        AgentTask.PLAN,
+    }
+)
+
+
+class DocumentKind(StrEnum):
+    """What a document written by the agent is about."""
+
+    THEORY = "theory"
+    FILE_DESCRIPTION = "file_description"
+    PLAN = "plan"
+
+
+class DocumentStatus(StrEnum):
+    """Whether a document has content. Whether its content is still current is not a status:
+    it is computed from the files it was written from, every time it is read."""
+
+    GENERATING = "generating"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class FileCategory(StrEnum):
+    """What a file of the project is. ``data`` is what can be told from the name alone; the
+    agent's description says whether it is read (input) or written (output)."""
+
+    CODE = "code"
+    INPUT = "input"
+    OUTPUT = "output"
+    DATA = "data"
+    IMAGE = "image"
+    CONFIG = "config"
+    DOCUMENTATION = "documentation"
+    OTHER = "other"
+
+
+class CardOrigin(StrEnum):
+    USER = "user"
+    AGENT = "agent"
 
 
 class MessageRole(StrEnum):
@@ -150,6 +193,8 @@ class EventType(StrEnum):
     AGENT_SESSION_STARTED = "AGENT_SESSION_STARTED"
     AGENT_SESSION_UPDATED = "AGENT_SESSION_UPDATED"
     AGENT_POLICY_UPDATED = "AGENT_POLICY_UPDATED"
+    DOCUMENT_GENERATION_QUEUED = "DOCUMENT_GENERATION_QUEUED"
+    DOCUMENT_GENERATION_FINISHED = "DOCUMENT_GENERATION_FINISHED"
     AGENT_TURN_QUEUED = "AGENT_TURN_QUEUED"
     AGENT_TURN_STARTED = "AGENT_TURN_STARTED"
     AGENT_TURN_FINISHED = "AGENT_TURN_FINISHED"

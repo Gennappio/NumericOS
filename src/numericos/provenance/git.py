@@ -55,11 +55,14 @@ class TreeStatus:
         return bool(self.changed or self.untracked)
 
 
-def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+def _git(
+    root: Path, *args: str, check: bool = True, stdin: bytes | None = None
+) -> subprocess.CompletedProcess[bytes]:
     try:
         completed = subprocess.run(
             ["git", "-C", str(root), *args],
             capture_output=True,
+            input=stdin,
             env={**os.environ, **_ENVIRONMENT},
             timeout=TIMEOUT_SECONDS,
             check=False,
@@ -151,6 +154,75 @@ def list_files(root: Path, patterns: list[str]) -> list[str]:
         root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *patterns
     ).stdout
     return sorted({path for path in output.decode(errors="surrogateescape").split("\x00") if path})
+
+
+def working_files(root: Path) -> list[str]:
+    """The files of the working tree that are tracked, or new and not ignored, and exist now
+    as regular files (a tracked file that was deleted, or a submodule, is not listed)."""
+    return [path for path in list_files(root, []) if (root / path).is_file()]
+
+
+def index_hashes(root: Path) -> dict[str, str]:
+    """The blob hash the index holds for every tracked file."""
+    output = _git(root, "ls-files", "-s", "-z").stdout.decode(errors="surrogateescape")
+    hashes: dict[str, str] = {}
+    for entry in output.split("\x00"):
+        meta, _, path = entry.partition("\t")
+        fields = meta.split()
+        if path and len(fields) == 3 and fields[2] == "0":
+            hashes[path] = fields[1]
+    return hashes
+
+
+def hash_objects(root: Path, paths: list[str]) -> dict[str, str]:
+    """The blob hash of the content each file has now. A path with a line break is left out:
+    git reads the paths one per line."""
+    usable = [path for path in paths if "\n" not in path]
+    if not usable:
+        return {}
+    stdin = "".join(f"{path}\n" for path in usable).encode(errors="surrogateescape")
+    output = _git(root, "hash-object", "--stdin-paths", stdin=stdin).stdout.decode()
+    return dict(zip(usable, output.split(), strict=True))
+
+
+#: Hashes of files that differ from the index, by what the file system says about them, so
+#: that a large result file is read once and not on every listing.
+_hash_cache: dict[tuple[str, str], tuple[int, int, str]] = {}
+
+
+def content_hashes(root: Path, paths: list[str]) -> dict[str, str | None]:
+    """The content hash of each path as it is now in the working tree; None if it is not a
+    file. Tracked files that ``git status`` reports unchanged take their hash from the index;
+    the others are hashed, once per size and modification time."""
+    tracked = index_hashes(root)
+    tree = status(root)
+    different = set(tree.changed) | set(tree.untracked)
+    result: dict[str, str | None] = {}
+    to_hash: list[str] = []
+    stats: dict[str, tuple[int, int]] = {}
+    for path in paths:
+        file = root / path
+        try:
+            stat = file.stat() if file.is_file() else None
+        except OSError:
+            stat = None
+        if stat is None:
+            result[path] = None
+        elif path in tracked and path not in different:
+            result[path] = tracked[path]
+        else:
+            cached = _hash_cache.get((str(root), path))
+            stats[path] = (stat.st_size, stat.st_mtime_ns)
+            if cached is not None and cached[:2] == stats[path]:
+                result[path] = cached[2]
+            else:
+                to_hash.append(path)
+    for path, sha in hash_objects(root, to_hash).items():
+        result[path] = sha
+        _hash_cache[(str(root), path)] = (*stats[path], sha)
+    for path in to_hash:
+        result.setdefault(path, None)
+    return result
 
 
 def diff_against_head(root: Path) -> bytes:

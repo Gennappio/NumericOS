@@ -101,3 +101,38 @@ def test_the_policy_is_shown_and_set_per_task(
     record = json.loads(answered.stdout)
     assert (record["model_requested"], record["effort"]) == ("claude-haiku-5-5", "low")
     assert incomplete.exit_code == 2
+
+
+def test_the_theory_and_the_files_are_asked_for_and_read_from_the_command_line(
+    live_server: LiveServer, live_worker: LiveWorker, live_lab: Lab
+) -> None:
+    project_id = live_lab.project["id"]
+    solver = "examples/heat2d-python/heat2d.py"
+
+    nothing = cli(live_server, "doc", "theory", "-p", project_id)
+    written = cli(
+        live_server,
+        "doc",
+        "theory",
+        "-p",
+        project_id,
+        "--write",
+        "--instructions",
+        f"READ {solver}",
+    )
+    asked = cli(live_server, "doc", "describe", "-p", project_id, solver)
+    live_lab.repo.write(solver, "print('edited')\n")
+    stale = cli(live_server, "doc", "theory", "-p", project_id)
+    both = cli(live_server, "doc", "describe", "-p", project_id, solver, "--scope", "all")
+    planned = cli_json(live_server, "doc", "plan", "-p", project_id, "--write")
+
+    assert "not written yet" in nothing.stdout
+    assert written.exit_code == 0, written.output
+    assert written.stdout.startswith("# Explicit scheme for the 2D heat equation")
+    assert "✓ Read" in written.stderr  # the agent's actions go to stderr while it works
+    assert asked.stdout.strip() == "asked for 1 file(s) in 1 turn(s)"
+    assert f"(out of date: {solver} changed since)" in stale.stdout
+    assert both.exit_code == 2
+    assert planned["summary"] == "2 card(s) added, 0 changed"
+    listed = cli(live_server, "doc", "files", "-p", project_id)
+    assert f"{solver}  [code," in listed.stdout

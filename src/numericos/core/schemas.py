@@ -19,9 +19,13 @@ from numericos.core.agents import ActivityItem, PermissionDenial, PlanUsage, Tur
 from numericos.core.enums import (
     AgentProvider,
     AgentTask,
+    CardOrigin,
     CardType,
+    DocumentKind,
+    DocumentStatus,
     EpistemicStatus,
     FailureClass,
+    FileCategory,
     MessageRole,
     MessageStatus,
     PermissionMode,
@@ -168,6 +172,9 @@ class CardOut(BaseModel):
     workflow_status: WorkflowStatus
     sort_order: int
     entity_ref: str | None
+    origin: CardOrigin = Field(
+        default=CardOrigin.USER, description="Who put the card on the board: you or the agent."
+    )
     version: int
     created_at: datetime
     updated_at: datetime
@@ -610,6 +617,122 @@ class AgentPolicyPut(StrictModel):
     tasks: dict[AgentTask, TaskPolicy] = Field(
         description="Tasks to set; a task left out keeps the provider's default."
     )
+
+
+class SourceRef(BaseModel):
+    path: str
+    sha: str | None = Field(description="Content hash of the file when the document was written.")
+
+
+class DocumentOut(BaseModel):
+    """A document the agent wrote about the project."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    kind: DocumentKind
+    key: str = Field(description="The file's path for a file description; else the kind.")
+    title: str
+    summary: str
+    category: FileCategory | None
+    markdown: str
+    status: DocumentStatus
+    status_reason: str | None
+    instructions: str = Field(description="What the researcher added to the request.")
+    sources: list[SourceRef] = Field(description="The files the content was written from.")
+    session_id: str | None = Field(description="The conversation in which it was written.")
+    message_id: str | None = Field(description="The turn that wrote the current content.")
+    pending_message_id: str | None = Field(
+        description="The turn that is writing the next content, while there is one."
+    )
+    model: str | None
+    generated_at: datetime | None
+    version: int = Field(description="How many times the content was written; 0 before the first.")
+    created_at: datetime
+    updated_at: datetime
+    stale: bool = Field(
+        default=False, description="A file it was written from has changed since, or is gone."
+    )
+    changed_sources: list[str] = Field(
+        default_factory=list, description="Those files, as they are found now."
+    )
+
+
+class DocumentSlot(BaseModel):
+    """A document that exists once per project (the theory, the plan notes), or nothing yet."""
+
+    document: DocumentOut | None
+
+
+class GenerateRequest(StrictModel):
+    instructions: str | None = Field(
+        default=None,
+        max_length=5000,
+        description=(
+            "Added to what the agent is asked (a language, an emphasis). Absent keeps the "
+            "instructions of the previous request."
+        ),
+    )
+
+
+class FileDescriptionState(BaseModel):
+    document_id: str
+    status: DocumentStatus
+    summary: str
+    stale: bool = Field(description="The file has changed since it was described.")
+    pending: bool = Field(description="The agent is describing it now.")
+    status_reason: str | None
+    updated_at: datetime
+
+
+class FileEntry(BaseModel):
+    path: str
+    size_bytes: int
+    category: FileCategory = Field(
+        description="From the description when there is one, else guessed from the name."
+    )
+    sha: str | None = Field(description="Content hash of the file as it is now.")
+    viewable_image: bool
+    description: FileDescriptionState | None
+
+
+class FileCounts(BaseModel):
+    total: int
+    described: int = Field(description="Described and unchanged since.")
+    stale: int
+    generating: int
+    failed: int
+    undescribed: int
+
+
+class FileList(BaseModel):
+    root: str
+    files: list[FileEntry]
+    counts: FileCounts
+    truncated: bool = Field(description="The project has more files than are listed.")
+
+
+class DescribeRequest(StrictModel):
+    paths: list[str] | None = Field(default=None, min_length=1, max_length=400)
+    scope: Literal["undescribed", "stale", "all"] | None = Field(
+        default=None, description="Instead of paths: every file in that state."
+    )
+    instructions: str | None = Field(default=None, max_length=5000)
+
+    @model_validator(mode="after")
+    def _one_selection(self) -> Self:
+        if (self.paths is None) == (self.scope is None):
+            raise ValueError("pass either paths or scope")
+        return self
+
+
+class DescribeOut(BaseModel):
+    queued: int = Field(description="Files the agent was asked to describe.")
+    turns: int = Field(description="Agent turns queued for them.")
+    skipped: int = Field(description="Files left out because they are being described already.")
+    left: int = Field(description="Files of the scope beyond the bound of one request.")
+    message_ids: list[str]
 
 
 class RunRecord(BaseModel):

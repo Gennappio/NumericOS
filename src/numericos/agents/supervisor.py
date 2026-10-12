@@ -25,7 +25,7 @@ from typing import Any, Literal, TypeGuard
 
 import psutil
 
-from numericos.agents import claude_code, layout
+from numericos.agents import claude_code, documents, layout
 from numericos.agents.records import choice_for, finished_payload
 from numericos.config import Settings
 from numericos.core.agents import ActivityItem, TurnResult
@@ -38,6 +38,7 @@ from numericos.observability import files
 from numericos.persistence.engine import TIMESTAMP_FORMAT, utcnow
 from numericos.persistence.models import AgentMessage, Event
 from numericos.persistence.unit_of_work import UnitOfWork
+from numericos.provenance import git
 
 ACTIVE = (MessageStatus.QUEUED.value, MessageStatus.RUNNING.value)
 #: A claimed turn whose process never appeared is given this long before it is queued again.
@@ -100,6 +101,7 @@ class Launch:
     mode: PermissionMode
     model: str | None
     effort: str | None
+    json_schema: dict[str, Any] | None
     system: str
     prompt: str
     resume: bool
@@ -137,6 +139,7 @@ class TurnSupervisor:
         event_type: EventType,
         payload: dict[str, Any],
         severity: Severity = Severity.INFO,
+        subject_id: str | None = None,
     ) -> Event:
         context = EventContext(
             actor=f"worker:{self.worker_id}",
@@ -146,10 +149,28 @@ class TurnSupervisor:
         return build_event(
             event_type=event_type,
             project_id=message.project_id,
-            subject_id=message.id,
+            subject_id=subject_id or message.id,
             payload=payload,
             context=context,
             severity=severity,
+        )
+
+    def _complete_documents(
+        self,
+        uow: UnitOfWork,
+        message: AgentMessage,
+        cwd: Path,
+        hashes: dict[str, str | None],
+    ) -> None:
+        """Hand the answer of a turn that just ended to the documents it was writing."""
+        documents.complete(
+            uow,
+            message,
+            cwd=cwd,
+            hashes=hashes,
+            make_event=lambda event_type, subject, payload, severity: self._event(
+                message, event_type, payload, severity, subject_id=subject
+            ),
         )
 
     # ------------------------------------------------------------------ one round
@@ -249,6 +270,7 @@ class TurnSupervisor:
                 mode=mode,
                 model=model,
                 effort=effort,
+                json_schema=message.json_schema,
                 system=session.system_prompt,
                 prompt=(
                     f"{(prompt.markdown if prompt else '').rstrip()}\n\n"
@@ -301,6 +323,7 @@ class TurnSupervisor:
             max_budget_usd=self.settings.agent_max_budget_usd,
             model=launch.model,
             effort=launch.effort,
+            json_schema=launch.json_schema,
         )
         write_json_atomic(
             turn_dir / layout.SPEC,
@@ -396,6 +419,7 @@ class TurnSupervisor:
                     Severity.ERROR if status is MessageStatus.FAILED else Severity.WARNING,
                 )
             )
+            self._complete_documents(uow, message, Path("."), {})
             uow.commit()
 
     # ------------------------------------------------------------------ following
@@ -415,6 +439,7 @@ class TurnSupervisor:
             session = uow.agent_sessions.get(message.session_id)
             assert session is not None
             cwd = Path(session.cwd)
+            read_so_far = list(message.files_read or [])
 
         reading = read_turn_files(turn_dir, offsets)
         signalled = dict(offsets)
@@ -423,6 +448,13 @@ class TurnSupervisor:
         verdict = self._verdict(message_id, reading, unchanged_for)
         handle = self._processes.get(message_id)
         exit_code = handle.poll() if handle is not None else None
+        # Files and Git are read here, between the transactions: what the files the agent
+        # read contain now is what a document written from them is later compared with.
+        hashes = (
+            self._hashes_of_read_files(cwd, read_so_far, reading.records)
+            if verdict.kind == "finished"
+            else {}
+        )
 
         with self._uow() as uow:
             message = uow.messages.get(message_id)
@@ -443,9 +475,11 @@ class TurnSupervisor:
                 assert progress.result is not None
                 self._processes.pop(message_id, None)
                 self._finalize(uow, message, progress.result, exit_code)
+                self._complete_documents(uow, message, cwd, hashes)
             elif verdict.kind == "ended":
                 self._processes.pop(message_id, None)
                 self._close(uow, message, cancel_reason, verdict.reason, exit_code)
+                self._complete_documents(uow, message, cwd, {})
             elif verdict.kind == "requeue":
                 message.status = MessageStatus.QUEUED.value
                 message.worker_id = None
@@ -467,6 +501,22 @@ class TurnSupervisor:
                 message.heartbeat_at = utcnow()
                 message.updated_at = message.heartbeat_at
                 uow.commit()
+
+    @staticmethod
+    def _hashes_of_read_files(
+        cwd: Path, read_so_far: list[str], records: list[dict[str, Any]]
+    ) -> dict[str, str | None]:
+        preview = claude_code.Progress(files_read=list(read_so_far))
+        for record in records:
+            preview.fold(record, cwd)
+        inside = [path for path in preview.files_read if not Path(path).is_absolute()]
+        if not inside:
+            return {}
+        try:
+            return git.content_hashes(cwd, inside)
+        except git.GitError as error:
+            log.warning("could not hash the files a turn read in %s: %s", cwd, error)
+            return {}
 
     def _verdict(self, message_id: str, reading: TurnReading, unchanged_for: float) -> Verdict:
         if any(record.get("type") == "result" for record in reading.records):

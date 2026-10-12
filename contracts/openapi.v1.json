@@ -606,6 +606,14 @@
         "title": "CardCreate",
         "type": "object"
       },
+      "CardOrigin": {
+        "enum": [
+          "user",
+          "agent"
+        ],
+        "title": "CardOrigin",
+        "type": "string"
+      },
       "CardOut": {
         "properties": {
           "created_at": {
@@ -631,6 +639,11 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/CardOrigin",
+            "default": "user",
+            "description": "Who put the card on the board: you or the agent."
           },
           "project_id": {
             "title": "Project Id",
@@ -1186,6 +1199,98 @@
         "title": "CoverageLevel",
         "type": "object"
       },
+      "DescribeOut": {
+        "properties": {
+          "left": {
+            "description": "Files of the scope beyond the bound of one request.",
+            "title": "Left",
+            "type": "integer"
+          },
+          "message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Message Ids",
+            "type": "array"
+          },
+          "queued": {
+            "description": "Files the agent was asked to describe.",
+            "title": "Queued",
+            "type": "integer"
+          },
+          "skipped": {
+            "description": "Files left out because they are being described already.",
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "turns": {
+            "description": "Agent turns queued for them.",
+            "title": "Turns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "turns",
+          "skipped",
+          "left",
+          "message_ids"
+        ],
+        "title": "DescribeOut",
+        "type": "object"
+      },
+      "DescribeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 400,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paths"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "undescribed",
+                  "stale",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Instead of paths: every file in that state.",
+            "title": "Scope"
+          }
+        },
+        "title": "DescribeRequest",
+        "type": "object"
+      },
       "Diagnostic": {
         "description": "Something about the program's records or the parsers that needs a person's attention.",
         "properties": {
@@ -1218,6 +1323,228 @@
         ],
         "title": "Diagnostic",
         "type": "object"
+      },
+      "DocumentKind": {
+        "description": "What a document written by the agent is about.",
+        "enum": [
+          "theory",
+          "file_description",
+          "plan"
+        ],
+        "title": "DocumentKind",
+        "type": "string"
+      },
+      "DocumentOut": {
+        "description": "A document the agent wrote about the project.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changed_sources": {
+            "description": "Those files, as they are found now.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Sources",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "description": "What the researcher added to the request.",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "key": {
+            "description": "The file's path for a file description; else the kind.",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The turn that wrote the current content.",
+            "title": "Message Id"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "pending_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The turn that is writing the next content, while there is one.",
+            "title": "Pending Message Id"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The conversation in which it was written.",
+            "title": "Session Id"
+          },
+          "sources": {
+            "description": "The files the content was written from.",
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "stale": {
+            "default": false,
+            "description": "A file it was written from has changed since, or is gone.",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentStatus"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "description": "How many times the content was written; 0 before the first.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "kind",
+          "key",
+          "title",
+          "summary",
+          "category",
+          "markdown",
+          "status",
+          "status_reason",
+          "instructions",
+          "sources",
+          "session_id",
+          "message_id",
+          "pending_message_id",
+          "model",
+          "generated_at",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentOut",
+        "type": "object"
+      },
+      "DocumentSlot": {
+        "description": "A document that exists once per project (the theory, the plan notes), or nothing yet.",
+        "properties": {
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "DocumentSlot",
+        "type": "object"
+      },
+      "DocumentStatus": {
+        "description": "Whether a document has content. Whether its content is still current is not a status:\nit is computed from the files it was written from, every time it is read.",
+        "enum": [
+          "generating",
+          "ready",
+          "failed"
+        ],
+        "title": "DocumentStatus",
+        "type": "string"
       },
       "EnvironmentRecord": {
         "properties": {
@@ -2051,6 +2378,112 @@
         "title": "FailureClass",
         "type": "string"
       },
+      "FileCategory": {
+        "description": "What a file of the project is. ``data`` is what can be told from the name alone; the\nagent's description says whether it is read (input) or written (output).",
+        "enum": [
+          "code",
+          "input",
+          "output",
+          "data",
+          "image",
+          "config",
+          "documentation",
+          "other"
+        ],
+        "title": "FileCategory",
+        "type": "string"
+      },
+      "FileCounts": {
+        "properties": {
+          "described": {
+            "description": "Described and unchanged since.",
+            "title": "Described",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "generating": {
+            "title": "Generating",
+            "type": "integer"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "undescribed": {
+            "title": "Undescribed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "described",
+          "stale",
+          "generating",
+          "failed",
+          "undescribed"
+        ],
+        "title": "FileCounts",
+        "type": "object"
+      },
+      "FileDescriptionState": {
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "pending": {
+            "description": "The agent is describing it now.",
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "stale": {
+            "description": "The file has changed since it was described.",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentStatus"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "status",
+          "summary",
+          "stale",
+          "pending",
+          "status_reason",
+          "updated_at"
+        ],
+        "title": "FileDescriptionState",
+        "type": "object"
+      },
       "FileDigest": {
         "properties": {
           "path": {
@@ -2072,6 +2505,109 @@
           "size_bytes"
         ],
         "title": "FileDigest",
+        "type": "object"
+      },
+      "FileEntry": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/FileCategory",
+            "description": "From the description when there is one, else guessed from the name."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileDescriptionState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Content hash of the file as it is now.",
+            "title": "Sha"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "viewable_image": {
+            "title": "Viewable Image",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "size_bytes",
+          "category",
+          "sha",
+          "viewable_image",
+          "description"
+        ],
+        "title": "FileEntry",
+        "type": "object"
+      },
+      "FileList": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/FileCounts"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileEntry"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "root": {
+            "title": "Root",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "The project has more files than are listed.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "root",
+          "files",
+          "counts",
+          "truncated"
+        ],
+        "title": "FileList",
+        "type": "object"
+      },
+      "GenerateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Added to what the agent is asked (a language, an emphasis). Absent keeps the instructions of the previous request.",
+            "title": "Instructions"
+          }
+        },
+        "title": "GenerateRequest",
         "type": "object"
       },
       "GuardrailRule": {
@@ -4884,6 +5420,32 @@
         "title": "SeriesSummary",
         "type": "object"
       },
+      "SourceRef": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Content hash of the file when the document was written.",
+            "title": "Sha"
+          }
+        },
+        "required": [
+          "path",
+          "sha"
+        ],
+        "title": "SourceRef",
+        "type": "object"
+      },
       "TaskPolicy": {
         "additionalProperties": false,
         "description": "The model and effort for one kind of task; null takes the provider's default.",
@@ -5655,6 +6217,58 @@
         "summary": "Edit and/or move a card (requires its current version)",
         "tags": [
           "cards"
+        ]
+      }
+    },
+    "/v1/documents/{document_id}": {
+      "get": {
+        "operationId": "get_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one document",
+        "tags": [
+          "documents"
         ]
       }
     },
@@ -6886,6 +7500,26 @@
               "title": "Project Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Sessions of this task; the conversations by default. The sessions in which documents were written are those of the other tasks.",
+            "in": "query",
+            "name": "task",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AgentTask"
+                },
+                {
+                  "const": "all",
+                  "type": "string"
+                }
+              ],
+              "default": "conversation",
+              "description": "Sessions of this task; the conversations by default. The sessions in which documents were written are those of the other tasks.",
+              "title": "Task"
+            }
           }
         ],
         "responses": {
@@ -7450,6 +8084,269 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/files": {
+      "get": {
+        "operationId": "list_files",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The files of the project, each with its description if it has one",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/files/content": {
+      "get": {
+        "operationId": "get_file_content",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Path relative to the project root.",
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "description": "Path relative to the project root.",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "The file"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The content of one file of the project directory, to show it",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/files/description": {
+      "get": {
+        "operationId": "get_file_description",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Path relative to the project root.",
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "description": "Path relative to the project root.",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The description of one file",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/files:describe": {
+      "post": {
+        "operationId": "describe_files",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DescribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DescribeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Ask the agent to describe files: the ones named, or all in a state",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/hypotheses": {
       "get": {
         "operationId": "list_hypotheses",
@@ -7575,6 +8472,150 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/plan": {
+      "get": {
+        "operationId": "get_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSlot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The notes of the plan the agent last proposed; its cards are on the board",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/plan:generate": {
+      "post": {
+        "operationId": "generate_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GenerateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Ask the agent for a plan; its cards are put on the board when its turn ends",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/runs": {
       "get": {
         "operationId": "list_project_runs",
@@ -7636,6 +8677,150 @@
         "summary": "The newest runs of a project across its experiments",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/theory": {
+      "get": {
+        "operationId": "get_theory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSlot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The theory of the project as the agent wrote it, and whether it is still current",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/theory:generate": {
+      "post": {
+        "operationId": "generate_theory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GenerateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Ask the agent to write, or write again, the theory of the project",
+        "tags": [
+          "documents"
         ]
       }
     },

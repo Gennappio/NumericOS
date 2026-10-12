@@ -49,6 +49,14 @@ MODELS: list[ModelChoice] = [
 #: Effort levels of `--effort`, lightest first.
 EFFORTS: list[str] = ["low", "medium", "high", "xhigh", "max"]
 
+#: What a project starts with before its policy is saved: the tasks that are many small turns,
+#: or a short structured answer, do not need the heaviest model. The others are left to the
+#: user's own Claude Code settings.
+SUGGESTED_POLICY: dict[str, dict[str, str | None]] = {
+    "file_description": {"model": "claude-sonnet-5-5", "effort": "low"},
+    "plan": {"model": "claude-sonnet-5-5", "effort": "medium"},
+}
+
 #: How each permission mode is asked of Claude Code. ``default`` mode in a non-interactive
 #: session refuses every tool that would have asked for confirmation; the explicit list makes
 #: the refusal of edits and commands independent of the user's own settings.

@@ -25,6 +25,7 @@ PREFIXES: dict[str, str] = {
     "metric_series": "ser",
     "agent_session": "ases",
     "message": "msg",
+    "document": "doc",
 }
 
 ID_PATTERN = re.compile(r"^[a-z]{2,6}_[0-9A-HJKMNP-TV-Z]{26}$")

@@ -1,4 +1,11 @@
-import type { AgentCapabilities, AgentPolicy, AgentSession, Message } from "@/api/client"
+import type {
+  AgentCapabilities,
+  AgentPolicy,
+  AgentSession,
+  DocumentOut,
+  FileEntry,
+  Message,
+} from "@/api/client"
 
 /** Records of conversations as the API returns them; a test overrides what it cares about. */
 
@@ -142,6 +149,59 @@ export function answerRecord(overrides: Partial<Message> = {}): Message {
     version: 3,
     created_at: "2026-10-12T10:00:00Z",
     updated_at: "2026-10-12T10:00:04Z",
+    ...overrides,
+  }
+}
+
+export function documentRecord(overrides: Partial<DocumentOut> = {}): DocumentOut {
+  return {
+    id: "doc_1",
+    project_id: "prj_1",
+    kind: "theory",
+    key: "theory",
+    title: "Explicit scheme for the 2D heat equation",
+    summary: "",
+    category: null,
+    markdown:
+      "# Explicit scheme for the 2D heat equation\n\n## Model\n\n$$u_t = \\alpha \\nabla^2 u \\tag{1}$$\n\n" +
+      "![The grid](docs/grid.png)\n",
+    status: "ready",
+    status_reason: null,
+    instructions: "Scrivi in italiano.",
+    sources: [
+      { path: "heat2d.py", sha: "aaa" },
+      { path: "docs/notes.md", sha: "bbb" },
+    ],
+    session_id: "ases_theory",
+    message_id: "msg_theory",
+    pending_message_id: null,
+    model: "claude-fable-5-1",
+    generated_at: "2026-10-12T10:00:04Z",
+    version: 1,
+    created_at: "2026-10-12T10:00:00Z",
+    updated_at: "2026-10-12T10:00:04Z",
+    stale: false,
+    changed_sources: [],
+    ...overrides,
+  }
+}
+
+export function fileRecord(overrides: Partial<FileEntry> = {}): FileEntry {
+  return {
+    path: "src/heat2d.py",
+    size_bytes: 2048,
+    category: "code",
+    sha: "aaa",
+    viewable_image: false,
+    description: {
+      document_id: "doc_f1",
+      status: "ready",
+      summary: "The explicit solver of the heat equation.",
+      stale: false,
+      pending: false,
+      status_reason: null,
+      updated_at: "2026-10-12T10:00:04Z",
+    },
     ...overrides,
   }
 }

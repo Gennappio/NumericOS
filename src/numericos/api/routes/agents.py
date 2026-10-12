@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from numericos.api.deps import Context, Uow
 from numericos.api.errors import CONFLICT_RESPONSES
 from numericos.core.agents import AgentCapabilities
+from numericos.core.enums import AgentTask
 from numericos.core.schemas import (
     AgentPolicyOut,
     AgentPolicyPut,
@@ -66,8 +67,20 @@ def create_agent_session(
     tags=["agents"],
     summary="List a project's conversations, newest first",
 )
-def list_agent_sessions(project_id: str, uow: Uow) -> AgentSessionList:
-    return agents.list_sessions(uow, project_id)
+def list_agent_sessions(
+    project_id: str,
+    uow: Uow,
+    task: Annotated[
+        AgentTask | Literal["all"],
+        Query(
+            description=(
+                "Sessions of this task; the conversations by default. The sessions in which "
+                "documents were written are those of the other tasks."
+            )
+        ),
+    ] = AgentTask.CONVERSATION,
+) -> AgentSessionList:
+    return agents.list_sessions(uow, project_id, None if task == "all" else task)
 
 
 @router.get("/agent-sessions/{session_id}", tags=["agents"], summary="Get one conversation")

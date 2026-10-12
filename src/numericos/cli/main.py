@@ -67,6 +67,10 @@ worker = typer.Typer(
     help="Supervisors: the processes that execute queued runs.", no_args_is_help=True
 )
 agent = typer.Typer(help="Conversations with the coding agent.", no_args_is_help=True)
+doc = typer.Typer(
+    help="Documents the agent writes about a project: theory, files, plan.",
+    no_args_is_help=True,
+)
 app.add_typer(db, name="db")
 app.add_typer(project, name="project")
 app.add_typer(card, name="card")
@@ -76,6 +80,7 @@ app.add_typer(run, name="run")
 app.add_typer(artifact, name="artifact")
 app.add_typer(worker, name="worker")
 app.add_typer(agent, name="agent")
+app.add_typer(doc, name="doc")
 app.add_typer(events, name="events")
 
 Record = dict[str, Any]
@@ -1991,6 +1996,155 @@ def agent_cancel(
         lambda client: client.post(f"/v1/messages/{message_id}:cancel", {"reason": reason}),
     )
     _emit(data, json_, _message_detail)
+
+
+# --------------------------------------------------------------------------- documents
+
+InstructionsOption = Annotated[
+    str | None,
+    typer.Option("--instructions", help="Added to what the agent is asked (a language, ...)."),
+]
+WriteFlag = Annotated[
+    bool, typer.Option("--write", help="Ask the agent to write it (again), wait, then show it.")
+]
+
+
+def _document_text(document: Record | None) -> str:
+    if document is None:
+        return "not written yet: ask for it with --write"
+    lines = []
+    if document["pending_message_id"]:
+        lines.append("(the agent is writing it now)")
+    if document["status"] == "failed":
+        lines.append(f"(not written: {document['status_reason']})")
+    elif document["status_reason"]:
+        lines.append(f"(the last request did not succeed: {document['status_reason']})")
+    if document["stale"]:
+        lines.append(f"(out of date: {', '.join(document['changed_sources'])} changed since)")
+    if document["markdown"]:
+        lines.append(document["markdown"])
+    return "\n\n".join(lines) or "(empty)"
+
+
+def _single_document(
+    what: str,
+    project_id: str,
+    write: bool,
+    instructions: str | None,
+    timeout: float | None,
+    as_json: bool,
+    api_url: str | None,
+) -> None:
+    """Show the theory or the plan notes of a project, after asking for them with --write."""
+    path = f"/v1/projects/{project_id}/{what}"
+
+    def run(client: ApiClient) -> Record | None:
+        if write:
+            asked: Record = client.post(f"{path}:generate", _given(instructions=instructions))
+            turn = _watch_turn(
+                client,
+                asked["pending_message_id"],
+                on_activity=lambda item: typer.echo(_activity_line(item), err=True),
+                timeout=timeout,
+            )
+            if turn["status"] != "final":
+                typer.echo(f"the agent's turn ended {turn['status']}", err=True)
+        found: Record | None = client.get(path)["document"]
+        return found
+
+    try:
+        document = _api(as_json, api_url, run)
+    except StillRunning:
+        typer.echo(f"not written after {timeout} s; the agent keeps going", err=True)
+        raise typer.Exit(EXIT_STILL_RUNNING) from None
+    _emit(document, as_json, _document_text)
+    if write and (document is None or document["status"] == "failed"):
+        raise typer.Exit(TURN_EXIT_CODES["failed"])
+
+
+@doc.command("theory")
+def doc_theory(
+    project_id: ProjectOption,
+    write: WriteFlag = False,
+    instructions: InstructionsOption = None,
+    timeout: TimeoutOption = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """The theory of the project as the agent wrote it, as Markdown."""
+    _single_document("theory", project_id, write, instructions, timeout, json_, api_url)
+
+
+@doc.command("plan")
+def doc_plan(
+    project_id: ProjectOption,
+    write: WriteFlag = False,
+    instructions: InstructionsOption = None,
+    timeout: TimeoutOption = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """The notes of the agent's last plan. With --write its cards are put on the board."""
+    _single_document("plan", project_id, write, instructions, timeout, json_, api_url)
+
+
+def _file_line(entry: Record) -> str:
+    description = entry["description"]
+    if description is None:
+        state = "not described"
+    elif description["pending"]:
+        state = "being described"
+    elif description["status"] == "failed":
+        state = "failed"
+    elif description["stale"]:
+        state = "changed since"
+    else:
+        state = "described"
+    summary = f"  {description['summary']}" if description and description["summary"] else ""
+    return f"{entry['path']}  [{entry['category']}, {state}]{summary}"
+
+
+@doc.command("files")
+def doc_files(
+    project_id: ProjectOption, json_: JsonFlag = False, api_url: ApiUrlOption = None
+) -> None:
+    """The files of the project with the state of their description."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/projects/{project_id}/files"))
+    _emit(data, json_, lambda d: "\n".join(_file_line(entry) for entry in d["files"]) or "no files")
+
+
+@doc.command("describe")
+def doc_describe(
+    project_id: ProjectOption,
+    paths: Annotated[
+        list[str] | None, typer.Argument(metavar="[PATH]...", help="Files to describe.")
+    ] = None,
+    scope: Annotated[
+        str | None,
+        typer.Option("--scope", help="Instead of paths: undescribed, stale or all."),
+    ] = None,
+    instructions: InstructionsOption = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Ask the agent to describe files. Returns at once; `doc files` shows the progress."""
+    if bool(paths) == (scope is not None):
+        raise typer.BadParameter("pass either paths or --scope")
+    body = _given(paths=paths or None, scope=scope, instructions=instructions)
+    data = _api(
+        json_,
+        api_url,
+        lambda client: client.post(f"/v1/projects/{project_id}/files:describe", body),
+    )
+    _emit(
+        data,
+        json_,
+        lambda d: (
+            f"asked for {d['queued']} file(s) in {d['turns']} turn(s)"
+            + (f"; {d['skipped']} already being described" if d["skipped"] else "")
+            + (f"; {d['left']} more beyond one request" if d["left"] else "")
+        ),
+    )
 
 
 def main() -> None:

@@ -108,11 +108,20 @@ entities (`core/ids.py`). No empty tables are created ahead of their milestone.
 | `messages` | `id` PK, `session_id` FK, `project_id` FK, `role`, `status`, `status_reason`, `markdown`, `prompt_message_id`, `correlation_id`, `model_requested`, `effort`, `model`, `plan_usage` JSON, `activity` JSON, `activity_dropped`, `files_read` JSON, `files_written` JSON, `permission_denials` JSON, `cost_usd`, `usage` JSON, `num_turns`, `structured_output` JSON, supervision (`worker_id`, `pid`, `process_started_at`, `started_at`, `finished_at`, `heartbeat_at`, `cancel_requested_at`, `cancel_reason`, `exit_code`, `ingest` JSON), `version`, `created_at`, `updated_at` | a user message is the prompt (`final` at once); an assistant message is a turn: `queued | running | final | failed | cancelled | interrupted`; `markdown` is immutable once the turn ended; `model_requested` and `effort` are what the turn was started with, `model` what the provider reported, `plan_usage` the account's plan windows as last reported |
 | `agent_policies` (`0007`) | `project_id` PK FK, `provider`, `tasks` JSON, `version`, `created_at`, `updated_at` | `{task: {model, effort}}` for every task (`conversation`, `clarify`, `resolve`, `theory`, `file_description`, `execution_description`, `plan`); null takes the provider's default. `agent_sessions` gained `task` and `effort` (overrides of the policy) in the same revision |
 
+### Documents of the agent (migration `0008`)
+
+| Table | Columns | Notes |
+| --- | --- | --- |
+| `documents` | `id` PK, `project_id` FK, `kind`, `doc_key`, `title`, `summary`, `category` NULL, `markdown`, `status`, `status_reason`, `instructions`, `subject_sha` NULL, `sources` JSON, `session_id`, `message_id`, `pending_message_id`, `model`, `generated_at`, `version`, `created_at`, `updated_at` | one row per project, kind (`theory`, `file_description`, `plan`) and key (the file's path for a description); `sources` is `[{path, sha}]`, the files the content was written from with their content hashes; `pending_message_id` is the turn writing the next content; `version` counts how many times content was written; status `generating | ready | failed` says whether there is content, never whether it is current |
+
+The same revision adds `board_cards.origin` (`user | agent`) and `messages.json_schema` (the
+schema a structured turn must answer in).
+
 ### Unit of work and ordering
 
 `UnitOfWork` (one per mutation) exposes one repository per table (`projects`, `cards`,
 `events`, `hypotheses`, `experiments`, `runs`, `workers`, `artifacts`, `metric_series`,
-`agent_sessions`, `messages`);
+`agent_sessions`, `messages`, `agent_policies`, `documents`);
 `record()` appends the ledger row inside the transaction and `commit()` performs one COMMIT, then
 wakes subscribers. Card placement is computed by `persistence/ordering.place()` and persisted by
 `CardRepository.reindex()`, which renumbers the destination column (`index * 1000`) and writes
@@ -135,7 +144,8 @@ Revisions: `0001` projects, board cards, events; `0002` hypotheses, experiments,
 cancellation, exit, outcome, resource summary, read offsets), `workers` and `artifacts`;
 `0005` `metric_series` (one summary row per run and metric) and `runs.metric_report`; `0006`
 `agent_sessions` and `messages`; `0007` `agent_policies`, session overrides, what a turn was
-started with and what it consumed of the plan.
+started with and what it consumed of the plan; `0008` `documents`, the origin of a card and the
+schema of a structured turn.
 
 ## Events
 
@@ -378,6 +388,8 @@ bumps no version.
 | trust / revoke execution for a project | `PROJECT_EXECUTION_TRUSTED` / `PROJECT_EXECUTION_TRUST_REVOKED` | `project` |
 | open / change a conversation with the agent | `AGENT_SESSION_STARTED` / `AGENT_SESSION_UPDATED` | `session`, `changed_fields` |
 | set the model and effort per task | `AGENT_POLICY_UPDATED` | `tasks`, `version` |
+| ask the agent for the theory, a plan, or the description of files | `DOCUMENT_GENERATION_QUEUED` (one per turn; with the session and turn events of the turn it queues) | `kind`, `keys`, `message_id`, `session_id` |
+| the turn of a document ends (written by the supervisor, or by the API for a turn cancelled before it started) | `DOCUMENT_GENERATION_FINISHED`; for a plan, also `CARD_CREATED` / `CARD_UPDATED` / `CARD_MOVED` per card | `kind`, `written`, `failed` (`{key: reason}`), `message_id`, `session_id`; for a plan `cards_created`, `cards_changed`, `entries_skipped` |
 | send a prompt (records the user message, queues the turn) | `AGENT_TURN_QUEUED` | `session_id`, `prompt_message_id`, `prompt_excerpt`, `permission_mode`; the subject is the turn |
 | ask for a turn to be stopped | `AGENT_TURN_CANCEL_REQUESTED` (and `AGENT_TURN_FINISHED` at once if it was still queued and unclaimed) | `reason`, `status_when_requested` |
 
@@ -445,6 +457,13 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `POST`, `GET /v1/projects/{id}/agent-sessions`; `GET`, `PATCH /v1/agent-sessions/{id}` | open a conversation (needs a trusted directory; `permission_mode`, optional `model`), list newest first, read, rename or change the mode (needs `version`) |
 | `POST`, `GET /v1/agent-sessions/{id}/messages`; `GET /v1/messages/{id}` | send a prompt (201 with the queued turn; 409 `SESSION_BUSY` while the previous turn is open, `AGENT_UNAVAILABLE` without the command), the messages in order, one message with everything observed |
 | `POST /v1/messages/{id}:cancel` | ask for a turn to be stopped (optional `reason`); returns at once |
+| `GET /v1/projects/{id}/theory`; `POST /v1/projects/{id}/theory:generate` | the theory document or nothing yet, with `stale` and `changed_sources` computed at the read; ask the agent to write it, or write it again (202; optional `instructions`; 409 `GENERATION_PENDING` while a turn is writing it) |
+| `GET /v1/projects/{id}/plan`; `POST /v1/projects/{id}/plan:generate` | the notes of the last plan; ask the agent for a plan, shown the board as it is; its cards are put on the board when its turn ends |
+| `GET /v1/projects/{id}/files` | the files of the project directory (tracked, or new and not ignored; at most 5000) with size, kind, content hash and the state of their description; counts per state |
+| `POST /v1/projects/{id}/files:describe` | ask for descriptions: `paths`, or `scope` `undescribed`, `stale` or `all` (202 with how many files in how many turns; files being described are skipped; at most 400 per request) |
+| `GET /v1/projects/{id}/files/description?path=`; `GET /v1/documents/{id}` | the whole description of one file; one document by ID |
+| `GET /v1/projects/{id}/files/content?path=` | a file of the trusted project directory, to show it (an image); only regular files inside the directory, served with `nosniff` and a sandboxing policy |
+| `GET /v1/projects/{id}/agent-sessions?task=` | the conversations by default; `task=theory`, `file_description`, `plan` or `all` for the sessions in which documents were written |
 | `GET /v1/events?project_id=&after=&before=&limit=&order=&run_id=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
 
 Operation IDs equal the handler names (`create_project`, `update_card`, ...), so generated
@@ -538,6 +557,23 @@ query cache and never ships mock data.
   anticipate the roadmap: `Board`, `Experiments` and `Agent` are real views, `Timeline` and
   `Knowledge` are disabled buttons naming the milestone that delivers them. Nothing is
   pretend-functional.
+- **Theory view:** the theory of the project rendered like a paper (a reading measure, serif
+  text, numbered equations by KaTeX, figures of the repository with their captions, served
+  from the project directory). Below it: version, model and time, the files it was written
+  from, and a form to write it again with the instructions of the last request. When a source
+  changed, an alert names the files and the text stays readable. While the agent writes, its
+  actions are shown live, with a way to stop it and a link to its conversation.
+- **Files view:** every file of the project by directory, with its kind (guessed from the name
+  until a description says more: code, input, output, image, config, documentation), size,
+  one-sentence summary and state: not described, being described, described, changed since,
+  failed. A row opens to the whole description, to the image if it is one, and to "describe it
+  again". Two buttons ask for all files not described and for all that changed; filters by
+  path and kind. The directory is read only for a project that was trusted.
+- **Plan (the board):** a panel above the board asks the agent for a plan; its cards appear on
+  the board marked "agent", its reasons stay in the panel. Cards are dragged by a handle
+  between and inside columns (dnd-kit; a pure function turns what a card was dropped on into
+  the placement the API takes), or moved without a pointer by the status select and the up and
+  down buttons. The next request to the agent starts from the board as it was left.
 - **Agent view:** the conversations of the project (newest first) and the one that is open.
   Before anything can be sent, the preconditions are shown as they are: the directory trusted,
   a supervisor alive, the agent command found. A prompt is recorded at once and the answer is
@@ -627,9 +663,10 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, `events follow`, startup migration, concurrent writers, event stream (replay, `Last-Event-ID`, push, another process writing, refused cursors, prompt stop with subscribers), state and ledger across a restart |
 | Examples | pytest running the shipped programs alone and, from their own contract files, under a supervisor | closed forms of norm and error of the heat scheme to round-off; time steps on both sides of the exact stability limit; a guardrail halt that leaves its evidence; overflow as typed samples; conjugate gradient in two precisions with the true residual far from the reported one; binary and compiler provenance |
 | Execution | pytest with real monitor processes and real programs from a real Git repository; `LiveWorker` (real `numericos worker run` subprocess) where a supervisor must die | the monitor (output, limits, signals, process tree, leftovers, build, one monitor per run); the worker (recording, classification, cancellation, trust and input checks, working tree against commit, results next to the sources, binary identity, parallelism); recovery (supervisor killed and run taken over with complete output, orderly hand-over, lost monitor, re-queue, two supervisors competing for the queue, overtaken readings); API restarted during a run; run events on an open stream |
+| Documents | pytest; the API alone, and the stand-in agent under a real supervisor | file kinds from names, prompts and schemas, content hashes (index, changed, new, missing, hashed once); the API (theory and plan requests, their sessions and prompts, pending and cancelled requests, the listing with kinds, sizes, hashes and counts, batches per turn, files outside the project refused, content served with its type); generation (theory with sources and hashes, stale after an edit or a deletion and current again after a rewrite, failure keeping the earlier text, descriptions with normalized paths, stale and updated, a file left out, a plan creating cards and a second one changing them) |
 | Agent | pytest with the stand-in command as a real subprocess of the supervisor | the adapter (argument vector per mode, resume and fork, folding of the stream, bounds); the API (capabilities, missing command, trust, sessions, one turn at a time, cancellation, validation); turns (everything observed and the turn's files, resume of the provider session, refusals of the mode recorded, failure, agent gone without an answer, stop while working, sessions in parallel, worker died after claiming, running turn taken over, cancelled before start); the CLI (`ask` follows and prints, exit codes, give up and cancel) |
-| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails, agent), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor), Markdown (GFM, KaTeX inline and displayed, no raw HTML, safe links), message card (prompt, answer with facts and actions, working with stop, queued without supervisor, failure, refusals), agent view (conversation and composer, untrusted directory, missing command, empty) |
-| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page; agent: a conversation held and rendered (mathematics, cost, actions, persisted across a reload), a refusal of the read-only mode shown, a working turn stopped from the page |
+| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails, agent), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor), Markdown (GFM, KaTeX inline and displayed, no raw HTML, safe links), message card (prompt, answer with facts and actions, working with stop, queued without supervisor, failure, refusals), agent view (conversation and composer, untrusted directory, missing command, empty), policy panel, theory view (empty, paper with figure and sources, stale, in progress, failed), files view (listing by directory, opening a file and an image, filters, asking with instructions, untrusted directory), drop placement of a dragged card |
+| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page; agent: a conversation held and rendered (mathematics, cost, actions, persisted across a reload), a refusal of the read-only mode shown, a working turn stopped from the page, model and effort per task chosen and used; documents: the theory written, rendered with its figure and marked stale after the code changed, then written again; files described, one changed and updated; a plan put on the board and a card dragged to another column, persisted |
 
 No fixtures or mocks live in application code; the GUI shows the real backend connection state.
 
@@ -679,6 +716,41 @@ Tests run a stand-in for the command (`tests/fake_claude.py`: the same flags, th
 no model), selected with `NUMERICOS_CLAUDE_COMMAND`; the browser tests start their API and
 supervisor with it too. No test calls the real provider.
 
+## Documents of the agent: theory, files, plan (M1-T04/T05/T07, first parts)
+
+Three things the agent writes about a project are kept as documents, each asked for by a button
+and never on its own: the **theory** (one per project), the **description of a file** (one
+per path) and the notes of a **plan** (one per project; its cards go to the board).
+
+`services/documents.py` queues the request: it opens a session of the task (`theory`,
+`file_description`, `plan`; always `read_only`), queues a turn with the prompt of
+`agents/prompts.py` (the task named on its first line, then what to write, then the
+researcher's own instructions last) and marks the documents with the turn that will write them.
+File descriptions are asked a few files per turn (`NUMERICOS_AGENT_FILES_PER_TURN`, 8), one
+session per turn so that they run in parallel, with a JSON schema for the answer; a plan has a
+schema as well (`rationale`, `cards` with an optional `id` of an existing card); the theory is
+free Markdown that starts with its title. The model and effort are the policy's row of the
+task; until a policy is saved the suggested one applies (Sonnet with low effort for file
+descriptions, Sonnet with medium effort for plans, the provider's default elsewhere).
+
+When the turn ends, in the same transaction, `agents/documents.complete` gives the documents
+what was written: the theory takes the answer, its first level-1 heading as title and, as
+sources, the files the agent read with the content hash each had at that moment; a file
+description takes its entry of the structured answer (paths the agent gave as absolute are
+made relative; a file left out is marked failed with the reason); a plan creates the new cards
+at the end of their columns with `origin: agent`, applies the changes to cards named by `id`,
+skips entries it cannot use and says how many. A turn that failed, was stopped or was
+interrupted leaves the content of an earlier turn in place and records why the new one is
+missing.
+
+**Staleness is computed, never stored.** `provenance/git.content_hashes` gives the content
+hash of files as they are now: from the index for tracked files `git status` reports unchanged,
+by `git hash-object` (once per size and modification time) for changed and new files. A
+document is stale when a source's hash differs or the file is gone, and says which files. A
+file description compares the hash recorded when it was asked for (`subject_sha`) with the
+file's hash now. Nothing is regenerated automatically: the pages mark what changed and offer
+one click to update it, because every update is a call on the owner's account.
+
 ## Deferred boundaries (documented, not built)
 
 - **AgentAdapter** beyond Claude Code: a second provider (Codex `exec`), capability
@@ -717,7 +789,13 @@ supervisor with it too. No test calls the real provider.
   the last 300 lines and what follows; the whole output is a file of the run. Runs of an
   experiment are compared in a table of last values: plots across runs and verdicts belong to
   the validators ticket.
-- **No drag and drop yet** (M1): cards move through their status select and up/down buttons.
+- **Documents are updated on request, not by themselves.** A changed source marks a document
+  stale; nothing is regenerated until a button is pressed. A regenerated document replaces the
+  one before: earlier versions are not kept, and documents cannot be commented yet (M1-T02).
+  The theory's sources are the files the agent opened with its Read tool; what it learned
+  through a search is not a source. New figures are not produced: the theory can only include
+  images that exist in the repository. A description of a file does not go stale when another
+  file it mentions changes. A dragged card is placed when the server answers, not optimistically.
 - **The agent runs with the user's permissions and account.** Every turn uses the owner's
   Claude account. With a subscription nothing is charged per turn: a turn consumes the plan's
   windows, which the answer shows as the provider reported them; the `cost_usd` figure is the

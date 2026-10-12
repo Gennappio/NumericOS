@@ -18,10 +18,14 @@ every run live. Validators do not exist yet: nothing says whether a result is va
 The active work is **M1 in the owner's version** (`docs/adr/0008-owner-redirection-commentable-agent-documents.md`):
 conversations with the coding agent inside a project, answers and documents that can be
 commented and sent back to the agent, the theory of the project as a paper, descriptions of
-its files and of its execution, the plan as a board. The first ticket is done: a project has
-**conversations with Claude Code**, held from the GUI or the command line and executed by the
-supervisor, with every action of the agent, every file it changed, what its permission mode
-refused and what the turn cost on record.
+its files and of its execution, the plan as a board. Done so far: **conversations with Claude
+Code** inside a project, held from the GUI or the command line and executed by the supervisor,
+with every action of the agent on record; a model and an effort **per kind of task**; the
+**Theory** page (the project as a paper, written by the agent from the code, marked when the
+code changes); the **Files** page (a description per file, kept with the content it was written
+from); and the **plan on the board** (cards proposed by the agent, dragged and edited by you).
+Not done yet: comments on what the agent writes (Clarify and Resolve) and the description of
+an execution.
 
 ## Requirements
 
@@ -72,7 +76,7 @@ Open http://localhost:5173 with the API running.
    it. Its indicator says whether updates are pushed live. Changes made from another tab or from
    the CLI appear on their own.
 
-6. **Experiments** (the second tab of a project) needs `make worker` as well. It shows whether
+6. **Experiments** (the last tab of a project) needs `make worker` as well. It shows whether
    execution is allowed in the project directory and whether a supervisor is alive. Allow
    execution, then register a contract found in the repository with one click (or paste one).
    For a first try, make this checkout the project's code path and register
@@ -85,7 +89,21 @@ Open http://localhost:5173 with the API running.
    exactly what ran, what happened to it and the files it left. A run that is going on can be
    stopped from there; a run of an exact commit can be run again.
 
-9. **Agent** (the third tab) talks to Claude Code about the project. It needs the `claude`
+9. **Theory** asks the agent to read the repository and write what the project computes as a
+   short paper: problem, mathematical model, numerical method, properties, a table from theory
+   to code, inputs and outputs, assumptions. Add instructions if you want ("Scrivi in
+   italiano"). The page shows the agent at work, then the paper with its formulas and the
+   figures of the repository, and the files it was written from. When one of them changes, the
+   page says which and offers to write the theory again. The agent only reads.
+10. **Files** lists every file of the project by directory. "Describe the N not described"
+    asks the agent for a summary and a description of each, a few files per turn; a row opens
+    to the description (and to the image, for an image). A file edited later is marked
+    "Changed since" and "Update the N changed" asks again only for those.
+11. **Plan** (the first tab) is the board. "Ask the agent to plan…" makes the agent propose
+    cards from the repository and the board as it is; they appear marked "agent", and its
+    reasons stay above the board. Drag a card by its handle to another column or position,
+    edit it, add your own: the next request starts from what you left.
+12. **Agent** talks to Claude Code about the project. It needs the `claude`
    command installed and logged in, the project directory allowed for execution (the agent
    reads, edits and runs the code as you) and `make worker`. Start a conversation, choose what
    the agent may do (read only; edit files; full autonomy, as with every permission skipped in a
@@ -190,8 +208,13 @@ numericos agent ask -s SESSION_ID "And its stability condition?"     # continues
 numericos agent sessions -p PROJECT_ID              # the conversations of a project
 numericos agent show MESSAGE_ID                     # one answer with every action of the agent
 numericos agent cancel MESSAGE_ID                   # stop a turn
+numericos doc theory -p PROJECT_ID --write          # ask for the theory, wait, print it
+numericos doc theory -p PROJECT_ID                  # print it again; says if it is out of date
+numericos doc files -p PROJECT_ID                   # files with the state of their description
+numericos doc describe -p PROJECT_ID --scope undescribed   # or --scope stale, or paths
+numericos doc plan -p PROJECT_ID --write            # ask for a plan; its cards go to the board
 numericos agent policy -p PROJECT_ID                # model and effort per task
-numericos agent policy -p PROJECT_ID --task conversation --model claude-haiku-5-5 --effort low
+numericos agent policy -p PROJECT_ID --task file_description --model claude-haiku-5-5 --effort low
 ```
 
 Exit codes: `0` success, `1` API error (envelope on stderr), `2` usage error, `3` API unreachable.
@@ -225,6 +248,7 @@ make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail 
 | `NUMERICOS_CLAUDE_COMMAND` | `["claude"]` (JSON list; the tests point it at `tests/fake_claude.py`) |
 | `NUMERICOS_AGENT_MAX_BUDGET_USD` | `5` per turn (bound on the list-price equivalent the provider computes) |
 | `NUMERICOS_AGENT_MAX_PARALLEL` | `2` turns at a time per supervisor |
+| `NUMERICOS_AGENT_FILES_PER_TURN` | `8` files described in one turn |
 
 ## Layout
 

@@ -7,6 +7,7 @@ import {
   type CardCreate,
   type CardPatch,
   type ContractImport,
+  type DescribeRequest,
   type Message,
   type MessageStatus,
   type ProjectPatch,
@@ -51,6 +52,13 @@ export const queryKeys = {
     ["projects", projectId, "agent-sessions", sessionId] as const,
   messages: (projectId: string, sessionId: string) =>
     ["projects", projectId, "agent-sessions", sessionId, "messages"] as const,
+  message: (projectId: string, messageId: string) =>
+    ["projects", projectId, "messages", messageId] as const,
+  theory: (projectId: string) => ["projects", projectId, "theory"] as const,
+  plan: (projectId: string) => ["projects", projectId, "plan"] as const,
+  files: (projectId: string) => ["projects", projectId, "files"] as const,
+  fileDescription: (projectId: string, path: string) =>
+    ["projects", projectId, "files", "description", path] as const,
 }
 
 /**
@@ -428,5 +436,79 @@ export function useCancelMessage(projectId: string, sessionId: string) {
       api.cancelMessage(messageId, reason),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.messages(projectId, sessionId) }),
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Documents the agent writes. While a turn is writing one, it is re-read at the short interval:
+// its end arrives as a ledger event too, but the stream may not be live.
+
+/** One turn of the agent, followed while it works: what a document in progress shows. */
+export function useMessage(projectId: string, messageId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.message(projectId, messageId ?? ""),
+    queryFn: () => api.getMessage(messageId!),
+    enabled: Boolean(messageId),
+    refetchInterval: (query) => (isTurnActive(query.state.data?.status) ? RUN_POLL_MS : false),
+  })
+}
+
+export function useTheory(projectId: string, live: boolean) {
+  return useQuery({
+    queryKey: queryKeys.theory(projectId),
+    queryFn: () => api.getTheory(projectId),
+    refetchInterval: (query) =>
+      query.state.data?.document?.pending_message_id ? RUN_POLL_MS : live ? false : POLL_MS,
+  })
+}
+
+export function useGenerateTheory(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (instructions: string | undefined) => api.generateTheory(projectId, instructions),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.theory(projectId) }),
+  })
+}
+
+export function usePlan(projectId: string, live: boolean) {
+  return useQuery({
+    queryKey: queryKeys.plan(projectId),
+    queryFn: () => api.getPlan(projectId),
+    refetchInterval: (query) =>
+      query.state.data?.document?.pending_message_id ? RUN_POLL_MS : live ? false : POLL_MS,
+  })
+}
+
+export function useGeneratePlan(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (instructions: string | undefined) => api.generatePlan(projectId, instructions),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.plan(projectId) }),
+  })
+}
+
+export function useFiles(projectId: string, live: boolean, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.files(projectId),
+    queryFn: () => api.listFiles(projectId),
+    enabled,
+    refetchInterval: (query) =>
+      (query.state.data?.counts.generating ?? 0) > 0 ? RUN_POLL_MS : live ? false : POLL_MS,
+  })
+}
+
+export function useDescribeFiles(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: DescribeRequest) => api.describeFiles(projectId, body),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.files(projectId) }),
+  })
+}
+
+/** The whole description of one file; `version` makes a description written again a new read. */
+export function useFileDescription(projectId: string, path: string, updatedAt: string) {
+  return useQuery({
+    queryKey: [...queryKeys.fileDescription(projectId, path), updatedAt],
+    queryFn: () => api.getFileDescription(projectId, path),
   })
 }

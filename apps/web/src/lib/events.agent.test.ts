@@ -49,3 +49,48 @@ describe("describeEvent for conversations with the agent", () => {
     ).toBe("Conversation changed: title, permission_mode")
   })
 })
+
+describe("describeEvent for the documents of the agent", () => {
+  it("says what was asked for and what was written", () => {
+    expect(
+      describeEvent(
+        ledgerEvent(1, {
+          type: "DOCUMENT_GENERATION_QUEUED",
+          payload: { kind: "theory", keys: ["theory"] },
+        }),
+      ),
+    ).toBe("Agent asked for the theory")
+    expect(
+      describeEvent(
+        ledgerEvent(2, {
+          type: "DOCUMENT_GENERATION_QUEUED",
+          payload: { kind: "file_description", keys: ["a.py", "b.py", "c.py"] },
+        }),
+      ),
+    ).toBe("Agent asked for the descriptions of 3 files")
+    expect(
+      describeEvent(
+        ledgerEvent(3, {
+          type: "DOCUMENT_GENERATION_FINISHED",
+          payload: { kind: "file_description", written: ["a.py", "b.py"], failed: { "c.py": "no" } },
+        }),
+      ),
+    ).toBe("Agent wrote the descriptions of 2 files; 1 not written")
+    expect(
+      describeEvent(
+        ledgerEvent(4, {
+          type: "DOCUMENT_GENERATION_FINISHED",
+          payload: { kind: "plan", written: ["plan"], failed: {}, cards_created: 4, cards_changed: 1 },
+        }),
+      ),
+    ).toBe("Plan of the agent put on the board: 4 card(s) added, 1 changed")
+    expect(
+      describeEvent(
+        ledgerEvent(5, {
+          type: "DOCUMENT_GENERATION_FINISHED",
+          payload: { kind: "theory", written: [], failed: { theory: "the turn was cancelled" } },
+        }),
+      ),
+    ).toBe("Agent did not write the theory: the turn was cancelled")
+  })
+})
