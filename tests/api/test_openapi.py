@@ -63,4 +63,13 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "list_contract_files",
         "import_experiment",
         "list_experiment_series",
+        "agent_capabilities",
+        "create_agent_session",
+        "list_agent_sessions",
+        "get_agent_session",
+        "update_agent_session",
+        "send_message",
+        "list_messages",
+        "get_message",
+        "cancel_message",
     }

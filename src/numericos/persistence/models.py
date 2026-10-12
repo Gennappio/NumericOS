@@ -22,9 +22,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from numericos.core.enums import (
+    AgentProvider,
     CardType,
     EpistemicStatus,
     FailureClass,
+    MessageRole,
+    MessageStatus,
+    PermissionMode,
     RunStatus,
     Severity,
     WorkflowStatus,
@@ -279,6 +283,92 @@ class MetricSeries(Base):
     last_at: Mapped[float | None] = mapped_column(Float)
     min_value: Mapped[float | None] = mapped_column(Float)
     max_value: Mapped[float | None] = mapped_column(Float)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class AgentSession(Base):
+    """A conversation with a coding agent about one project, in one provider session."""
+
+    __tablename__ = "agent_sessions"
+    __table_args__ = (
+        CheckConstraint(one_of("provider", AgentProvider), name="provider"),
+        CheckConstraint(one_of("permission_mode", PermissionMode), name="permission_mode"),
+        CheckConstraint("length(title) BETWEEN 1 AND 200", name="title_length"),
+        Index("ix_agent_sessions_project_created", "project_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT")
+    )
+    title: Mapped[str] = mapped_column(String(200))
+    provider: Mapped[str] = mapped_column(String(20))
+    permission_mode: Mapped[str] = mapped_column(String(20))
+    #: The model asked for; null leaves the choice to the provider.
+    model: Mapped[str | None] = mapped_column(String(100))
+    #: The provider's own session identifier, chosen by NumericOS before the first turn.
+    native_session_id: Mapped[str] = mapped_column(String(64))
+    #: The directory the agent works in: the project's trusted root when the session started.
+    cwd: Mapped[str] = mapped_column(Text)
+    system_prompt: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class AgentMessage(Base):
+    """A message of a session. A user message is the prompt; an assistant message is one turn
+    of the agent, queued by the API and executed by a supervisor, with what was observed."""
+
+    __tablename__ = "messages"
+    __table_args__ = (
+        CheckConstraint(one_of("role", MessageRole), name="role"),
+        CheckConstraint(one_of("status", MessageStatus), name="status"),
+        Index("ix_messages_session_created", "session_id", "created_at"),
+        Index("ix_messages_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("agent_sessions.id", ondelete="RESTRICT")
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT")
+    )
+    role: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(20))
+    status_reason: Mapped[str | None] = mapped_column(String(300))
+    #: The prompt (user) or the final answer (assistant), Markdown. Immutable once final.
+    markdown: Mapped[str] = mapped_column(Text, default="")
+    #: Assistant: the user message this turn answers.
+    prompt_message_id: Mapped[str | None] = mapped_column(String(40))
+    #: Correlation ID of the request that queued the turn; the supervisor's events reuse it.
+    correlation_id: Mapped[str | None] = mapped_column(String(64))
+    #: What was observed while the agent worked.
+    model: Mapped[str | None] = mapped_column(String(100))
+    activity: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    activity_dropped: Mapped[int] = mapped_column(Integer, default=0)
+    files_read: Mapped[list[str]] = mapped_column(JSON, default=list)
+    files_written: Mapped[list[str]] = mapped_column(JSON, default=list)
+    permission_denials: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    cost_usd: Mapped[float | None] = mapped_column(Float)
+    usage: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    num_turns: Mapped[int | None] = mapped_column(Integer)
+    structured_output: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(JSON)
+    #: Supervision. A process is identified by PID *and* start time, never by PID alone.
+    worker_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    pid: Mapped[int | None] = mapped_column(Integer)
+    process_started_at: Mapped[float | None] = mapped_column(Float)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    cancel_reason: Mapped[str | None] = mapped_column(String(300))
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    #: How far the supervisor has read the turn's files.
+    ingest: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 

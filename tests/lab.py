@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 import yaml
 
+from numericos.agents import layout as agent_layout
 from numericos.executor import control, layout
 from numericos.executor.liveness import process_alive
 from numericos.executor.worker import Worker
@@ -149,6 +150,30 @@ class Lab:
     def cancel(self, run_id: str, reason: str = "") -> Json:
         return self._send("POST", f"/v1/runs/{run_id}:cancel", 200, {"reason": reason})
 
+    # ------------------------------------------------------------------ the agent
+
+    def open_session(self, **body: Any) -> Json:
+        return self._send("POST", f"/v1/projects/{self.project['id']}/agent-sessions", 201, body)
+
+    def ask(self, session: Json, content: str) -> Json:
+        """Send a prompt; return the queued assistant message (the turn)."""
+        return self._send(
+            "POST", f"/v1/agent-sessions/{session['id']}/messages", 201, {"content": content}
+        )
+
+    def message(self, message_id: str) -> Json:
+        return self.get(f"/v1/messages/{message_id}")
+
+    def turn_status(self, message_id: str) -> str:
+        return str(self.message(message_id)["status"])
+
+    def turn_events(self, message_id: str) -> list[Json]:
+        page = self.get("/v1/events", project_id=self.project["id"], limit=1000)
+        return [event for event in page["events"] if event["subject_id"] == message_id]
+
+    def cancel_turn(self, message_id: str, reason: str = "") -> Json:
+        return self._send("POST", f"/v1/messages/{message_id}:cancel", 200, {"reason": reason})
+
 
 def drive(worker: Worker, until: Callable[[], Any], timeout: float = 20.0) -> Any:
     """Let an in-process supervisor work until ``until()`` is truthy; return that value."""
@@ -161,6 +186,18 @@ def drive(worker: Worker, until: Callable[[], Any], timeout: float = 20.0) -> An
         if time.monotonic() > deadline:
             raise AssertionError(f"the supervisor did not get there within {timeout} s")
         time.sleep(0.05)
+
+
+def end_all_turns(data_dir: Path) -> None:
+    """Leave no agent process of a test behind."""
+    root = agent_layout.turns_root(data_dir)
+    if not root.is_dir():
+        return
+    for turn_dir in root.iterdir():
+        identity = layout.read_json(turn_dir / agent_layout.PROCESS)
+        if identity is not None and process_alive(identity["pid"], identity["create_time"]):
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(identity["pgid"], signal.SIGKILL)
 
 
 def end_all_runs(data_dir: Path, timeout: float = 10.0) -> None:

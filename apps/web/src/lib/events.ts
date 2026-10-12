@@ -1,4 +1,5 @@
-import type { EventOut, RunStatus, WorkflowStatus } from "@/api/client"
+import type { EventOut, MessageStatus, RunStatus, WorkflowStatus } from "@/api/client"
+import { TURN_STATUS_LABELS } from "@/lib/agent"
 import { formatNumber, formatValue } from "@/lib/format"
 import { STATUS_LABELS } from "@/lib/labels"
 import { RUN_STATUS_LABELS } from "@/lib/runs"
@@ -74,7 +75,40 @@ export function describeEvent(event: EventOut): string {
     case "EXPERIMENT_UPDATED":
       return `Experiment changed: ${named(event.payload.experiment, "name")}`
     default:
-      return describeRunEvent(event) ?? event.type
+      return describeRunEvent(event) ?? describeAgentEvent(event) ?? event.type
+  }
+}
+
+/** What an event of a conversation with the agent says, from its own payload. */
+function describeAgentEvent(event: EventOut): string | undefined {
+  const payload = event.payload
+  switch (event.type) {
+    case "AGENT_SESSION_STARTED":
+      return "Conversation with the agent opened"
+    case "AGENT_SESSION_UPDATED": {
+      const changed = changedFields(payload.changed_fields)
+      return changed ? `Conversation changed: ${changed}` : "Conversation changed"
+    }
+    case "AGENT_TURN_QUEUED":
+      return typeof payload.prompt_excerpt === "string"
+        ? `Agent asked: "${payload.prompt_excerpt}"`
+        : "Agent asked"
+    case "AGENT_TURN_STARTED":
+      return `Agent working (process ${text(payload.pid)})`
+    case "AGENT_TURN_FINISHED": {
+      const status = text(payload.status) as MessageStatus
+      const label = status in TURN_STATUS_LABELS ? TURN_STATUS_LABELS[status] : status
+      const reason = typeof payload.status_reason === "string" ? `: ${payload.status_reason}` : ""
+      return `Agent turn ended, ${label.toLowerCase()}${reason}`
+    }
+    case "AGENT_TURN_CANCEL_REQUESTED":
+      return `Stop requested: ${text(payload.reason)}`
+    case "AGENT_TURN_ADOPTED":
+      return "Another supervisor took the agent turn over"
+    case "AGENT_TURN_REQUEUED":
+      return "Agent turn queued again: its supervisor stopped before starting the agent"
+    default:
+      return undefined
   }
 }
 

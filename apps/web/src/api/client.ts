@@ -45,6 +45,16 @@ export type ResourcePage = Schemas["ResourcePage"]
 export type Artifact = Schemas["ArtifactOut"]
 export type ArtifactList = Schemas["ArtifactList"]
 export type WorkerList = Schemas["WorkerList"]
+export type AgentSession = Schemas["AgentSessionOut"]
+export type AgentSessionList = Schemas["AgentSessionList"]
+export type AgentSessionCreate = Schemas["AgentSessionCreate"]
+export type AgentSessionPatch = Schemas["AgentSessionPatch"]
+export type PermissionMode = Schemas["PermissionMode"]
+export type Message = Schemas["MessageOut"]
+export type MessageList = Schemas["MessageList"]
+export type MessageStatus = Schemas["MessageStatus"]
+export type ActivityItem = Schemas["ActivityItem"]
+export type AgentCapabilities = Schemas["AgentCapabilities"]
 type ErrorBody = ErrorEnvelope["error"]
 
 const DEFAULT_API_URL = "http://127.0.0.1:8765"
@@ -193,6 +203,24 @@ export const api = {
     apiFetch<EventPage>(`/v1/runs/${seg(runId)}/events?limit=1000`),
   listArtifacts: (runId: string) => apiFetch<ArtifactList>(`/v1/runs/${seg(runId)}/artifacts`),
   listWorkers: () => apiFetch<WorkerList>("/v1/workers"),
+
+  getAgentCapabilities: () => apiFetch<AgentCapabilities>("/v1/agents/capabilities"),
+  listAgentSessions: (projectId: string) =>
+    apiFetch<AgentSessionList>(`/v1/projects/${seg(projectId)}/agent-sessions`),
+  createAgentSession: (projectId: string, body: AgentSessionCreate) =>
+    apiFetch<AgentSession>(`/v1/projects/${seg(projectId)}/agent-sessions`, send("POST", body)),
+  getAgentSession: (sessionId: string) =>
+    apiFetch<AgentSession>(`/v1/agent-sessions/${seg(sessionId)}`),
+  updateAgentSession: (sessionId: string, body: AgentSessionPatch) =>
+    apiFetch<AgentSession>(`/v1/agent-sessions/${seg(sessionId)}`, send("PATCH", body)),
+  listMessages: (sessionId: string) =>
+    apiFetch<MessageList>(`/v1/agent-sessions/${seg(sessionId)}/messages`),
+  /** The prompt is recorded and the answer queued: the returned message is the agent's turn. */
+  sendMessage: (sessionId: string, content: string) =>
+    apiFetch<Message>(`/v1/agent-sessions/${seg(sessionId)}/messages`, send("POST", { content })),
+  getMessage: (messageId: string) => apiFetch<Message>(`/v1/messages/${seg(messageId)}`),
+  cancelMessage: (messageId: string, reason: string) =>
+    apiFetch<Message>(`/v1/messages/${seg(messageId)}:cancel`, send("POST", { reason })),
 }
 
 /** Download address of one file of a run. */

@@ -148,7 +148,8 @@ test("views of later milestones are visibly unavailable, never pretend-functiona
   const views = page.getByRole("navigation", { name: "Project views" })
   await expect(views.getByText("Board")).toHaveAttribute("aria-current", "page")
   await expect(views.getByRole("link", { name: "Experiments" })).toBeVisible()
-  for (const view of ["Timeline", "Agents", "Knowledge"]) {
+  await expect(views.getByRole("link", { name: "Agent" })).toBeVisible()
+  for (const view of ["Timeline", "Knowledge"]) {
     await expect(views.getByRole("button", { name: new RegExp(`^${view}`) })).toBeDisabled()
   }
 })

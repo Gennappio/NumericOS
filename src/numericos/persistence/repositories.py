@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from numericos.core.enums import WORKFLOW_ORDER
 from numericos.persistence.models import (
+    AgentMessage,
+    AgentSession,
     Artifact,
     BoardCard,
     Event,
@@ -251,6 +253,76 @@ class MetricSeriesRepository:
             .order_by(MetricSeries.run_id, MetricSeries.name)
         )
         return list(self._session.scalars(statement))
+
+
+class AgentSessionRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, agent_session: AgentSession) -> AgentSession:
+        self._session.add(agent_session)
+        self._session.flush()
+        return agent_session
+
+    def get(self, session_id: str) -> AgentSession | None:
+        return self._session.get(AgentSession, session_id)
+
+    def list_for_project(self, project_id: str) -> list[AgentSession]:
+        """The sessions of a project, newest first."""
+        statement = (
+            select(AgentSession)
+            .where(AgentSession.project_id == project_id)
+            .order_by(AgentSession.created_at.desc(), AgentSession.id.desc())
+        )
+        return list(self._session.scalars(statement))
+
+
+class MessageRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, message: AgentMessage) -> AgentMessage:
+        self._session.add(message)
+        self._session.flush()
+        return message
+
+    def get(self, message_id: str) -> AgentMessage | None:
+        return self._session.get(AgentMessage, message_id)
+
+    def list_for_session(self, session_id: str) -> list[AgentMessage]:
+        statement = (
+            select(AgentMessage)
+            .where(AgentMessage.session_id == session_id)
+            .order_by(AgentMessage.created_at, AgentMessage.id)
+        )
+        return list(self._session.scalars(statement))
+
+    def with_status(self, statuses: Sequence[str], limit: int | None = None) -> list[AgentMessage]:
+        """Turns in the given states, oldest first: the order in which they are served."""
+        statement = (
+            select(AgentMessage)
+            .where(AgentMessage.status.in_(statuses))
+            .order_by(AgentMessage.created_at, AgentMessage.id)
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        return list(self._session.scalars(statement))
+
+    def active_in_session(self, session_id: str, statuses: Sequence[str]) -> AgentMessage | None:
+        statement = select(AgentMessage).where(
+            AgentMessage.session_id == session_id, AgentMessage.status.in_(statuses)
+        )
+        return self._session.scalars(statement).first()
+
+    def count_by_session(self, session_ids: Sequence[str]) -> dict[str, int]:
+        if not session_ids:
+            return {}
+        statement = (
+            select(AgentMessage.session_id, func.count())
+            .where(AgentMessage.session_id.in_(session_ids))
+            .group_by(AgentMessage.session_id)
+        )
+        return {session_id: count for session_id, count in self._session.execute(statement)}
 
 
 class EventRepository:

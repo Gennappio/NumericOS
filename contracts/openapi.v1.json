@@ -1,6 +1,305 @@
 {
   "components": {
     "schemas": {
+      "ActivityItem": {
+        "description": "What the agent did, in order: text it wrote between actions, or a tool it used.",
+        "properties": {
+          "at": {
+            "description": "When the supervisor read it (epoch seconds).",
+            "title": "At",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "tool"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "tool": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolCall"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "at"
+        ],
+        "title": "ActivityItem",
+        "type": "object"
+      },
+      "AgentCapabilities": {
+        "description": "Whether the provider can be started where NumericOS runs, as found, never assumed.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Command",
+            "type": "array"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved executable, if found.",
+            "title": "Path"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it is not available, if it is not.",
+            "title": "Problem"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/AgentProvider"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What `--version` printed, if it ran.",
+            "title": "Version"
+          }
+        },
+        "required": [
+          "provider",
+          "command",
+          "available"
+        ],
+        "title": "AgentCapabilities",
+        "type": "object"
+      },
+      "AgentProvider": {
+        "enum": [
+          "claude_code"
+        ],
+        "title": "AgentProvider",
+        "type": "string"
+      },
+      "AgentSessionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model asked of the provider; null for its default.",
+            "title": "Model"
+          },
+          "permission_mode": {
+            "$ref": "#/components/schemas/PermissionMode",
+            "default": "edit",
+            "description": "read_only: the agent reads the repository, edits and commands are refused; edit: file edits are allowed, commands are refused; full: everything is allowed."
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defaults to the first prompt.",
+            "title": "Title"
+          }
+        },
+        "title": "AgentSessionCreate",
+        "type": "object"
+      },
+      "AgentSessionList": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentSessionOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "AgentSessionList",
+        "type": "object"
+      },
+      "AgentSessionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cwd": {
+            "description": "The directory the agent works in.",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "message_count": {
+            "default": 0,
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "native_session_id": {
+            "description": "The provider's identifier of this session.",
+            "title": "Native Session Id",
+            "type": "string"
+          },
+          "permission_mode": {
+            "$ref": "#/components/schemas/PermissionMode"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/AgentProvider"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "title",
+          "provider",
+          "permission_mode",
+          "model",
+          "native_session_id",
+          "cwd",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AgentSessionOut",
+        "type": "object"
+      },
+      "AgentSessionPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit null leaves the choice to the provider; an absent field keeps it.",
+            "title": "Model"
+          },
+          "permission_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PermissionMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Applies to the turns queued from now on."
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "version": {
+            "description": "Current version of the session.",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "AgentSessionPatch",
+        "type": "object"
+      },
       "ArtifactList": {
         "properties": {
           "artifacts": {
@@ -2278,6 +2577,332 @@
         "title": "LogPage",
         "type": "object"
       },
+      "MessageCancel": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "MessageCancel",
+        "type": "object"
+      },
+      "MessageCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "The prompt, Markdown.",
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "MessageCreate",
+        "type": "object"
+      },
+      "MessageList": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "MessageList",
+        "type": "object"
+      },
+      "MessageOut": {
+        "properties": {
+          "activity": {
+            "description": "What the agent did, in order, while it worked; grows during the turn.",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "title": "Activity",
+            "type": "array"
+          },
+          "activity_dropped": {
+            "description": "Actions beyond the bound, kept only in the file.",
+            "title": "Activity Dropped",
+            "type": "integer"
+          },
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Reason"
+          },
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "files_read": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Read",
+            "type": "array"
+          },
+          "files_written": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Written",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "markdown": {
+            "description": "The prompt, or the final answer once the turn ended.",
+            "title": "Markdown",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model that answered, as reported.",
+            "title": "Model"
+          },
+          "num_turns": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model calls the turn took.",
+            "title": "Num Turns"
+          },
+          "permission_denials": {
+            "items": {
+              "$ref": "#/components/schemas/PermissionDenial"
+            },
+            "title": "Permission Denials",
+            "type": "array"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agent process, while it runs.",
+            "title": "Pid"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "prompt_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Assistant: the user message this turn answers.",
+            "title": "Prompt Message Id"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MessageRole"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MessageStatus"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "structured_output": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Output"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The supervisor serving the turn.",
+            "title": "Worker Id"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "project_id",
+          "role",
+          "status",
+          "status_reason",
+          "markdown",
+          "activity",
+          "activity_dropped",
+          "files_read",
+          "files_written",
+          "permission_denials",
+          "cost_usd",
+          "usage",
+          "started_at",
+          "finished_at",
+          "cancel_requested_at",
+          "cancel_reason",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MessageOut",
+        "type": "object"
+      },
+      "MessageRole": {
+        "enum": [
+          "user",
+          "assistant"
+        ],
+        "title": "MessageRole",
+        "type": "string"
+      },
+      "MessageStatus": {
+        "description": "Operational state of a message. A user message is ``final`` at once; an assistant\nmessage is a turn of the agent, served by a supervisor.",
+        "enum": [
+          "queued",
+          "running",
+          "final",
+          "failed",
+          "cancelled",
+          "interrupted"
+        ],
+        "title": "MessageStatus",
+        "type": "string"
+      },
       "MetricBucket": {
         "description": "A stretch of consecutive samples of one metric, reduced to what a chart needs.",
         "properties": {
@@ -2739,6 +3364,35 @@
         ],
         "title": "ParserSpec",
         "type": "object"
+      },
+      "PermissionDenial": {
+        "description": "A tool the agent asked for that the permission mode of the session refused.",
+        "properties": {
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name",
+          "summary"
+        ],
+        "title": "PermissionDenial",
+        "type": "object"
+      },
+      "PermissionMode": {
+        "description": "What the agent may do in the project directory during a turn. The provider enforces it;\nwhat it refused is recorded on the answer.",
+        "enum": [
+          "read_only",
+          "edit",
+          "full"
+        ],
+        "title": "PermissionMode",
+        "type": "string"
       },
       "ProbeRecord": {
         "description": "Output of one environment probe command, kept as an artifact.",
@@ -4016,6 +4670,68 @@
         "title": "Termination",
         "type": "object"
       },
+      "ToolCall": {
+        "description": "One use of a tool by the agent, summarised in a line: the file, the command, the pattern.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the tool succeeded; null until its result is seen.",
+            "title": "Ok"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "summary"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "TurnUsage": {
+        "properties": {
+          "cache_creation_input_tokens": {
+            "default": 0,
+            "title": "Cache Creation Input Tokens",
+            "type": "integer"
+          },
+          "cache_read_input_tokens": {
+            "default": 0,
+            "title": "Cache Read Input Tokens",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          }
+        },
+        "title": "TurnUsage",
+        "type": "object"
+      },
       "WorkerList": {
         "properties": {
           "alive": {
@@ -4127,6 +4843,317 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/agent-sessions/{session_id}": {
+      "get": {
+        "operationId": "get_agent_session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one conversation",
+        "tags": [
+          "agents"
+        ]
+      },
+      "patch": {
+        "operationId": "update_agent_session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSessionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Rename a conversation or change its permission mode (requires its version)",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/v1/agent-sessions/{session_id}/messages": {
+      "get": {
+        "operationId": "list_messages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The messages of a conversation in order",
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "operationId": "send_message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the session is still answering"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Send a prompt; the agent's answer is queued as a turn for a supervisor",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/v1/agents/capabilities": {
+      "get": {
+        "operationId": "agent_capabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Whether the coding agent can be started where NumericOS runs",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/v1/artifacts/{artifact_id}/content": {
       "get": {
         "operationId": "download_artifact",
@@ -5032,6 +6059,140 @@
         ]
       }
     },
+    "/v1/messages/{message_id}": {
+      "get": {
+        "operationId": "get_message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one message",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/v1/messages/{message_id}:cancel": {
+      "post": {
+        "operationId": "cancel_message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MessageCancel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Ask for a turn to be stopped; returns at once",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/v1/projects": {
       "get": {
         "operationId": "list_projects",
@@ -5269,6 +6430,141 @@
         "summary": "Update a project (requires its current version)",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/agent-sessions": {
+      "get": {
+        "operationId": "list_agent_sessions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "List a project's conversations, newest first",
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "operationId": "create_agent_session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the session is still answering"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Open a conversation with the agent about a project",
+        "tags": [
+          "agents"
         ]
       }
     },

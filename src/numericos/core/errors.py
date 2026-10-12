@@ -91,3 +91,17 @@ class CursorAheadError(DomainError):
 
     code = "CURSOR_AHEAD"
     status_code = 409
+
+
+class AgentUnavailableError(DomainError):
+    """The coding agent's command is not installed where NumericOS runs."""
+
+    code = "AGENT_UNAVAILABLE"
+    status_code = 409
+
+
+class SessionBusyError(DomainError):
+    """A session serves one turn at a time: the previous answer has not ended yet."""
+
+    code = "SESSION_BUSY"
+    status_code = 409

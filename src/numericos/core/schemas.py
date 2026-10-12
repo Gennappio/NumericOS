@@ -15,10 +15,15 @@ from pydantic import (
     model_validator,
 )
 
+from numericos.core.agents import ActivityItem, PermissionDenial, TurnUsage
 from numericos.core.enums import (
+    AgentProvider,
     CardType,
     EpistemicStatus,
     FailureClass,
+    MessageRole,
+    MessageStatus,
+    PermissionMode,
     RunStatus,
     WorkflowStatus,
 )
@@ -449,6 +454,112 @@ class WorkerOut(BaseModel):
 class WorkerList(BaseModel):
     workers: list[WorkerOut]
     alive: int = Field(description="How many supervisors can currently start queued runs.")
+
+
+class AgentSessionCreate(StrictModel):
+    title: str | None = Field(
+        default=None, min_length=1, max_length=200, description="Defaults to the first prompt."
+    )
+    permission_mode: PermissionMode = Field(
+        default=PermissionMode.EDIT,
+        description=(
+            "read_only: the agent reads the repository, edits and commands are refused; edit: "
+            "file edits are allowed, commands are refused; full: everything is allowed."
+        ),
+    )
+    model: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Model asked of the provider; null for its default.",
+    )
+
+
+class AgentSessionPatch(StrictModel):
+    version: int = Field(ge=1, description="Current version of the session.")
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    permission_mode: PermissionMode | None = Field(
+        default=None, description="Applies to the turns queued from now on."
+    )
+    model: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Explicit null leaves the choice to the provider; an absent field keeps it.",
+    )
+
+    @model_validator(mode="after")
+    def _no_explicit_nulls(self) -> Self:
+        _reject_explicit_nulls(self, ("title", "permission_mode"))
+        return self
+
+
+class AgentSessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    title: str
+    provider: AgentProvider
+    permission_mode: PermissionMode
+    model: str | None
+    native_session_id: str = Field(description="The provider's identifier of this session.")
+    cwd: str = Field(description="The directory the agent works in.")
+    message_count: int = 0
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentSessionList(BaseModel):
+    sessions: list[AgentSessionOut]
+
+
+class MessageCreate(StrictModel):
+    content: str = Field(min_length=1, max_length=200_000, description="The prompt, Markdown.")
+
+
+class MessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    session_id: str
+    project_id: str
+    role: MessageRole
+    status: MessageStatus
+    status_reason: str | None
+    markdown: str = Field(description="The prompt, or the final answer once the turn ended.")
+    prompt_message_id: str | None = Field(
+        default=None, description="Assistant: the user message this turn answers."
+    )
+    model: str | None = Field(default=None, description="The model that answered, as reported.")
+    activity: list[ActivityItem] = Field(
+        description="What the agent did, in order, while it worked; grows during the turn."
+    )
+    activity_dropped: int = Field(description="Actions beyond the bound, kept only in the file.")
+    files_read: list[str]
+    files_written: list[str]
+    permission_denials: list[PermissionDenial]
+    cost_usd: float | None
+    usage: TurnUsage | None
+    num_turns: int | None = Field(default=None, description="Model calls the turn took.")
+    structured_output: Any | None = None
+    worker_id: str | None = Field(default=None, description="The supervisor serving the turn.")
+    pid: int | None = Field(default=None, description="The agent process, while it runs.")
+    exit_code: int | None = None
+    started_at: datetime | None
+    finished_at: datetime | None
+    cancel_requested_at: datetime | None
+    cancel_reason: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class MessageList(BaseModel):
+    messages: list[MessageOut]
+
+
+class MessageCancel(StrictModel):
+    reason: str = Field(default="", max_length=300)
 
 
 class RunRecord(BaseModel):

@@ -19,8 +19,10 @@ TABLES = {
     "runs",
     "workers",
     "artifacts",
+    "agent_sessions",
+    "messages",
 }
-HEAD = "0005"
+HEAD = "0006"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:

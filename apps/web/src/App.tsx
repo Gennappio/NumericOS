@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router"
 import { AppShell } from "@/components/layout/AppShell"
+import { AgentView } from "@/pages/AgentView"
 import { ExperimentsView } from "@/pages/ExperimentsView"
 import { ExperimentView } from "@/pages/ExperimentView"
 import { NotFoundPage } from "@/pages/NotFoundPage"
@@ -17,6 +18,8 @@ export default function App() {
           <Route path="experiments" element={<ExperimentsView />} />
           <Route path="experiments/:experimentId" element={<ExperimentView />} />
           <Route path="runs/:runId" element={<RunView />} />
+          <Route path="agent" element={<AgentView />} />
+          <Route path="agent/:sessionId" element={<AgentView />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

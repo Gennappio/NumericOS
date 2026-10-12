@@ -43,6 +43,8 @@ EXIT_API_ERROR = 1
 EXIT_UNREACHABLE = 3
 #: How a watched run ended, as the exit code of the command that waited for it.
 RUN_EXIT_CODES = {"succeeded": 0, "failed": 10, "cancelled": 11, "timed_out": 12, "lost": 13}
+#: The same for a turn of the agent that was waited for.
+TURN_EXIT_CODES = {"final": 0, "failed": 10, "cancelled": 11, "interrupted": 13}
 EXIT_STILL_RUNNING = 14
 EXIT_INTERRUPTED = 130
 
@@ -64,6 +66,7 @@ artifact = typer.Typer(help="Files that runs left behind.", no_args_is_help=True
 worker = typer.Typer(
     help="Supervisors: the processes that execute queued runs.", no_args_is_help=True
 )
+agent = typer.Typer(help="Conversations with the coding agent.", no_args_is_help=True)
 app.add_typer(db, name="db")
 app.add_typer(project, name="project")
 app.add_typer(card, name="card")
@@ -72,6 +75,7 @@ app.add_typer(experiment, name="experiment")
 app.add_typer(run, name="run")
 app.add_typer(artifact, name="artifact")
 app.add_typer(worker, name="worker")
+app.add_typer(agent, name="agent")
 app.add_typer(events, name="events")
 
 Record = dict[str, Any]
@@ -1682,6 +1686,257 @@ def events_follow(
         err=True,
     )
     raise typer.Exit(EXIT_UNREACHABLE)
+
+
+# --------------------------------------------------------------------------- agent
+
+
+def _session_line(record: Record) -> str:
+    return (
+        f"{record['id']}  {record['title']}  [{record['permission_mode']}, "
+        f"{record['message_count']} message(s)]"
+    )
+
+
+def _message_detail(record: Record) -> str:
+    head = f"{record['id']}  {record['role']}  {record['status']}"
+    if record.get("status_reason"):
+        head += f"  ({record['status_reason']})"
+    lines = [head]
+    if record["role"] == "assistant":
+        facts = []
+        if record.get("model"):
+            facts.append(f"model {record['model']}")
+        if record.get("cost_usd") is not None:
+            facts.append(f"{record['cost_usd']:.4f} USD")
+        if record.get("files_written"):
+            facts.append(f"{len(record['files_written'])} file(s) written")
+        if record.get("permission_denials"):
+            facts.append(f"{len(record['permission_denials'])} refused tool call(s)")
+        if facts:
+            lines.append("  " + ", ".join(facts))
+    if record.get("markdown"):
+        lines.append("")
+        lines.append(record["markdown"])
+    return "\n".join(lines)
+
+
+def _activity_line(item: Record) -> str:
+    if item["kind"] == "tool":
+        tool = item["tool"]
+        mark = "…" if tool["ok"] is None else ("✓" if tool["ok"] else "✗")
+        return f"  {mark} {tool['name']} {tool['summary']}".rstrip()
+    text = " ".join(str(item.get("text", "")).split())
+    return f"  · {text[:160]}"
+
+
+ACTIVE_TURN = ("queued", "running")
+
+
+def _watch_turn(
+    client: ApiClient,
+    message_id: str,
+    *,
+    on_activity: Callable[[Record], None],
+    timeout: float | None,
+    poll: float = 0.5,
+) -> Record:
+    """Report the agent's actions as they are recorded until the turn ended; return it."""
+    deadline = None if timeout is None else time.monotonic() + timeout
+    shown = 0
+    status: str | None = None
+    asked_for_supervisors = False
+    while True:
+        record: Record = client.get(f"/v1/messages/{message_id}")
+        if record["status"] != status:
+            status = record["status"]
+            typer.echo(f"turn {message_id}: {status}", err=True)
+        for item in record["activity"][shown:]:
+            on_activity(item)
+        shown = len(record["activity"])
+        if status not in ACTIVE_TURN:
+            return record
+        if status == "queued" and not asked_for_supervisors:
+            asked_for_supervisors = True
+            if client.get("/v1/workers")["alive"] == 0:
+                typer.echo(
+                    "no supervisor is alive: the turn waits until `numericos worker run` "
+                    "is started",
+                    err=True,
+                )
+        if deadline is not None and time.monotonic() > deadline:
+            raise StillRunning
+        time.sleep(poll)
+
+
+@agent.command("capabilities")
+def agent_capabilities(json_: JsonFlag = False, api_url: ApiUrlOption = None) -> None:
+    """Whether the coding agent can be started where the API runs."""
+    data = _api(json_, api_url, lambda client: client.get("/v1/agents/capabilities"))
+    _emit(
+        data,
+        json_,
+        lambda d: (
+            f"{d['provider']}: {d['version']} at {d['path']}"
+            if d["available"]
+            else f"{d['provider']}: not available ({d['problem']})"
+        ),
+    )
+
+
+@agent.command("sessions")
+def agent_sessions(
+    project_id: ProjectOption, json_: JsonFlag = False, api_url: ApiUrlOption = None
+) -> None:
+    """List a project's conversations, newest first."""
+    data = _api(
+        json_, api_url, lambda client: client.get(f"/v1/projects/{project_id}/agent-sessions")
+    )
+    _emit(
+        data,
+        json_,
+        lambda d: "\n".join(_session_line(item) for item in d["sessions"]) or "no conversations",
+    )
+
+
+@agent.command("new")
+def agent_new(
+    project_id: ProjectOption,
+    title: Annotated[str | None, typer.Option("--title")] = None,
+    mode: Annotated[
+        str,
+        typer.Option("--mode", help="read_only, edit (default) or full: what the agent may do."),
+    ] = "edit",
+    model: Annotated[
+        str | None, typer.Option("--model", help="Model asked of the provider.")
+    ] = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Open a conversation about a project (its directory must be trusted for execution)."""
+    body = _given(title=title, permission_mode=mode, model=model)
+    data = _api(
+        json_,
+        api_url,
+        lambda client: client.post(f"/v1/projects/{project_id}/agent-sessions", body),
+    )
+    _emit(data, json_, _session_line)
+
+
+@agent.command("ask")
+def agent_ask(
+    prompt: Annotated[str, typer.Argument(metavar="PROMPT", help="What to ask the agent.")],
+    project_id: Annotated[
+        str | None, typer.Option("--project", "-p", help="Project ID (opens a new conversation).")
+    ] = None,
+    session_id: Annotated[
+        str | None, typer.Option("--session", "-s", help="Continue this conversation.")
+    ] = None,
+    mode: Annotated[
+        str | None, typer.Option("--mode", help="Permission mode of a new conversation.")
+    ] = None,
+    watch: Annotated[
+        bool, typer.Option("--watch/--no-watch", help="Wait for the answer and print it.")
+    ] = True,
+    timeout: TimeoutOption = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Send a prompt. By default the command follows the turn and prints the answer; the exit
+    code says how the turn ended: 0 answered, 10 failed, 11 cancelled, 13 interrupted."""
+    if (project_id is None) == (session_id is None):
+        raise typer.BadParameter("pass exactly one of --project (new conversation) or --session")
+
+    def send(client: ApiClient) -> Record:
+        target = session_id
+        if target is None:
+            opened: Record = client.post(
+                f"/v1/projects/{project_id}/agent-sessions", _given(permission_mode=mode)
+            )
+            target = str(opened["id"])
+            typer.echo(f"conversation {target} opened", err=True)
+        queued: Record = client.post(f"/v1/agent-sessions/{target}/messages", {"content": prompt})
+        return queued
+
+    queued = _api(json_, api_url, send)
+    if not watch:
+        _emit(queued, json_, _message_detail)
+        return
+    try:
+        record = _api(
+            json_,
+            api_url,
+            lambda client: _watch_turn(
+                client,
+                queued["id"],
+                on_activity=lambda item: typer.echo(_activity_line(item), err=True),
+                timeout=timeout,
+            ),
+        )
+    except StillRunning:
+        typer.echo(f"turn {queued['id']} had not ended after {timeout} s; it keeps going", err=True)
+        raise typer.Exit(EXIT_STILL_RUNNING) from None
+    except KeyboardInterrupt:
+        typer.echo(
+            f"stopped watching; turn {queued['id']} keeps going "
+            f"(stop it with `numericos agent cancel {queued['id']}`)",
+            err=True,
+        )
+        raise typer.Exit(EXIT_INTERRUPTED) from None
+    _emit(record, json_, lambda d: d["markdown"] if d["status"] == "final" else _message_detail(d))
+    code = TURN_EXIT_CODES[record["status"]]
+    if code:
+        raise typer.Exit(code)
+
+
+@agent.command("messages")
+def agent_messages(
+    session_id: Annotated[str, typer.Argument(metavar="SESSION_ID")],
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """The messages of a conversation in order."""
+    data = _api(
+        json_, api_url, lambda client: client.get(f"/v1/agent-sessions/{session_id}/messages")
+    )
+    _emit(
+        data,
+        json_,
+        lambda d: "\n\n".join(_message_detail(item) for item in d["messages"]) or "no messages",
+    )
+
+
+@agent.command("show")
+def agent_show(
+    message_id: Annotated[str, typer.Argument(metavar="MESSAGE_ID")],
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Show one message with what the agent did."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/messages/{message_id}"))
+    _emit(
+        data,
+        json_,
+        lambda d: "\n".join(
+            [_message_detail(d), *(_activity_line(item) for item in d["activity"])]
+        ),
+    )
+
+
+@agent.command("cancel")
+def agent_cancel(
+    message_id: Annotated[str, typer.Argument(metavar="MESSAGE_ID")],
+    reason: Annotated[str, typer.Option("--reason", help="Recorded with the turn.")] = "",
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Ask for a turn to be stopped."""
+    data = _api(
+        json_,
+        api_url,
+        lambda client: client.post(f"/v1/messages/{message_id}:cancel", {"reason": reason}),
+    )
+    _emit(data, json_, _message_detail)
 
 
 def main() -> None:

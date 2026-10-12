@@ -97,13 +97,21 @@ scientific validity); event types in UPPER_SNAKE like the adapter contract (`PRO
 `debug | info | warning | error`.
 
 IDs are `<prefix>_<ULID>` strings: `prj_`, `card_`, `evt_`, `cor_`, `hyp_`, `exp_`, `run_`,
-`wrk_` and `art_` in use; `res_`, `ases_`, `msg_`, `ann_`, `ctx_` reserved for later entities
-(`core/ids.py`). No empty tables are created ahead of their milestone.
+`wrk_`, `art_`, `ser_`, `ases_` and `msg_` in use; `res_`, `ann_`, `ctx_` reserved for later
+entities (`core/ids.py`). No empty tables are created ahead of their milestone.
+
+### Conversations with the agent (migration `0006`)
+
+| Table | Columns | Notes |
+| --- | --- | --- |
+| `agent_sessions` | `id` PK, `project_id` FK, `title`, `provider`, `permission_mode`, `model` NULL, `native_session_id`, `cwd`, `system_prompt`, `version`, `created_at`, `updated_at` | one provider session per conversation; `native_session_id` is chosen by NumericOS before the first turn; `cwd` is the trusted root at creation |
+| `messages` | `id` PK, `session_id` FK, `project_id` FK, `role`, `status`, `status_reason`, `markdown`, `prompt_message_id`, `correlation_id`, `model`, `activity` JSON, `activity_dropped`, `files_read` JSON, `files_written` JSON, `permission_denials` JSON, `cost_usd`, `usage` JSON, `num_turns`, `structured_output` JSON, supervision (`worker_id`, `pid`, `process_started_at`, `started_at`, `finished_at`, `heartbeat_at`, `cancel_requested_at`, `cancel_reason`, `exit_code`, `ingest` JSON), `version`, `created_at`, `updated_at` | a user message is the prompt (`final` at once); an assistant message is a turn: `queued | running | final | failed | cancelled | interrupted`; `markdown` is immutable once the turn ended |
 
 ### Unit of work and ordering
 
 `UnitOfWork` (one per mutation) exposes one repository per table (`projects`, `cards`,
-`events`, `hypotheses`, `experiments`, `runs`, `workers`, `artifacts`);
+`events`, `hypotheses`, `experiments`, `runs`, `workers`, `artifacts`, `metric_series`,
+`agent_sessions`, `messages`);
 `record()` appends the ledger row inside the transaction and `commit()` performs one COMMIT, then
 wakes subscribers. Card placement is computed by `persistence/ordering.place()` and persisted by
 `CardRepository.reindex()`, which renumbers the destination column (`index * 1000`) and writes
@@ -124,7 +132,8 @@ Revisions: `0001` projects, board cards, events; `0002` hypotheses, experiments,
 `events.run_id`; `0003` run provenance (code, inputs, environment, reproduced run) and
 `projects.execution_trusted_at`; `0004` run supervision (worker, process identities, times,
 cancellation, exit, outcome, resource summary, read offsets), `workers` and `artifacts`;
-`0005` `metric_series` (one summary row per run and metric) and `runs.metric_report`.
+`0005` `metric_series` (one summary row per run and metric) and `runs.metric_report`; `0006`
+`agent_sessions` and `messages`.
 
 ## Events
 
@@ -365,6 +374,17 @@ bumps no version.
 | queue a run | `RUN_QUEUED` | `run`; the event carries `run_id` |
 | ask for a run to be stopped | `RUN_CANCEL_REQUESTED` (and `RUN_FINISHED` at once if it was still queued) | `reason`, `status_when_requested` |
 | trust / revoke execution for a project | `PROJECT_EXECUTION_TRUSTED` / `PROJECT_EXECUTION_TRUST_REVOKED` | `project` |
+| open / change a conversation with the agent | `AGENT_SESSION_STARTED` / `AGENT_SESSION_UPDATED` | `session`, `changed_fields` |
+| send a prompt (records the user message, queues the turn) | `AGENT_TURN_QUEUED` | `session_id`, `prompt_message_id`, `prompt_excerpt`, `permission_mode`; the subject is the turn |
+| ask for a turn to be stopped | `AGENT_TURN_CANCEL_REQUESTED` (and `AGENT_TURN_FINISHED` at once if it was still queued and unclaimed) | `reason`, `status_when_requested` |
+
+Events of a turn written by the supervisor (`producer: worker`, the correlation ID of the request
+that queued it): `AGENT_TURN_STARTED` (`pid`, `session_id`, `resume`, `permission_mode`),
+`AGENT_TURN_FINISHED` (`status`, `status_reason`, `session_id`, `model`, `cost_usd`,
+`num_turns`, `files_written`, `permission_denials`, `agent_started`, `subtype`,
+`duration_ms`), `AGENT_TURN_ADOPTED` and `AGENT_TURN_REQUEUED` as for runs. The actions of the
+agent (every tool call with its target, the text between actions) are recorded on the message,
+not as ledger events: a turn makes dozens of them.
 
 Events of a run written by the supervisor (`producer: worker`, actor `worker:<id>`, the
 correlation ID of the request that queued the run, `run_id` set):
@@ -417,6 +437,10 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `GET /v1/workers` | supervisors, whether each is alive, and how many can start queued runs |
 | `GET /v1/runs/{id}/record`; `POST /v1/runs/{id}:rerun` | export the run record; queue a repetition with the same commit, parameters and seed |
 | `POST /v1/projects/{id}:trust-execution`, `:revoke-execution-trust` | allow, or stop allowing, commands to be executed in the project directory |
+| `GET /v1/agents/capabilities` | whether the agent command can be started where NumericOS runs: found by running `--version`, never assumed |
+| `POST`, `GET /v1/projects/{id}/agent-sessions`; `GET`, `PATCH /v1/agent-sessions/{id}` | open a conversation (needs a trusted directory; `permission_mode`, optional `model`), list newest first, read, rename or change the mode (needs `version`) |
+| `POST`, `GET /v1/agent-sessions/{id}/messages`; `GET /v1/messages/{id}` | send a prompt (201 with the queued turn; 409 `SESSION_BUSY` while the previous turn is open, `AGENT_UNAVAILABLE` without the command), the messages in order, one message with everything observed |
+| `POST /v1/messages/{id}:cancel` | ask for a turn to be stopped (optional `reason`); returns at once |
 | `GET /v1/events?project_id=&after=&before=&limit=&order=&run_id=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
 
 Operation IDs equal the handler names (`create_project`, `update_card`, ...), so generated
@@ -498,8 +522,8 @@ The GUI is a client of the public API like any other; it holds no state of its o
 query cache and never ships mock data.
 
 - **Routes:** `/` lists projects. `/projects/:projectId` frames the views of one project and
-  owns its event stream: the board (index), `experiments`, `experiments/:experimentId` and
-  `runs/:runId`. Any other path is a not-found page.
+  owns its event stream: the board (index), `experiments`, `experiments/:experimentId`,
+  `runs/:runId`, `agent` and `agent/:sessionId`. Any other path is a not-found page.
 - **Shell:** left project navigation and a connection indicator that is always visible. The
   indicator is derived from polling `GET /v1/health`: `Connected` (with the API version, and a
   note when the database needs a migration), `Checking backend` or `Backend unreachable`. When
@@ -507,9 +531,20 @@ query cache and never ships mock data.
   given time, not live data, and every control that changes data is disabled.
 - **Project page:** the research question and the project reference (code path and project ID)
   are shown on the board view; demo projects carry a "Demo data" label. The view tabs
-  anticipate the roadmap: `Board` and `Experiments` are real views, `Timeline`, `Agents` and
+  anticipate the roadmap: `Board`, `Experiments` and `Agent` are real views, `Timeline` and
   `Knowledge` are disabled buttons naming the milestone that delivers them. Nothing is
   pretend-functional.
+- **Agent view:** the conversations of the project (newest first) and the one that is open.
+  Before anything can be sent, the preconditions are shown as they are: the directory trusted,
+  a supervisor alive, the agent command found. A prompt is recorded at once and the answer is
+  a turn: queued (and the page says if no supervisor can serve it), working (every action of
+  the agent as it is recorded: the file, the command, the pattern, whether it succeeded),
+  answered (Markdown with mathematics rendered by KaTeX; raw HTML is not rendered), failed,
+  stopped or interrupted, with the reason. Every answer shows its model, cost and duration;
+  what the permission mode refused is listed, never hidden. A working turn can be stopped with a
+  recorded reason. The permission mode of a conversation (read only, edit files, full
+  autonomy) is chosen when it starts and can be changed between turns. One turn at a time per
+  conversation: the composer waits while the agent answers.
 - **Experiments view:** first the two preconditions of running anything, as they are: whether
   execution is allowed in the project directory (allowing it is a dialog that shows the exact
   path and needs an explicit confirmation) and whether a supervisor is alive. Then the
@@ -578,8 +613,9 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Process | pytest + `LiveServer` (real `numericos serve` subprocess) | CLI contract and data commands, `events follow`, startup migration, concurrent writers, event stream (replay, `Last-Event-ID`, push, another process writing, refused cursors, prompt stop with subscribers), state and ledger across a restart |
 | Examples | pytest running the shipped programs alone and, from their own contract files, under a supervisor | closed forms of norm and error of the heat scheme to round-off; time steps on both sides of the exact stability limit; a guardrail halt that leaves its evidence; overflow as typed samples; conjugate gradient in two precisions with the true residual far from the reported one; binary and compiler provenance |
 | Execution | pytest with real monitor processes and real programs from a real Git repository; `LiveWorker` (real `numericos worker run` subprocess) where a supervisor must die | the monitor (output, limits, signals, process tree, leftovers, build, one monitor per run); the worker (recording, classification, cancellation, trust and input checks, working tree against commit, results next to the sources, binary identity, parallelism); recovery (supervisor killed and run taken over with complete output, orderly hand-over, lost monitor, re-queue, two supervisors competing for the queue, overtaken readings); API restarted during a run; run events on an open stream |
-| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor) |
-| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page |
+| Agent | pytest with the stand-in command as a real subprocess of the supervisor | the adapter (argument vector per mode, resume and fork, folding of the stream, bounds); the API (capabilities, missing command, trust, sessions, one turn at a time, cancellation, validation); turns (everything observed and the turn's files, resume of the provider session, refusals of the mode recorded, failure, agent gone without an answer, stop while working, sessions in parallel, worker died after claiming, running turn taken over, cancelled before start); the CLI (`ask` follows and prints, exit codes, give up and cancel) |
+| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails, agent), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor), Markdown (GFM, KaTeX inline and displayed, no raw HTML, safe links), message card (prompt, answer with facts and actions, working with stop, queued without supervisor, failure, refusals), agent view (conversation and composer, untrusted directory, missing command, empty) |
+| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page; agent: a conversation held and rendered (mathematics, cost, actions, persisted across a reload), a refusal of the read-only mode shown, a working turn stopped from the page |
 
 No fixtures or mocks live in application code; the GUI shows the real backend connection state.
 
@@ -594,13 +630,46 @@ user's permissions. `spec.json`, the one file that holds a run's real environmen
 by the user only; records and exports redact the values of secret-looking names. A downloaded
 artifact is served as an attachment from inside its run directory and nowhere else.
 
+## Conversations with the coding agent (M1-T01)
+
+Design record: ADR-0008. The first provider is the Claude Code command line; the
+provider-specific protocol stays in `agents/claude_code.py`, which builds the argument vector
+of a turn (`claude -p --output-format stream-json --verbose`, the permission flags of the
+session's mode, `--session-id` for the first turn and `--resume` afterwards,
+`--append-system-prompt`, `--max-budget-usd`, optional `--model` and `--json-schema`) and folds
+the records of its standard output into provider-neutral progress (`core/agents.py`: activity
+items, files read and written, permission denials, the final result with cost and usage). The
+model's hidden reasoning (`thinking` blocks) is not recorded.
+
+The API never starts the agent. `services/agents.py` opens sessions (a trusted directory and an
+available command are required; the native session ID is a UUID chosen by NumericOS), records
+prompts and queues turns (one open turn per session), and cancels. The supervisor
+(`agents/supervisor.py`, driven by `Worker.tick()` under the worker's identity) claims the oldest
+queued turn of a session nobody is answering, writes the prompt (the person's text plus a note of
+the mode of this turn) and the argument vector into `data_dir/agent-turns/<message_id>/`, starts
+the agent detached with its output going to `stream.jsonl` and its standard error to
+`stderr.log`, records the process identity (`process.json`: PID and start time), then reads the
+stream between fenced transactions as it reads a monitor's files. A `result` record ends the
+turn (`final`, or `failed` when the provider reports an error); a process that is gone without
+one leaves the turn `interrupted` (or `cancelled` when a stop was requested), with the last line
+of its standard error as the reason. Stopping is SIGTERM to the process group, SIGKILL after
+five seconds. A worker that dies after claiming a turn is replaced: the next worker adopts the
+turn, re-queues it if no process was started, or continues reading the running process.
+
+`numericos agent` mirrors the API: `capabilities`, `sessions`, `new`, `ask` (follows the turn,
+prints the actions as they are recorded on stderr and the answer on stdout; exit code `0`
+answered, `10` failed, `11` stopped, `13` interrupted, `14` still going after `--timeout`),
+`messages`, `show`, `cancel`.
+
+Tests run a stand-in for the command (`tests/fake_claude.py`: the same flags, the same records,
+no model), selected with `NUMERICOS_CLAUDE_COMMAND`; the browser tests start their API and
+supervisor with it too. No test calls the real provider.
+
 ## Deferred boundaries (documented, not built)
 
-- **AgentAdapter** (M1): capabilities, session lifecycle, normalized events, `install_skills`;
-  contract in `docs/AGENT_ADAPTER_CONTRACT.md`. Provider-specific IDs will live in an adapter
-  mapping, never on Project/BoardCard. The ledger envelope above is the one the adapter events
-  will reuse (`seq` is the contract's `sequence`); `research_id`, `run_id` and
-  `agent_session_id` columns are added by batch migrations when M1/M3 need them.
+- **AgentAdapter** beyond Claude Code: a second provider (Codex `exec`), capability
+  negotiation, `install_skills`; contract in `docs/AGENT_ADAPTER_CONTRACT.md`. Provider-specific
+  IDs live on the session (`native_session_id`), never on Project/BoardCard.
 - **SkillRegistry** (M1): `skill_id`, version or Git revision, `source_path`, SHA-256 content
   digest, compatibility flags, installation receipt; design in `docs/SKILL_ARCHITECTURE.md`.
 
@@ -635,6 +704,14 @@ artifact is served as an attachment from inside its run directory and nowhere el
   experiment are compared in a table of last values: plots across runs and verdicts belong to
   the validators ticket.
 - **No drag and drop yet** (M1): cards move through their status select and up/down buttons.
+- **The agent runs with the user's permissions and account.** Every turn is a call on the
+  owner's Claude account, bounded by `NUMERICOS_AGENT_MAX_BUDGET_USD` per turn (5 USD by
+  default); the cost is shown, not prevented. The `edit` mode refuses commands, so the agent
+  cannot run tests in it; `full` mode refuses nothing. What the agent changed in the repository
+  is listed by name and visible in Git; nothing reverts it. Answers are not commentable yet
+  (M1-T02). The provider's own session files live under `~/.claude`, outside the data
+  directory: a data directory copied to another machine resumes no session. The activity kept
+  on a message is bounded to 400 items; the whole stream stays in the turn's file.
 - **SQLite transactions serialise writers and readers** (`BEGIN IMMEDIATE`). Output and
   resource samples go to files, not to the database; the supervisor writes one short
   transaction per run and round. Measured on the development machine (2026-10-12, four runs in
@@ -658,3 +735,6 @@ artifact is served as an attachment from inside its run directory and nowhere el
   process identity, stopping, status and failure classes, recovery, fenced transactions.
 - ADR-0007: metrics are samples with a declared source, collected and guarded by the run's
   monitor; strict records, typed non-finite values, explicit guardrails, coverage per level.
+- ADR-0008: by the owner's redirection, conversations with the coding agent and commentable
+  documents come before validators; Claude Code's command line is the first adapter; the
+  supervisor runs the agent; three permission modes; Clarify and Resolve as batched turns.

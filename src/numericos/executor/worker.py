@@ -28,6 +28,7 @@ from typing import Any, Literal, TypeGuard
 from sqlalchemy.exc import OperationalError
 
 from numericos import __version__
+from numericos.agents.supervisor import TurnSupervisor
 from numericos.config import Settings
 from numericos.core.enums import EventType, FailureClass, RunStatus, Severity
 from numericos.core.execution import ResourceSample, ResourceSummary, RunOutcome
@@ -197,6 +198,14 @@ class Worker:
         self._monitors: dict[str, subprocess.Popen[bytes]] = {}
         self._leaving = threading.Event()
         self._heart: threading.Thread | None = None
+        #: Turns of the coding agent are served by the same process, under the same identity.
+        self.turns = TurnSupervisor(
+            worker_id=self.id,
+            uow=self._uow,
+            settings=settings,
+            max_parallel=settings.agent_max_parallel,
+            stale_after=stale_after,
+        )
 
     def _uow(self) -> UnitOfWork:
         return UnitOfWork(self._sessions, self._notifier)
@@ -298,20 +307,21 @@ class Worker:
             time.sleep(self.poll_interval)
 
     def run_until_idle(self, timeout: float = 300.0) -> None:
-        """Serve until no run is queued or active any more."""
+        """Serve until no run or turn is queued or active any more."""
         deadline = time.monotonic() + timeout
         while True:
             self.tick()
             with self._uow() as uow:
                 remaining = uow.runs.with_status(PENDING, limit=1)
-            if not remaining:
+            if not remaining and self.turns.pending() == 0:
                 return
             if time.monotonic() > deadline:
                 raise TimeoutError(f"runs were still pending after {timeout} s")
             time.sleep(self.poll_interval)
 
     def tick(self) -> None:
-        """One round: take over orphans, read the monitors, start queued runs."""
+        """One round: take over orphans, read the monitors, start queued runs; then the same
+        for the turns of the coding agent."""
         for run_id in [
             name for name, process in self._monitors.items() if process.poll() is not None
         ]:
@@ -327,6 +337,7 @@ class Worker:
             if claimed is None:
                 break
             self._launch(claimed)
+        self.turns.tick()
 
     def _owned(self, statuses: tuple[str, ...]) -> list[str]:
         with self._uow() as uow:

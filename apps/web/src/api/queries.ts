@@ -1,9 +1,13 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   api,
+  type AgentSessionCreate,
+  type AgentSessionPatch,
   type CardCreate,
   type CardPatch,
   type ContractImport,
+  type Message,
+  type MessageStatus,
   type ProjectPatch,
   type Run,
   type RunCreate,
@@ -39,6 +43,12 @@ export const queryKeys = {
     ["projects", projectId, "runs", runId, "events"] as const,
   artifacts: (projectId: string, runId: string) =>
     ["projects", projectId, "runs", runId, "artifacts"] as const,
+  agentCapabilities: ["agents", "capabilities"] as const,
+  agentSessions: (projectId: string) => ["projects", projectId, "agent-sessions"] as const,
+  agentSession: (projectId: string, sessionId: string) =>
+    ["projects", projectId, "agent-sessions", sessionId] as const,
+  messages: (projectId: string, sessionId: string) =>
+    ["projects", projectId, "agent-sessions", sessionId, "messages"] as const,
 }
 
 /**
@@ -314,5 +324,91 @@ export function useCancelRun(projectId: string, runId: string) {
   return useMutation({
     mutationFn: (reason: string) => api.cancelRun(runId, reason),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.run(projectId, runId) }),
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conversations with the agent. A turn changes through ledger events (queued, started, ended)
+// and silently while the agent works (its actions are recorded as it goes), so the messages of
+// a conversation with an active turn are re-read at the short interval, like a running run.
+
+const ACTIVE_TURN_STATUSES: readonly MessageStatus[] = ["queued", "running"]
+
+/** The turn may still change by itself. */
+export function isTurnActive(status: MessageStatus | undefined): boolean {
+  return status !== undefined && ACTIVE_TURN_STATUSES.includes(status)
+}
+
+const anyTurnActive = (messages: Message[] | undefined) =>
+  messages?.some((message) => isTurnActive(message.status)) ?? false
+
+/** Whether the agent command is installed: found by running it, re-checked now and then. */
+export function useAgentCapabilities() {
+  return useQuery({
+    queryKey: queryKeys.agentCapabilities,
+    queryFn: api.getAgentCapabilities,
+    refetchInterval: POLL_MS * 6,
+    staleTime: POLL_MS,
+  })
+}
+
+export function useAgentSessions(projectId: string, live: boolean) {
+  return useQuery({
+    queryKey: queryKeys.agentSessions(projectId),
+    queryFn: () => api.listAgentSessions(projectId),
+    refetchInterval: live ? false : POLL_MS,
+  })
+}
+
+export function useAgentSession(projectId: string, sessionId: string) {
+  return useQuery({
+    queryKey: queryKeys.agentSession(projectId, sessionId),
+    queryFn: () => api.getAgentSession(sessionId),
+  })
+}
+
+export function useMessages(projectId: string, sessionId: string) {
+  return useQuery({
+    queryKey: queryKeys.messages(projectId, sessionId),
+    queryFn: () => api.listMessages(sessionId),
+    refetchInterval: (query) =>
+      anyTurnActive(query.state.data?.messages) ? RUN_POLL_MS : false,
+  })
+}
+
+export function useCreateAgentSession(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: AgentSessionCreate) => api.createAgentSession(projectId, body),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentSessions(projectId) }),
+  })
+}
+
+export function useUpdateAgentSession(projectId: string, sessionId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: AgentSessionPatch) => api.updateAgentSession(sessionId, patch),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentSessions(projectId) }),
+  })
+}
+
+export function useSendMessage(projectId: string, sessionId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (content: string) => api.sendMessage(sessionId, content),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentSessions(projectId) }),
+  })
+}
+
+export function useCancelMessage(projectId: string, sessionId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ messageId, reason }: { messageId: string; reason: string }) =>
+      api.cancelMessage(messageId, reason),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.messages(projectId, sessionId) }),
   })
 }

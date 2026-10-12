@@ -5,7 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from numericos.core.errors import ExecutionNotTrustedError, NotFoundError, StaleRevisionError
-from numericos.persistence.models import BoardCard, Experiment, Hypothesis, Project, Run
+from numericos.persistence.models import (
+    AgentMessage,
+    AgentSession,
+    BoardCard,
+    Experiment,
+    Hypothesis,
+    Project,
+    Run,
+)
 from numericos.persistence.unit_of_work import UnitOfWork
 
 
@@ -52,6 +60,25 @@ def require_run(uow: UnitOfWork, run_id: str) -> Run:
     if run is None:
         raise NotFoundError(f"run {run_id} not found", details={"resource": "run", "id": run_id})
     return run
+
+
+def require_agent_session(uow: UnitOfWork, session_id: str) -> AgentSession:
+    session = uow.agent_sessions.get(session_id)
+    if session is None:
+        raise NotFoundError(
+            f"agent session {session_id} not found",
+            details={"resource": "agent_session", "id": session_id},
+        )
+    return session
+
+
+def require_message(uow: UnitOfWork, message_id: str) -> AgentMessage:
+    message = uow.messages.get(message_id)
+    if message is None:
+        raise NotFoundError(
+            f"message {message_id} not found", details={"resource": "message", "id": message_id}
+        )
+    return message
 
 
 def require_trusted_root(project: Project) -> Path:

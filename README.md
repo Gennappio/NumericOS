@@ -8,16 +8,20 @@ call the same API.
 
 **Status:** pre-alpha. Milestone **M0** (foundations: persistent project board, API, CLI,
 replayable event ledger) was accepted on 2026-10-12; the evidence is in
-`docs/milestones/M0-gate.md`. The active milestone is **M3**, experiment engine, provenance and
-numerical observability, which the project owner placed before M1 and M2
-(`docs/adr/0004-observability-first.md`). So far M3 defines experiments by a contract, records
-exactly which code, inputs and environment a run uses, executes runs under a supervisor that
-observes, bounds, cancels and recovers them, and collects scientific metrics that the program
-emits or that are read from its output, with explicit guardrails. The GUI has an Experiments
-view with a page for every run: status, coverage, live charts of metrics and resources,
-output, provenance, events and files. Validators are the next ticket: today a run shows what
-was measured, in the GUI, the command line and the API, and nothing yet says whether its
-result is valid.
+`docs/milestones/M0-gate.md`. **M3** (experiment engine, provenance, numerical observability)
+was built next by the owner's earlier decision (`docs/adr/0004-observability-first.md`) and is
+paused after its fourth ticket: experiments are defined by a contract, a run records exactly
+which code, inputs and environment it uses, a supervisor executes, observes, bounds, cancels and
+recovers runs, scientific metrics are collected with explicit guardrails, and the GUI follows
+every run live. Validators do not exist yet: nothing says whether a result is valid.
+
+The active work is **M1 in the owner's version** (`docs/adr/0008-owner-redirection-commentable-agent-documents.md`):
+conversations with the coding agent inside a project, answers and documents that can be
+commented and sent back to the agent, the theory of the project as a paper, descriptions of
+its files and of its execution, the plan as a board. The first ticket is done: a project has
+**conversations with Claude Code**, held from the GUI or the command line and executed by the
+supervisor, with every action of the agent, every file it changed, what its permission mode
+refused and what the turn cost on record.
 
 ## Requirements
 
@@ -80,6 +84,16 @@ Open http://localhost:5173 with the API running.
    with the bounds of the contract, CPU and memory of the process tree, the output on request,
    exactly what ran, what happened to it and the files it left. A run that is going on can be
    stopped from there; a run of an exact commit can be run again.
+
+9. **Agent** (the third tab) talks to Claude Code about the project. It needs the `claude`
+   command installed and logged in, the project directory allowed for execution (the agent
+   reads, edits and runs the code as you) and `make worker`. Start a conversation, choose what
+   the agent may do (read only; edit files; full autonomy, as with every permission skipped in a
+   terminal) and ask. The prompt is recorded at once; the answer arrives as a turn: first the
+   agent's actions as they happen (the file read, the command run, whether it succeeded), then
+   the answer with its mathematics rendered, its model, its cost and its duration. What the
+   mode refused is listed on the answer. A turn can be stopped. Every turn is a call on your
+   Claude account.
 
 The indicator in the top right corner shows the real connection to the backend. If the API stops,
 the GUI says so, marks what it shows as the last known state and disables every change.
@@ -165,11 +179,18 @@ numericos card list --project PROJECT_ID
 numericos events list --project PROJECT_ID          # the ordered event ledger
 numericos events follow --project PROJECT_ID        # replay it, then follow live (Ctrl+C stops)
 numericos seed-demo                                 # one clearly marked demo project
+numericos agent capabilities                        # is the claude command found?
+numericos agent ask -p PROJECT_ID "What does this solver compute?"   # new conversation, waits
+numericos agent ask -s SESSION_ID "And its stability condition?"     # continues it
+numericos agent sessions -p PROJECT_ID              # the conversations of a project
+numericos agent show MESSAGE_ID                     # one answer with every action of the agent
+numericos agent cancel MESSAGE_ID                   # stop a turn
 ```
 
 Exit codes: `0` success, `1` API error (envelope on stderr), `2` usage error, `3` API unreachable.
 Commands that wait for a run end with how the run ended (`10` to `14`, see
-`numericos run watch --help`).
+`numericos run watch --help`); `agent ask` ends with how the turn ended (`0` answered, `10`
+failed, `11` stopped, `13` interrupted, `14` still going after `--timeout`).
 
 The Makefile pins the Python environment to `./.venv` (it exports `UV_PROJECT_ENVIRONMENT`), so a
 global `UV_PROJECT_ENVIRONMENT` in your shell never redirects NumericOS dependencies into another
@@ -194,12 +215,16 @@ make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail 
 | `NUMERICOS_CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173"]` |
 | `NUMERICOS_API_URL` (CLI) | `http://127.0.0.1:8765` |
 | `VITE_API_URL` (GUI) | `http://127.0.0.1:8765` |
+| `NUMERICOS_CLAUDE_COMMAND` | `["claude"]` (JSON list; the tests point it at `tests/fake_claude.py`) |
+| `NUMERICOS_AGENT_MAX_BUDGET_USD` | `5` per turn |
+| `NUMERICOS_AGENT_MAX_PARALLEL` | `2` turns at a time per supervisor |
 
 ## Layout
 
 ```text
 src/numericos/   Python package: config, core, persistence (models, migrations), events, provenance,
-                 executor (per-run monitor, supervisor), observability, services, api, cli
+                 executor (per-run monitor, supervisor), agents (Claude Code adapter, turns),
+                 observability, services, api, cli
 tests/           pytest suites (unit, persistence, provenance, executor, api, cli, integration);
                  `LiveServer` and `LiveWorker` run real API and supervisor subprocesses
 contracts/       exported OpenAPI contract (generated, committed, drift-checked in CI)
@@ -214,6 +239,7 @@ skills/          canonical scientific Agent Skills (SKILL.md)
 ## Start here (contributors and coding agents)
 
 1. `AGENTS.md`: product vision and project invariants.
-2. `CURRENT_MILESTONE.md` and the brief it names (`milestones/M3/AGENTS.md`): the active tickets.
+2. `CURRENT_MILESTONE.md` and what it names (ADR-0008, `milestones/M1/AGENTS.md`): the active
+   tickets, in the owner's order.
 3. `docs/architecture.md`: what exists today and the decisions behind it (`docs/adr/`).
 4. `docs/DEVELOPMENT_PACK.md`: the original development pack notes.

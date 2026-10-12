@@ -66,6 +66,42 @@ class FailureClass(StrEnum):
     UNKNOWN = "unknown"
 
 
+class AgentProvider(StrEnum):
+    CLAUDE_CODE = "claude_code"
+
+
+class PermissionMode(StrEnum):
+    """What the agent may do in the project directory during a turn. The provider enforces it;
+    what it refused is recorded on the answer."""
+
+    READ_ONLY = "read_only"
+    EDIT = "edit"
+    FULL = "full"
+
+
+class MessageRole(StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class MessageStatus(StrEnum):
+    """Operational state of a message. A user message is ``final`` at once; an assistant
+    message is a turn of the agent, served by a supervisor."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    FINAL = "final"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"
+
+
+#: States in which a turn may still change by itself.
+ACTIVE_MESSAGE_STATUSES: frozenset[MessageStatus] = frozenset(
+    {MessageStatus.QUEUED, MessageStatus.RUNNING}
+)
+
+
 class EventType(StrEnum):
     PROJECT_CREATED = "PROJECT_CREATED"
     PROJECT_UPDATED = "PROJECT_UPDATED"
@@ -93,6 +129,14 @@ class EventType(StrEnum):
     RUN_GUARDRAIL_VIOLATED = "RUN_GUARDRAIL_VIOLATED"
     RUN_METRICS_TRUNCATED = "RUN_METRICS_TRUNCATED"
     RUN_PROGRAM_EVENT = "RUN_PROGRAM_EVENT"
+    AGENT_SESSION_STARTED = "AGENT_SESSION_STARTED"
+    AGENT_SESSION_UPDATED = "AGENT_SESSION_UPDATED"
+    AGENT_TURN_QUEUED = "AGENT_TURN_QUEUED"
+    AGENT_TURN_STARTED = "AGENT_TURN_STARTED"
+    AGENT_TURN_FINISHED = "AGENT_TURN_FINISHED"
+    AGENT_TURN_CANCEL_REQUESTED = "AGENT_TURN_CANCEL_REQUESTED"
+    AGENT_TURN_ADOPTED = "AGENT_TURN_ADOPTED"
+    AGENT_TURN_REQUEUED = "AGENT_TURN_REQUEUED"
 
 
 class Severity(StrEnum):

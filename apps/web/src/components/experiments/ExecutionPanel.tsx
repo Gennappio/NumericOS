@@ -17,18 +17,21 @@ import { formatTimestamp } from "@/lib/time"
 interface ExecutionPanelProps {
   project: Project
   disabled: boolean
+  /** What the permission is asked for: it changes the wording, not the permission. */
+  purpose?: "experiments" | "agent"
 }
 
 /**
  * The two preconditions of running anything: the project directory was explicitly trusted,
  * and a supervisor process is alive to execute queued runs. Both are shown as they are.
  */
-export function ExecutionPanel({ project, disabled }: ExecutionPanelProps) {
+export function ExecutionPanel({ project, disabled, purpose = "experiments" }: ExecutionPanelProps) {
   const workers = useWorkers()
   const [asking, setAsking] = useState(false)
   const trusted = Boolean(project.execution_trusted_at)
   const alive = workers.data?.alive ?? 0
   const busy = workers.data?.workers.filter((worker) => worker.alive) ?? []
+  const forAgent = purpose === "agent"
 
   return (
     <div className="grid gap-3 md:grid-cols-2">
@@ -40,7 +43,8 @@ export function ExecutionPanel({ project, disabled }: ExecutionPanelProps) {
         {project.root_path === null ? (
           <p className="text-sm text-muted-foreground">
             This project has no code path. Set the path of its Git repository with{" "}
-            <span className="font-medium text-foreground">Edit project</span> to run experiments.
+            <span className="font-medium text-foreground">Edit project</span>{" "}
+            {forAgent ? "to talk to the agent about its code." : "to run experiments."}
           </p>
         ) : trusted ? (
           <p className="text-sm">
@@ -52,8 +56,10 @@ export function ExecutionPanel({ project, disabled }: ExecutionPanelProps) {
         ) : (
           <>
             <p className="text-sm">
-              Not allowed yet. Running an experiment executes the code of this project with your
-              permissions, in{" "}
+              Not allowed yet.{" "}
+              {forAgent
+                ? "The agent reads, edits and runs the code of this project with your permissions, in"
+                : "Running an experiment executes the code of this project with your permissions, in"}{" "}
               <span className="font-mono text-xs break-all">{project.root_path}</span>
             </p>
             <Button onClick={() => setAsking(true)} disabled={disabled}>
@@ -86,7 +92,8 @@ export function ExecutionPanel({ project, disabled }: ExecutionPanelProps) {
         ) : (
           <p className="text-sm">
             <span className="font-medium text-amber-800">No supervisor is running.</span> Queued
-            runs wait until one is started: <code className="font-mono text-xs">make worker</code>
+            runs and agent turns wait until one is started:{" "}
+            <code className="font-mono text-xs">make worker</code>
           </p>
         )}
       </div>

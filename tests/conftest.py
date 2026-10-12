@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -24,12 +25,15 @@ from numericos.persistence import migrate
 from numericos.persistence.engine import make_engine, make_session_factory
 from numericos.persistence.unit_of_work import UnitOfWork
 from tests.gitrepo import Repo, make_repo
-from tests.lab import Lab, end_all_runs
+from tests.lab import Lab, end_all_runs, end_all_turns
+
+#: The coding agent of the tests: a script that speaks Claude Code's protocol without a model.
+FAKE_CLAUDE = [sys.executable, str(Path(__file__).resolve().parent / "fake_claude.py")]
 
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(data_dir=tmp_path / "data")
+    return Settings(data_dir=tmp_path / "data", claude_command=FAKE_CLAUDE)
 
 
 @pytest.fixture
@@ -86,7 +90,8 @@ class LiveServer:
     def __init__(self, data_dir: Path, log_path: Path, env: dict[str, str] | None = None) -> None:
         self.data_dir = data_dir
         self.log_path = log_path
-        self.env = env or {}
+        # The coding agent of a live server is the stand-in as well (see ``FAKE_CLAUDE``).
+        self.env = {"NUMERICOS_CLAUDE_COMMAND": json.dumps(FAKE_CLAUDE), **(env or {})}
         self.port = free_port()
         self.process: subprocess.Popen[str] | None = None
         #: True when the last ``stop()`` had to SIGKILL a server that ignored SIGTERM.
@@ -201,7 +206,11 @@ class LiveWorker:
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                env={
+                    **os.environ,
+                    "PYTHONUNBUFFERED": "1",
+                    "NUMERICOS_CLAUDE_COMMAND": json.dumps(FAKE_CLAUDE),
+                },
             )
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -254,6 +263,7 @@ def supervisor(settings: Settings, engine: Engine) -> Iterator[Worker]:
     finally:
         worker.stop()
         end_all_runs(settings.data_dir)
+        end_all_turns(settings.data_dir)
 
 
 @pytest.fixture
@@ -272,3 +282,4 @@ def live_worker(live_server: LiveServer, tmp_path: Path) -> Iterator[LiveWorker]
     finally:
         worker.stop()
         end_all_runs(live_server.data_dir)
+        end_all_turns(live_server.data_dir)

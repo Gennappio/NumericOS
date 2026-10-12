@@ -33,6 +33,22 @@ class Settings(BaseSettings):
             "how late a subscriber learns of events committed by another process."
         ),
     )
+    claude_command: list[str] = Field(
+        default_factory=lambda: ["claude"],
+        min_length=1,
+        description=(
+            "Command that starts the Claude Code CLI (JSON list in the environment). Tests point "
+            "it at a stand-in that speaks the same protocol."
+        ),
+    )
+    agent_max_budget_usd: float = Field(
+        default=5.0,
+        gt=0,
+        description="Spending bound passed to the agent for one turn (--max-budget-usd).",
+    )
+    agent_max_parallel: int = Field(
+        default=2, ge=1, le=16, description="Agent turns a supervisor serves at the same time."
+    )
 
     @field_validator("data_dir")
     @classmethod

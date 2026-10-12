@@ -4,6 +4,59 @@
  */
 
 export interface paths {
+    "/v1/agent-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one conversation */
+        get: operations["get_agent_session"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename a conversation or change its permission mode (requires its version) */
+        patch: operations["update_agent_session"];
+        trace?: never;
+    };
+    "/v1/agent-sessions/{session_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The messages of a conversation in order */
+        get: operations["list_messages"];
+        put?: never;
+        /** Send a prompt; the agent's answer is queued as a turn for a supervisor */
+        post: operations["send_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the coding agent can be started where NumericOS runs */
+        get: operations["agent_capabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/artifacts/{artifact_id}/content": {
         parameters: {
             query?: never;
@@ -144,6 +197,40 @@ export interface paths {
         patch: operations["update_hypothesis"];
         trace?: never;
     };
+    "/v1/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one message */
+        get: operations["get_message"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/messages/{message_id}:cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask for a turn to be stopped; returns at once */
+        post: operations["cancel_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -178,6 +265,24 @@ export interface paths {
         head?: never;
         /** Update a project (requires its current version) */
         patch: operations["update_project"];
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/agent-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's conversations, newest first */
+        get: operations["list_agent_sessions"];
+        put?: never;
+        /** Open a conversation with the agent about a project */
+        post: operations["create_agent_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/projects/{project_id}/board": {
@@ -543,6 +648,136 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityItem
+         * @description What the agent did, in order: text it wrote between actions, or a tool it used.
+         */
+        ActivityItem: {
+            /**
+             * At
+             * @description When the supervisor read it (epoch seconds).
+             */
+            at: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "tool";
+            /** Text */
+            text?: string | null;
+            tool?: components["schemas"]["ToolCall"] | null;
+        };
+        /**
+         * AgentCapabilities
+         * @description Whether the provider can be started where NumericOS runs, as found, never assumed.
+         */
+        AgentCapabilities: {
+            /** Available */
+            available: boolean;
+            /** Command */
+            command: string[];
+            /**
+             * Path
+             * @description Resolved executable, if found.
+             */
+            path?: string | null;
+            /**
+             * Problem
+             * @description Why it is not available, if it is not.
+             */
+            problem?: string | null;
+            provider: components["schemas"]["AgentProvider"];
+            /**
+             * Version
+             * @description What `--version` printed, if it ran.
+             */
+            version?: string | null;
+        };
+        /**
+         * AgentProvider
+         * @enum {string}
+         */
+        AgentProvider: "claude_code";
+        /** AgentSessionCreate */
+        AgentSessionCreate: {
+            /**
+             * Model
+             * @description Model asked of the provider; null for its default.
+             */
+            model?: string | null;
+            /**
+             * @description read_only: the agent reads the repository, edits and commands are refused; edit: file edits are allowed, commands are refused; full: everything is allowed.
+             * @default edit
+             */
+            permission_mode?: components["schemas"]["PermissionMode"];
+            /**
+             * Title
+             * @description Defaults to the first prompt.
+             */
+            title?: string | null;
+        };
+        /** AgentSessionList */
+        AgentSessionList: {
+            /** Sessions */
+            sessions: components["schemas"]["AgentSessionOut"][];
+        };
+        /** AgentSessionOut */
+        AgentSessionOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Cwd
+             * @description The directory the agent works in.
+             */
+            cwd: string;
+            /** Id */
+            id: string;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count?: number;
+            /** Model */
+            model: string | null;
+            /**
+             * Native Session Id
+             * @description The provider's identifier of this session.
+             */
+            native_session_id: string;
+            permission_mode: components["schemas"]["PermissionMode"];
+            /** Project Id */
+            project_id: string;
+            provider: components["schemas"]["AgentProvider"];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** AgentSessionPatch */
+        AgentSessionPatch: {
+            /**
+             * Model
+             * @description Explicit null leaves the choice to the provider; an absent field keeps it.
+             */
+            model?: string | null;
+            /** @description Applies to the turns queued from now on. */
+            permission_mode?: components["schemas"]["PermissionMode"] | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Version
+             * @description Current version of the session.
+             */
+            version: number;
+        };
         /** ArtifactList */
         ArtifactList: {
             /** Artifacts */
@@ -1521,6 +1756,125 @@ export interface components {
              */
             next_cursor: number;
         };
+        /** MessageCancel */
+        MessageCancel: {
+            /**
+             * Reason
+             * @default
+             */
+            reason?: string;
+        };
+        /** MessageCreate */
+        MessageCreate: {
+            /**
+             * Content
+             * @description The prompt, Markdown.
+             */
+            content: string;
+        };
+        /** MessageList */
+        MessageList: {
+            /** Messages */
+            messages: components["schemas"]["MessageOut"][];
+        };
+        /** MessageOut */
+        MessageOut: {
+            /**
+             * Activity
+             * @description What the agent did, in order, while it worked; grows during the turn.
+             */
+            activity: components["schemas"]["ActivityItem"][];
+            /**
+             * Activity Dropped
+             * @description Actions beyond the bound, kept only in the file.
+             */
+            activity_dropped: number;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Cancel Requested At */
+            cancel_requested_at: string | null;
+            /** Cost Usd */
+            cost_usd: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Files Read */
+            files_read: string[];
+            /** Files Written */
+            files_written: string[];
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Markdown
+             * @description The prompt, or the final answer once the turn ended.
+             */
+            markdown: string;
+            /**
+             * Model
+             * @description The model that answered, as reported.
+             */
+            model?: string | null;
+            /**
+             * Num Turns
+             * @description Model calls the turn took.
+             */
+            num_turns?: number | null;
+            /** Permission Denials */
+            permission_denials: components["schemas"]["PermissionDenial"][];
+            /**
+             * Pid
+             * @description The agent process, while it runs.
+             */
+            pid?: number | null;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Prompt Message Id
+             * @description Assistant: the user message this turn answers.
+             */
+            prompt_message_id?: string | null;
+            role: components["schemas"]["MessageRole"];
+            /** Session Id */
+            session_id: string;
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["MessageStatus"];
+            /** Status Reason */
+            status_reason: string | null;
+            /** Structured Output */
+            structured_output?: unknown | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            usage: components["schemas"]["TurnUsage"] | null;
+            /** Version */
+            version: number;
+            /**
+             * Worker Id
+             * @description The supervisor serving the turn.
+             */
+            worker_id?: string | null;
+        };
+        /**
+         * MessageRole
+         * @enum {string}
+         */
+        MessageRole: "user" | "assistant";
+        /**
+         * MessageStatus
+         * @description Operational state of a message. A user message is ``final`` at once; an assistant
+         *     message is a turn of the agent, served by a supervisor.
+         * @enum {string}
+         */
+        MessageStatus: "queued" | "running" | "final" | "failed" | "cancelled" | "interrupted";
         /**
          * MetricBucket
          * @description A stretch of consecutive samples of one metric, reduced to what a chart needs.
@@ -1729,6 +2083,23 @@ export interface components {
              */
             stream?: "stdout" | "stderr" | "any";
         };
+        /**
+         * PermissionDenial
+         * @description A tool the agent asked for that the permission mode of the session refused.
+         */
+        PermissionDenial: {
+            /** Summary */
+            summary: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
+         * PermissionMode
+         * @description What the agent may do in the project directory during a turn. The provider enforces it;
+         *     what it refused is recorded on the answer.
+         * @enum {string}
+         */
+        PermissionMode: "read_only" | "edit" | "full";
         /**
          * ProbeRecord
          * @description Output of one environment probe command, kept as an artifact.
@@ -2241,6 +2612,46 @@ export interface components {
             /** Sigterm Sent */
             sigterm_sent: boolean;
         };
+        /**
+         * ToolCall
+         * @description One use of a tool by the agent, summarised in a line: the file, the command, the pattern.
+         */
+        ToolCall: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Ok
+             * @description Whether the tool succeeded; null until its result is seen.
+             */
+            ok?: boolean | null;
+            /** Summary */
+            summary: string;
+        };
+        /** TurnUsage */
+        TurnUsage: {
+            /**
+             * Cache Creation Input Tokens
+             * @default 0
+             */
+            cache_creation_input_tokens?: number;
+            /**
+             * Cache Read Input Tokens
+             * @default 0
+             */
+            cache_read_input_tokens?: number;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens?: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens?: number;
+        };
         /** WorkerList */
         WorkerList: {
             /**
@@ -2297,6 +2708,236 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_agent_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_agent_session: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSessionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_messages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    send_message: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the session is still answering */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    agent_capabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCapabilities"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     download_artifact: {
         parameters: {
             query?: never;
@@ -2883,6 +3524,93 @@ export interface operations {
             };
         };
     };
+    get_message: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancel_message: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MessageCancel"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_projects: {
         parameters: {
             query?: never;
@@ -3043,6 +3771,102 @@ export interface operations {
                 };
             };
             /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_agent_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_agent_session: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the session is still answering */
             409: {
                 headers: {
                     [name: string]: unknown;

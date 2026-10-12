@@ -1,8 +1,15 @@
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { defineConfig, devices } from "@playwright/test"
 import { API_PORT, API_URL, WEB_PORT, WEB_URL } from "./e2e/urls"
+
+// The coding agent of the browser tests is the stand-in for Claude Code of the Python tests:
+// same flags, same records, no model and no cost.
+const FAKE_CLAUDE = JSON.stringify([
+  resolve("../../.venv/bin/python"),
+  resolve("../../tests/fake_claude.py"),
+])
 
 /**
  * Browser tests run against a REAL API process and a REAL supervisor process on a throwaway
@@ -41,6 +48,7 @@ export default defineConfig({
       env: {
         UV_PROJECT_ENVIRONMENT: ".venv",
         NUMERICOS_CORS_ORIGINS: JSON.stringify([WEB_URL]),
+        NUMERICOS_CLAUDE_COMMAND: FAKE_CLAUDE,
       },
     },
     {
@@ -50,7 +58,7 @@ export default defineConfig({
       wait: { stderr: /supervisor \S+ serving/ },
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { UV_PROJECT_ENVIRONMENT: ".venv" },
+      env: { UV_PROJECT_ENVIRONMENT: ".venv", NUMERICOS_CLAUDE_COMMAND: FAKE_CLAUDE },
     },
     {
       command: `npm run dev -- --port ${WEB_PORT} --strictPort`,

@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils"
 /** Views promised by the roadmap. They stay disabled until their milestone ships. */
 const PLANNED_VIEWS = [
   { name: "Timeline", milestone: "M3" },
-  { name: "Agents", milestone: "M1" },
   { name: "Knowledge", milestone: "M2" },
 ] as const
 
@@ -16,9 +15,11 @@ export function ViewTabs({ projectId }: { projectId: string }) {
   // The pages of single experiments and runs belong to the experiments view.
   const inExperiments =
     pathname.startsWith(`${base}/experiments`) || pathname.startsWith(`${base}/runs/`)
+  const inAgent = pathname.startsWith(`${base}/agent`)
   const views = [
-    { name: "Board", to: base, current: !inExperiments },
+    { name: "Board", to: base, current: !inExperiments && !inAgent },
     { name: "Experiments", to: `${base}/experiments`, current: inExperiments },
+    { name: "Agent", to: `${base}/agent`, current: inAgent },
   ]
   return (
     <nav aria-label="Project views" className="flex gap-1 overflow-x-auto border-b border-border">
