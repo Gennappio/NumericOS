@@ -6,10 +6,11 @@ context engine, and a runtime (NumericOS Runtime) that supervises real numerical
 provenance, observability and validators. The GUI, the `numericos` CLI and external agents all
 call the same API.
 
-**Status:** pre-alpha. Milestone **M0** (foundations) is implemented and awaits its gate review;
-the evidence is in `docs/milestones/M0-gate.md`. Nothing here performs science yet: M0 delivers
-the persistent project board, the API, the CLI and the replayable event ledger that later
-milestones build on.
+**Status:** pre-alpha. Milestone **M0** (foundations: persistent project board, API, CLI,
+replayable event ledger) was accepted on 2026-10-12; the evidence is in
+`docs/milestones/M0-gate.md`. The active milestone is **M3**, experiment engine, provenance and
+numerical observability, which the project owner placed before M1 and M2
+(`docs/adr/0004-observability-first.md`). Nothing here executes experiments yet.
 
 ## Requirements
 

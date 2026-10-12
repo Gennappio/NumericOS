@@ -1,7 +1,8 @@
 # NumericOS architecture (living document)
 
-Status: **M0 complete** (tickets T01-T05), pending the gate review recorded in
-`docs/milestones/M0-gate.md`. Everything below describes
+Status: **M0 accepted** on 2026-10-12 (tag `m0-gate`, evidence in
+`docs/milestones/M0-gate.md`). The active milestone is M3; ADR-0004 records why it precedes M1
+and M2. Everything below describes
 what exists; later milestones extend this file instead of replacing it. Roadmap and acceptance
 gates live in `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md` and `milestones/`.
 
@@ -310,3 +311,5 @@ the M3 supervisor defines a trust boundary.
   column renumbering.
 - ADR-0003: Server-Sent Events as a replayable view of the ledger; cursor rules; the GUI uses
   the stream as a wake-up signal.
+- ADR-0004: by the owner's decision, observability of code and experiments (M3) comes before
+  agents (M1), knowledge (M2) and any further board work.

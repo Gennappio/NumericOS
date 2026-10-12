@@ -1,8 +1,7 @@
 # M0 gate evidence
 
-**Status: implemented, awaiting the project owner's review.** Tickets M0-T01 to M0-T05 are merged
-to `main`. The tag `m0-gate` and the move of `CURRENT_MILESTONE.md` to M1 happen only after
-sign-off. Nothing in this document claims that a later milestone works.
+**Status: accepted on 2026-10-12.** Tickets M0-T01 to M0-T05 are on `main`; the tag `m0-gate`
+marks the accepted revision. Nothing in this document claims that a later milestone works.
 
 **Exit gate (from `milestones/M0/AGENTS.md`):** a scientist can create and organize a real
 computational project, and an external scripted client sees the same durable state and ordered
@@ -203,6 +202,8 @@ loading, no numerical execution, no job supervision, no validators. `AgentAdapte
 
 ## Sign-off
 
-- [ ] Project owner reviewed the walkthrough and ran the checks above.
-- [ ] Tag `m0-gate` created on the reviewed commit.
-- [ ] `CURRENT_MILESTONE.md` set to M1.
+- [x] 2026-10-12: after using the GUI on their own data the project owner instructed to proceed
+      with development, with further board work as the last priority.
+- [x] Tag `m0-gate` created on the revision described here (`882aac3`).
+- [x] `CURRENT_MILESTONE.md` updated. It points to M3 rather than M1: the owner put the
+      observability of code and experiments first (ADR-0004).
