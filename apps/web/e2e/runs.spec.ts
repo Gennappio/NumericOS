@@ -30,7 +30,8 @@ test("an experiment is registered from the repository, run and read back", async
   await expect(page.getByText(/^Allowed in/)).toBeVisible()
 
   // The contract is found as a file of the repository and registered with one click.
-  const contract = page.getByRole("listitem").filter({ hasText: HEAT }).first()
+  // In the page, not the sidebar: a conversation named after its prompt may carry the path too.
+  const contract = page.getByRole("main").getByRole("listitem").filter({ hasText: HEAT }).first()
   await expect(contract.getByText("heat2d-stability")).toBeVisible()
   await contract.getByRole("button", { name: "Register" }).click()
   await expect(contract.getByRole("link", { name: "Registered: open" })).toBeVisible()

@@ -65,7 +65,7 @@ export const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = Object.fro
 
 /** The kinds of task the agent is used for; each has its own model and effort in the policy. */
 export const TASKS: { value: AgentTask; label: string; description: string }[] = [
-  { value: "conversation", label: "Conversation", description: "Questions asked in this view." },
+  { value: "conversation", label: "Conversation", description: "Questions asked in the conversations of the project." },
   {
     value: "clarify",
     label: "Clarify",

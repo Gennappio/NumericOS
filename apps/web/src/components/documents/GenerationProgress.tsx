@@ -47,7 +47,7 @@ export function GenerationProgress({
         <div className="flex items-center gap-2">
           {sessionId && (
             <Link
-              to={`/projects/${projectId}/agent/${sessionId}`}
+              to={`/projects/${projectId}/conversations/${sessionId}`}
               className="text-xs underline underline-offset-4"
             >
               Open the agent&apos;s work

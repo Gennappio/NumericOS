@@ -384,11 +384,15 @@ export function usePutAgentPolicy(projectId: string) {
   })
 }
 
-export function useAgentSessions(projectId: string, live: boolean) {
+/**
+ * The conversations of a project, for the sidebar. The list of the project on screen is also
+ * re-read at every event of its stream; the others have no stream and are polled slowly.
+ */
+export function useAgentSessions(projectId: string, open: boolean) {
   return useQuery({
     queryKey: queryKeys.agentSessions(projectId),
     queryFn: () => api.listAgentSessions(projectId),
-    refetchInterval: live ? false : POLL_MS,
+    refetchInterval: open ? POLL_MS : POLL_MS * 6,
   })
 }
 

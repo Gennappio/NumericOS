@@ -22,7 +22,7 @@ export function useAgentReadiness(project: Project, offline: boolean): AgentRead
   else if (project.root_path === null) {
     blocked = "This project has no code path: set it with Edit project."
   } else if (!project.execution_trusted_at) {
-    blocked = "Execution in the project directory is not allowed yet (see above)."
+    blocked = "Execution in the project directory is not allowed yet."
   } else if (capabilities.data && !capabilities.data.available) {
     blocked = `The agent command is not available: ${capabilities.data.problem ?? "unknown reason"}`
   }

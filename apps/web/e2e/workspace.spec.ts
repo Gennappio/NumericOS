@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
-import { trustedExampleProject } from "./helpers"
+import { startConversation, trustedExampleProject } from "./helpers"
 
 /**
  * The repository of a project stays as its author left it: what the agent generates goes to
@@ -22,8 +22,7 @@ test("what the agent generates is kept out of the repository, and what it leaves
 }) => {
   const project = await trustedExampleProject(request)
   const root = project.root_path!
-  await page.goto(`/projects/${project.id}/agent`)
-  await page.getByRole("button", { name: "New conversation" }).click()
+  await startConversation(page, project)
   await page
     .getByLabel("Message to the agent")
     .fill("Check it.\nSCRATCH check.py::print('ok')\nWRITE notes_from_agent.md::scratch")

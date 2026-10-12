@@ -25,13 +25,15 @@ export function ViewTabs({ projectId }: { projectId: string }) {
   const inAgent = pathname.startsWith(`${base}/agent`)
   const inTheory = pathname.startsWith(`${base}/theory`)
   const inFiles = pathname.startsWith(`${base}/files`)
+  // A conversation is opened from the sidebar and is none of the views: no tab is current.
+  const inConversation = pathname.startsWith(`${base}/conversations/`)
   // What the project is (theory, files), what is to be done (plan), then the work itself.
   // Each view has its colour: it marks the tab, and what belongs to the view elsewhere.
   const views = [
     {
       name: "Plan",
       to: base,
-      current: !inExperiments && !inAgent && !inTheory && !inFiles,
+      current: !inExperiments && !inAgent && !inTheory && !inFiles && !inConversation,
       icon: SquareKanbanIcon,
       tint: "text-indigo-500",
       active: "border-indigo-600 text-indigo-700",

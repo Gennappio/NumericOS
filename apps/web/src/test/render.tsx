@@ -48,18 +48,20 @@ export const HEALTH_OK = {
 }
 
 /**
- * Replace `fetch` with canned JSON bodies per API path; unknown paths answer 404. The object is
- * read on every call, so a test can change an answer after the page has loaded.
+ * Replace `fetch` with canned JSON bodies per API path; unknown paths answer 404. A key that
+ * starts with a method ("POST /v1/...") answers that method only. The object is read on every
+ * call, so a test can change an answer after the page has loaded.
  */
 export function stubApi(routes: Record<string, unknown>) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = new URL(String(input)).pathname
-    const known = path in routes
-    const body = known
-      ? routes[path]
-      : { error: { code: "NOT_FOUND", message: `no stub for ${path}`, details: {} } }
+    const key = [`${init?.method ?? "GET"} ${path}`, path].find((candidate) => candidate in routes)
+    const body =
+      key !== undefined
+        ? routes[key]
+        : { error: { code: "NOT_FOUND", message: `no stub for ${path}`, details: {} } }
     return new Response(JSON.stringify(body), {
-      status: known ? 200 : 404,
+      status: key !== undefined ? 200 : 404,
       headers: { "Content-Type": "application/json" },
     })
   })

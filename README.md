@@ -19,8 +19,8 @@ The active work is **M1 in the owner's version** (`docs/adr/0008-owner-redirecti
 conversations with the coding agent inside a project, answers and documents that can be
 commented and sent back to the agent, the theory of the project as a paper, descriptions of
 its files and of its execution, the plan as a board. Done so far: **conversations with Claude
-Code** inside a project, held from the GUI or the command line and executed by the supervisor,
-with every action of the agent on record; a model and an effort **per kind of task**; the
+Code** inside a project (listed under the project's name in the sidebar), held from the GUI or
+the command line and executed by the supervisor, with every action of the agent on record; a model and an effort **per kind of task**; the
 **Theory** page (the project as a paper, written by the agent from the code, marked when the
 code changes); the **Files** page (a description per file, kept with the content it was written
 from); the **plan on the board** (cards proposed by the agent, dragged and edited by you); and

@@ -581,11 +581,18 @@ query cache and never ships mock data.
   running). Code blocks are coloured by language (rehype-highlight). What the process of a
   run did, and how far its observation reaches, stays without green: "ended normally" and
   "observed" are not verdicts, and unit tests assert it.
-- **Routes:** `/` lists projects. `/projects/:projectId` frames the views of one project and
-  owns its event stream: the board (index), `experiments`, `experiments/:experimentId`,
-  `runs/:runId`, `agent` and `agent/:sessionId`. Any other path is a not-found page.
-- **Shell:** left project navigation and a connection indicator that is always visible. The
-  indicator is derived from polling `GET /v1/health`: `Connected` (with the API version, and a
+- **Routes:** `/` lists projects. `/projects/:projectId` is the one page of a project: it
+  frames its views and owns its event stream. The views are the board (index), `theory`,
+  `files`, `agent`, `experiments`, `experiments/:experimentId` and `runs/:runId`; a
+  conversation opens inside the same frame at `conversations/:sessionId`, with no view tab
+  current. Any other path is a not-found page.
+- **Shell:** a left sidebar and a connection indicator that is always visible. The sidebar is
+  the map of the work: every project, and under each project's name its conversations with
+  the coding agent, newest first (five, the rest on request; the one on screen is never among
+  the hidden ones). The + on a project's row starts a conversation and opens it; it opens the
+  conversation in which nothing was asked yet rather than a second empty one, and while the
+  agent cannot work on the project it is disabled and says why. The list of the project on
+  screen follows the project's event stream; the others are polled slowly. The indicator is derived from polling `GET /v1/health`: `Connected` (with the API version, and a
   note when the database needs a migration), `Checking backend` or `Backend unreachable`. When
   the backend is unreachable a banner states that what is shown is the last state received at a
   given time, not live data, and every control that changes data is disabled.
@@ -625,8 +632,8 @@ query cache and never ships mock data.
   between and inside columns (dnd-kit; a pure function turns what a card was dropped on into
   the placement the API takes), or moved without a pointer by the status select and the up and
   down buttons. The next request to the agent starts from the board as it was left.
-- **Agent view:** the conversations of the project (newest first) and the one that is open.
-  Before anything can be sent, the preconditions are shown as they are: the directory trusted,
+- **Conversation:** opened from the sidebar, shown inside the project's page. Before anything
+  can be sent, the preconditions are shown as they are: the directory trusted,
   a supervisor alive, the agent command found. A prompt is recorded at once and the answer is
   a turn: queued (and the page says if no supervisor can serve it), working (every action of
   the agent as it is recorded: the file, the command, the pattern, whether it succeeded),
@@ -638,10 +645,11 @@ query cache and never ships mock data.
   the owner has a subscription), its duration, and the use of the plan's 5-hour and 7-day
   windows as the provider reported it; what the permission mode refused is listed, never
   hidden. A working turn can be stopped with a recorded reason. The permission mode of a
-  conversation (read only, edit files, full autonomy) is chosen when it starts and can be
-  changed between turns. One turn at a time per conversation: the composer waits while the
-  agent answers.
-- **Models and effort per task:** a panel of the Agent view lists the kinds of task (conversation,
+  conversation (read only, edit files, full autonomy) starts as "edit files" and is changed
+  in the composer, before the first prompt or between turns. One turn at a time per
+  conversation: the composer waits while the agent answers.
+- **Agent view (models and effort per task):** the view is this one table and, while
+  something stands in the agent's way, the preconditions. It lists the kinds of task (conversation,
   clarify, resolve, theory page, file descriptions, execution description, plan) with a model
   and an effort each, chosen among what the provider offers (for Claude Code: Fable, Opus,
   Sonnet, Haiku and `low` to `max`; "provider default" leaves the choice to Claude Code's own

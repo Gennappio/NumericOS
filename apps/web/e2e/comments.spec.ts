@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
-import { selectPassage, trustedExampleProject } from "./helpers"
+import { selectPassage, startConversation, trustedExampleProject } from "./helpers"
 
 /**
  * Comments on what the agent wrote, in the browser, end to end: a passage is selected and
@@ -103,8 +103,7 @@ test("an answer in a conversation is commented under it, and a comment can be wi
   request,
 }) => {
   const project = await trustedExampleProject(request)
-  await page.goto(`/projects/${project.id}/agent`)
-  await page.getByRole("button", { name: "New conversation" }).click()
+  await startConversation(page, project)
   await page.getByLabel("Message to the agent").fill("Is the scheme stable?")
   await page.getByRole("button", { name: "Send" }).click()
   const answer = page.getByRole("article", { name: "Agent answer" })

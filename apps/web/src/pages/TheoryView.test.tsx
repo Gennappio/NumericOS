@@ -47,7 +47,7 @@ describe("TheoryView", () => {
     expect(screen.getByText("Written from 2 files of the project")).toBeVisible()
     expect(screen.getByRole("link", { name: "the agent's work" })).toHaveAttribute(
       "href",
-      "/projects/prj_1/agent/ases_theory",
+      "/projects/prj_1/conversations/ases_theory",
     )
     expect(screen.queryByRole("alert")).toBeNull()
     // The request to write it again starts from the instructions of the last one.

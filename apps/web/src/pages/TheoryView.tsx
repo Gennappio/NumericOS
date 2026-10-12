@@ -173,7 +173,7 @@ function Paper({
             <>
               {" · "}
               <Link
-                to={`/projects/${projectId}/agent/${document.session_id}`}
+                to={`/projects/${projectId}/conversations/${document.session_id}`}
                 className="underline underline-offset-4"
               >
                 the agent&apos;s work

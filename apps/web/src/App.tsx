@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router"
 import { AppShell } from "@/components/layout/AppShell"
 import { AgentView } from "@/pages/AgentView"
+import { ConversationView } from "@/pages/ConversationView"
 import { ExperimentsView } from "@/pages/ExperimentsView"
 import { ExperimentView } from "@/pages/ExperimentView"
 import { FilesView } from "@/pages/FilesView"
@@ -23,7 +24,7 @@ export default function App() {
           <Route path="theory" element={<TheoryView />} />
           <Route path="files" element={<FilesView />} />
           <Route path="agent" element={<AgentView />} />
-          <Route path="agent/:sessionId" element={<AgentView />} />
+          <Route path="conversations/:sessionId" element={<ConversationView />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

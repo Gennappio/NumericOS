@@ -1,9 +1,9 @@
 import type { ReactNode } from "react"
-import { Link, NavLink } from "react-router"
+import { Link, NavLink, useMatch } from "react-router"
 import { API_URL } from "@/api/client"
 import { useConnectionState, useProjects } from "@/api/queries"
 import { ConnectionStatus } from "@/components/ConnectionStatus"
-import { Badge } from "@/components/ui/badge"
+import { ProjectNav } from "@/components/layout/ProjectNav"
 import { formatClock } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
@@ -15,27 +15,16 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
       : "text-muted-foreground hover:bg-muted/60",
   )
 
-const PROJECT_DOTS = [
-  "bg-indigo-500",
-  "bg-fuchsia-500",
-  "bg-cyan-500",
-  "bg-amber-500",
-  "bg-violet-500",
-  "bg-sky-500",
-  "bg-pink-500",
-  "bg-teal-500",
-]
-
-/** The same colour for the same project every time, to tell projects apart at a glance. */
-function projectDot(id: string): string {
-  let sum = 0
-  for (const character of id) sum = (sum * 31 + character.charCodeAt(0)) % 9973
-  return PROJECT_DOTS[sum % PROJECT_DOTS.length]
-}
-
+/**
+ * The frame of every page. The sidebar is the map of the work: every project, and under each
+ * project's name its conversations with the coding agent.
+ */
 export function AppShell({ children }: { children: ReactNode }) {
   const connection = useConnectionState()
   const projects = useProjects()
+  const openProjectId = useMatch("/projects/:projectId/*")?.params.projectId
+  const conversationId = useMatch("/projects/:projectId/conversations/:sessionId")?.params
+    .sessionId
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground md:flex-row">
@@ -47,25 +36,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="text-xs text-muted-foreground">pre-alpha</span>
         </div>
         <nav aria-label="Projects" className="px-2 pb-3">
-          <ul className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-            <li className="shrink-0">
+          <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto md:max-h-none md:overflow-visible">
+            <li>
               <NavLink to="/" end className={navLinkClass}>
                 All projects
               </NavLink>
             </li>
             {projects.data?.projects.map((project) => (
-              <li key={project.id} className="shrink-0 md:shrink">
-                <NavLink to={`/projects/${project.id}`} className={navLinkClass}>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className={cn("inline-block size-2.5 shrink-0 rounded-full", projectDot(project.id))}
-                    />
-                    <span className="break-words">{project.name}</span>
-                  </span>
-                  {project.is_demo && <Badge variant="outline">Demo</Badge>}
-                </NavLink>
-              </li>
+              <ProjectNav
+                key={project.id}
+                project={project}
+                open={project.id === openProjectId}
+                conversationId={project.id === openProjectId ? conversationId : undefined}
+                offline={connection.state === "unreachable"}
+              />
             ))}
           </ul>
         </nav>

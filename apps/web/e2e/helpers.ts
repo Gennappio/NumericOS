@@ -106,6 +106,19 @@ export async function trustedExampleProject(request: APIRequestContext): Promise
   return (await response.json()) as ProjectRecord
 }
 
+/**
+ * Start a conversation the way a person does: with the + next to the project's name in the
+ * sidebar. The page of the project then shows the new, empty conversation.
+ */
+export async function startConversation(page: Page, project: ProjectRecord): Promise<void> {
+  await page.goto(`/projects/${project.id}`)
+  await page
+    .getByRole("navigation", { name: "Projects" })
+    .getByRole("button", { name: `New conversation in ${project.name}` })
+    .click()
+  await expect(page.getByRole("heading", { name: "New conversation" })).toBeVisible()
+}
+
 export interface RunRecord {
   id: string
   status: string
