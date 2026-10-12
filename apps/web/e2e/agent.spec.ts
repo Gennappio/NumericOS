@@ -96,7 +96,9 @@ test("the model and effort of each task are chosen per project and used by the n
   await page.getByText("Models and effort per task").click()
   const table = page.getByRole("table", { name: "Models and effort per task" })
   await expect(table.getByRole("row")).toHaveCount(8)
-  await expect(page.getByLabel("Model for Clarify")).toBeDisabled() // not built yet: said so
+  await expect(page.getByLabel("Model for Clarify")).toBeEnabled()
+  // A task whose feature is not built yet is shown, and says so.
+  await expect(page.getByLabel("Model for Execution description")).toBeDisabled()
   await page.getByLabel("Model for Conversation").selectOption("claude-haiku-5-5")
   await page.getByLabel("Effort for Conversation").selectOption("low")
   await page.getByRole("button", { name: "Save" }).click()

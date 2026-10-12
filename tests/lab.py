@@ -202,6 +202,37 @@ class Lab:
         result: Json = response.json()
         return result
 
+    # ------------------------------------------------------------------ comments
+
+    def comment(self, target: Json, kind: str, quote: str, body: str = "", **offsets: int) -> Json:
+        """Comment on a passage of a document or of an answer (a record with a ``role``)."""
+        return self._send(
+            "POST",
+            "/v1/annotations",
+            201,
+            {**self._target(target), "kind": kind, "quote": quote, "body": body, **offsets},
+        )
+
+    @staticmethod
+    def _target(target: Json) -> Json:
+        return {
+            "target_type": "message" if "role" in target else "document",
+            "target_id": target["id"],
+        }
+
+    def comments(self, target: Json) -> Json:
+        return self.get("/v1/annotations", **self._target(target))
+
+    def comment_by_id(self, target: Json, comment_id: str) -> Json:
+        listed: list[Json] = self.comments(target)["annotations"]
+        return next(item for item in listed if item["id"] == comment_id)
+
+    def send_comments(self, action: str, target: Json, **body: Any) -> Json:
+        """Clarify or resolve the open requests on a text; returns what was queued."""
+        return self._send(
+            "POST", f"/v1/annotations:{action}", 202, {**self._target(target), **body}
+        )
+
     def board(self) -> list[Json]:
         cards: list[Json] = self.get(f"/v1/projects/{self.project['id']}/board")["cards"]
         return cards

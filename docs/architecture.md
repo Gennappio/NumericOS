@@ -117,11 +117,20 @@ entities (`core/ids.py`). No empty tables are created ahead of their milestone.
 The same revision adds `board_cards.origin` (`user | agent`) and `messages.json_schema` (the
 schema a structured turn must answer in).
 
+### Comments (migration `0009`)
+
+| Table | Columns | Notes |
+| --- | --- | --- |
+| `annotations` | `id` PK, `project_id` FK, `target_type`, `target_id`, `target_version`, `kind`, `status`, `status_reason`, `body`, `start_offset`, `end_offset`, `quote`, `prefix`, `suffix`, `anchor_state`, `response_markdown`, `message_id`, `pending_message_id`, `responded_at`, `version`, `created_at`, `updated_at` | a comment on a passage of an answer (`message`) or of a document; offsets are Unicode code points of the Markdown source of `target_version`; kinds `clarification | change | note`; status `open | pending | answered | resolved | declined | dismissed`; `anchor_state` `attached | detached` |
+
+The same revision adds `agent_sessions.target_type`, `target_id`, `target_version`: the text a
+Clarify or Resolve session is about.
+
 ### Unit of work and ordering
 
 `UnitOfWork` (one per mutation) exposes one repository per table (`projects`, `cards`,
 `events`, `hypotheses`, `experiments`, `runs`, `workers`, `artifacts`, `metric_series`,
-`agent_sessions`, `messages`, `agent_policies`, `documents`);
+`agent_sessions`, `messages`, `agent_policies`, `documents`, `annotations`);
 `record()` appends the ledger row inside the transaction and `commit()` performs one COMMIT, then
 wakes subscribers. Card placement is computed by `persistence/ordering.place()` and persisted by
 `CardRepository.reindex()`, which renumbers the destination column (`index * 1000`) and writes
@@ -145,7 +154,7 @@ cancellation, exit, outcome, resource summary, read offsets), `workers` and `art
 `0005` `metric_series` (one summary row per run and metric) and `runs.metric_report`; `0006`
 `agent_sessions` and `messages`; `0007` `agent_policies`, session overrides, what a turn was
 started with and what it consumed of the plan; `0008` `documents`, the origin of a card and the
-schema of a structured turn.
+schema of a structured turn; `0009` `annotations` and the target of a session.
 
 ## Events
 
@@ -393,6 +402,10 @@ bumps no version.
 | send a prompt (records the user message, queues the turn) | `AGENT_TURN_QUEUED` | `session_id`, `prompt_message_id`, `prompt_excerpt`, `permission_mode`; the subject is the turn |
 | ask for a turn to be stopped | `AGENT_TURN_CANCEL_REQUESTED` (and `AGENT_TURN_FINISHED` at once if it was still queued and unclaimed) | `reason`, `status_when_requested` |
 
+| comment on a passage; reword or withdraw a comment | `ANNOTATION_CREATED` / `ANNOTATION_UPDATED` | `annotation` (without its context and answer), `changed_fields` |
+| Clarify or Resolve the open requests on a text | `ANNOTATIONS_SENT` (with the session and turn events of the turn it queues) | `task`, `target_type`, `target_id`, `annotation_ids`, `permission_mode`, `message_id`, `session_id` |
+| the turn of a Clarify or Resolve ends | `ANNOTATIONS_ANSWERED` | `task`, `answered`, `reopened` (`{id: reason}`), `applied`, `declined`; when the text was rewritten `document_id`, `document_version`, `comments_attached`, `comments_detached` |
+
 Events of a turn written by the supervisor (`producer: worker`, the correlation ID of the request
 that queued it): `AGENT_TURN_STARTED` (`pid`, `session_id`, `resume`, `permission_mode`),
 `AGENT_TURN_FINISHED` (`status`, `status_reason`, `session_id`, `model`, `cost_usd`,
@@ -463,6 +476,9 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `POST /v1/projects/{id}/files:describe` | ask for descriptions: `paths`, or `scope` `undescribed`, `stale` or `all` (202 with how many files in how many turns; files being described are skipped; at most 400 per request) |
 | `GET /v1/projects/{id}/files/description?path=`; `GET /v1/documents/{id}` | the whole description of one file; one document by ID |
 | `GET /v1/projects/{id}/files/content?path=` | a file of the trusted project directory, to show it (an image); only regular files inside the directory, served with `nosniff` and a sandboxing policy |
+| `GET /v1/annotations?target_type=&target_id=`; `POST /v1/annotations` | the comments on one text in the order of their passages, with the turn that is answering some of them; comment on a passage (`quote`, and `start_offset`/`end_offset` in code points, or a quote that occurs once) |
+| `PATCH /v1/annotations/{id}`; `POST /v1/annotations/{id}:dismiss` | reword an open comment or change its kind (needs `version`); withdraw it |
+| `POST /v1/annotations:clarify`, `:resolve` | send every open request of that kind on a text to the agent in one turn (202; `instructions`; for resolve `permission_mode` `edit` or `full`); 409 `SESSION_BUSY` while the previous ones are being answered |
 | `GET /v1/projects/{id}/agent-sessions?task=` | the conversations by default; `task=theory`, `file_description`, `plan` or `all` for the sessions in which documents were written |
 | `GET /v1/events?project_id=&after=&before=&limit=&order=&run_id=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
 
@@ -569,6 +585,20 @@ query cache and never ships mock data.
   failed. A row opens to the whole description, to the image if it is one, and to "describe it
   again". Two buttons ask for all files not described and for all that changed; filters by
   path and kind. The directory is read only for a project that was trusted.
+- **Comments:** the theory, every answer in a conversation and every file description is a
+  commentable text (`components/comments/Commentable.tsx`). Selecting a passage shows a small
+  bar: ask to clarify, request a change, add a note; the chosen one opens a text box under the
+  selection, which stays marked. The page is rendered with marks of where each piece comes
+  from in the source (`sourcePositions.ts`), and `lib/sourceMap.ts` turns a selection into a
+  source range and back: exact to the character in plain text, a formula, code or an image
+  whole. Passages are highlighted with the CSS Custom Highlight API, coloured by kind,
+  without changing the page; a click on one brings its comment forward, and a click on a
+  comment shows its passage. The list (beside a document, under an answer) has the two
+  buttons: **Clarify (n)** sends the open clarifications at once; **Resolve (n)…** first says
+  that files will be edited directly and asks which mode. While the agent answers, its
+  actions are shown. A clarification appears right after the block of its passage, in a
+  marked box that can be folded, and the text around it is untouched; a change request shows
+  what the agent did or why it declined; a comment whose passage was rewritten says so.
 - **Plan (the board):** a panel above the board asks the agent for a plan; its cards appear on
   the board marked "agent", its reasons stay in the panel. Cards are dragged by a handle
   between and inside columns (dnd-kit; a pure function turns what a card was dropped on into
@@ -664,9 +694,10 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Examples | pytest running the shipped programs alone and, from their own contract files, under a supervisor | closed forms of norm and error of the heat scheme to round-off; time steps on both sides of the exact stability limit; a guardrail halt that leaves its evidence; overflow as typed samples; conjugate gradient in two precisions with the true residual far from the reported one; binary and compiler provenance |
 | Execution | pytest with real monitor processes and real programs from a real Git repository; `LiveWorker` (real `numericos worker run` subprocess) where a supervisor must die | the monitor (output, limits, signals, process tree, leftovers, build, one monitor per run); the worker (recording, classification, cancellation, trust and input checks, working tree against commit, results next to the sources, binary identity, parallelism); recovery (supervisor killed and run taken over with complete output, orderly hand-over, lost monitor, re-queue, two supervisors competing for the queue, overtaken readings); API restarted during a run; run events on an open stream |
 | Documents | pytest; the API alone, and the stand-in agent under a real supervisor | file kinds from names, prompts and schemas, content hashes (index, changed, new, missing, hashed once); the API (theory and plan requests, their sessions and prompts, pending and cancelled requests, the listing with kinds, sizes, hashes and counts, batches per turn, files outside the project refused, content served with its type); generation (theory with sources and hashes, stale after an edit or a deletion and current again after a rewrite, failure keeping the earlier text, descriptions with normalized paths, stale and updated, a file left out, a plan creating cards and a second one changing them) |
+| Comments | pytest; pure anchor rules, and the stand-in agent under a real supervisor | locating a quote (once, by context, ambiguous, missing, code points); comments by quote and by offsets in passage order, refused places, reword and withdraw; Clarify (one turn, read-only, both requests and not the change, the text untouched, answers on the comments); a later Clarify continuing the session without the text, busy and nothing-to-send; a request left out, a failed turn and a cancelled one reopening comments; Resolve (file edited, applied and declined, the text rewritten and current, comments moved or detached); an answer commented and never rewritten; a text written again keeping or detaching comments |
 | Agent | pytest with the stand-in command as a real subprocess of the supervisor | the adapter (argument vector per mode, resume and fork, folding of the stream, bounds); the API (capabilities, missing command, trust, sessions, one turn at a time, cancellation, validation); turns (everything observed and the turn's files, resume of the provider session, refusals of the mode recorded, failure, agent gone without an answer, stop while working, sessions in parallel, worker died after claiming, running turn taken over, cancelled before start); the CLI (`ask` follows and prints, exit codes, give up and cancel) |
-| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails, agent), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor), Markdown (GFM, KaTeX inline and displayed, no raw HTML, safe links), message card (prompt, answer with facts and actions, working with stop, queued without supervisor, failure, refusals), agent view (conversation and composer, untrusted directory, missing command, empty), policy panel, theory view (empty, paper with figure and sources, stale, in progress, failed), files view (listing by directory, opening a file and an image, filters, asking with instructions, untrusted directory), drop placement of a dragged card |
-| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page; agent: a conversation held and rendered (mathematics, cost, actions, persisted across a reload), a refusal of the read-only mode shown, a working turn stopped from the page, model and effort per task chosen and used; documents: the theory written, rendered with its figure and marked stale after the code changed, then written again; files described, one changed and updated; a plan put on the board and a card dragged to another column, persisted |
+| Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails, agent), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor), Markdown (GFM, KaTeX inline and displayed, no raw HTML, safe links), message card (prompt, answer with facts and actions, working with stop, queued without supervisor, failure, refusals), agent view (conversation and composer, untrusted directory, missing command, empty), policy panel, theory view (empty, paper with figure and sources, stale, in progress, failed), files view (listing by directory, opening a file and an image, filters, asking with instructions, untrusted directory), drop placement of a dragged card, selection to source and back on really rendered Markdown (plain text, across formatting, formulas, code, escapes, code points), the commentable text (a selection becoming a comment with code-point offsets, a formula commented whole, the list with answers and counts, a clarification after its paragraph, another version not placed, Resolve asking first, Clarify in one click) |
+| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page; agent: a conversation held and rendered (mathematics, cost, actions, persisted across a reload), a refusal of the read-only mode shown, a working turn stopped from the page, model and effort per task chosen and used; documents: the theory written, rendered with its figure and marked stale after the code changed, then written again; files described, one changed and updated; a plan put on the board and a card dragged to another column, persisted; comments: a passage of the theory selected and commented, a word picked with the pointer, Clarify answering next to the passage with the text untouched, Resolve editing the file and rewriting the text with comments kept or detached; an answer of a conversation commented, clarified without growing the conversation, a comment withdrawn |
 
 No fixtures or mocks live in application code; the GUI shows the real backend connection state.
 
@@ -751,6 +782,32 @@ file description compares the hash recorded when it was asked for (`subject_sha`
 file's hash now. Nothing is regenerated automatically: the pages mark what changed and offer
 one click to update it, because every update is a call on the owner's account.
 
+## Comments, Clarify and Resolve (M1-T02/T03)
+
+Design record: ADR-0009. Every answer of the agent and every document it wrote can be
+commented on any passage. `core/anchors.py` holds the two pure rules: the context of a range,
+and where a quote is in a text (once: there; several times: where the kept context agrees
+best, if one place agrees better than the others; otherwise nowhere). `agents/targets.py`
+loads what a comment is attached to, an answer (a record: never rewritten) or a document.
+
+`services/comments.py` creates comments (the quote must be exactly at the offsets given, or
+occur once), rewords and withdraws open ones, and sends them: `send` picks the open requests
+of one kind whose passage is still in the text, finds or opens the session of that task for
+that version of the text, queues one turn with the prompt of `agents/prompts.py` (the text
+between `--- document start ---` and `--- document end ---` on the first turn only, then one
+numbered entry per request: its id, the passage, the passage in its surroundings, the request,
+each as a JSON string on one line) and marks the comments pending. Clarify is read-only;
+Resolve is `edit` or `full`.
+
+`agents/comments.complete` runs in the transaction that ends the turn, after
+`agents/documents.complete`: a clarification takes its answer; a change request takes the
+agent's decision and summary; a comment the answer leaves out, or whose turn did not end
+well, is open again with the reason. If Resolve returned a revised text for a document,
+it becomes the document's next version (sources: the earlier ones and the files the turn read
+or wrote, with the hashes the supervisor took between the transactions), and
+`agents/anchoring.reanchor` looks for every comment of the document again in it. The same
+re-anchoring runs when a document is written again from scratch.
+
 ## Deferred boundaries (documented, not built)
 
 - **AgentAdapter** beyond Claude Code: a second provider (Codex `exec`), capability
@@ -789,9 +846,15 @@ one click to update it, because every update is a call on the owner's account.
   the last 300 lines and what follows; the whole output is a file of the run. Runs of an
   experiment are compared in a table of last values: plots across runs and verdicts belong to
   the validators ticket.
+- **Comments.** A selection inside a code block or a formula comments the whole block. A
+  detached comment cannot be attached to another passage by hand. The notes of the plan and
+  the cards of the board cannot be commented. Every answer of a conversation reads its own
+  comments: a very long conversation makes as many small requests. Highlights need a browser
+  with the CSS Custom Highlight API; without it the comments are only listed. Resolve edits
+  files with nothing in between: what changed is in Git, and nothing reverts it.
 - **Documents are updated on request, not by themselves.** A changed source marks a document
-  stale; nothing is regenerated until a button is pressed. A regenerated document replaces the
-  one before: earlier versions are not kept, and documents cannot be commented yet (M1-T02).
+  stale; nothing is regenerated until a button is pressed. A regenerated or resolved document
+  replaces the one before: earlier versions are not kept.
   The theory's sources are the files the agent opened with its Read tool; what it learned
   through a search is not a source. New figures are not produced: the theory can only include
   images that exist in the repository. A description of a file does not go stale when another
@@ -805,8 +868,8 @@ one click to update it, because every update is a call on the owner's account.
   USD-equivalent with Fable and 0.0025 with Haiku, most of it the system prompt of the first
   turn of a session (later turns read it from cache). The `edit` mode refuses commands, so the agent
   cannot run tests in it; `full` mode refuses nothing. What the agent changed in the repository
-  is listed by name and visible in Git; nothing reverts it. Answers are not commentable yet
-  (M1-T02). The provider's own session files live under `~/.claude`, outside the data
+  is listed by name and visible in Git; nothing reverts it. The provider's own session files
+  live under `~/.claude`, outside the data
   directory: a data directory copied to another machine resumes no session. The activity kept
   on a message is bounded to 400 items; the whole stream stays in the turn's file.
 - **SQLite transactions serialise writers and readers** (`BEGIN IMMEDIATE`). Output and
@@ -832,6 +895,10 @@ one click to update it, because every update is a call on the owner's account.
   process identity, stopping, status and failure classes, recovery, fenced transactions.
 - ADR-0007: metrics are samples with a declared source, collected and guarded by the run's
   monitor; strict records, typed non-finite values, explicit guardrails, coverage per level.
+- ADR-0009: a comment is a range of the Markdown source with its quote and context; the page
+  carries marks that map a selection to the source; a rewritten text has its comments looked
+  for again and never attached by guessing; Clarify and Resolve are one turn each for all the
+  open requests on a text, in a session of their own.
 - ADR-0008: by the owner's redirection, conversations with the coding agent and commentable
   documents come before validators; Claude Code's command line is the first adapter; the
   supervisor runs the agent; three permission modes; Clarify and Resolve as batched turns.

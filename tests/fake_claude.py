@@ -5,7 +5,9 @@ Directives in the prompt (one per line, anywhere in it) drive what it does:
 
     READ <path>            read the file (relative to the working directory) through a Read tool
     WRITE <path>::<text>   write the file through a Write tool; refused in read-only mode
-    OMIT <path>            leave that file out of a structured answer about files
+    OMIT <path or id>      leave that file, or that request, out of a structured answer
+    DECLINE <id>::<why>    decline that change request instead of applying it
+    REPLACE <old>=><new>   give the text with that replacement as the revised document
     JSON <json>            give exactly this as the structured answer
     SLEEP <seconds>        wait before answering (to be stopped meanwhile)
     FAIL <text>            end with ``is_error`` true and that text
@@ -16,7 +18,8 @@ Directives in the prompt (one per line, anywhere in it) drive what it does:
 
 A prompt that starts with a NumericOS task line is answered in the shape of that task: the
 theory as a short paper, files with one entry per listed path (the first with an absolute
-path, as the real agent gives them), a plan with two cards.
+path, as the real agent gives them), a plan with two cards, one answer per clarification
+request, one decision per change request.
 """
 
 from __future__ import annotations
@@ -143,6 +146,8 @@ def main() -> int:
     failure: str | None = None
     denials: list[dict[str, Any]] = []
     omitted: set[str] = set()
+    declined: dict[str, str] = {}
+    replacements: list[tuple[str, str]] = []
     forced: Any | None = None
     turns = 1
     for line in prompt.splitlines():
@@ -185,6 +190,12 @@ def main() -> int:
             answer = rest
         elif word == "OMIT":
             omitted.add(rest)
+        elif word == "DECLINE":
+            request_id, _, why = rest.partition("::")
+            declined[request_id] = why or "not a good idea"
+        elif word == "REPLACE":
+            old, _, new = rest.partition("=>")
+            replacements.append((old, new))
         elif word == "JSON":
             forced = json.loads(rest)
 
@@ -232,6 +243,51 @@ def main() -> int:
                     }
                 )
             structured = {"files": entries}
+        elif task in ("clarify", "resolve"):
+            requests = [
+                (line.split("id: ", 1)[1], lines[index + 1].split("passage: ", 1)[1])
+                for lines in [prompt.splitlines()]
+                for index, line in enumerate(lines)
+                if line[:1].isdigit() and ". id: " in line
+            ]
+            kept = [
+                (request_id, passage)
+                for request_id, passage in requests
+                if request_id not in omitted
+            ]
+            if task == "clarify":
+                structured = {
+                    "answers": [
+                        {
+                            "id": request_id,
+                            "markdown": (
+                                f"About {passage}: the bound comes from "
+                                "$|1 - 4r| \\le 1$, hence $r \\le 1/2$."
+                            ),
+                        }
+                        for request_id, passage in kept
+                    ]
+                }
+            else:
+                document = None
+                if replacements and "--- document start ---\n" in prompt:
+                    document = prompt.split("--- document start ---\n", 1)[1].split(
+                        "\n--- document end ---", 1
+                    )[0]
+                    for old, new in replacements:
+                        document = document.replace(old, new)
+                structured = {
+                    "results": [
+                        {
+                            "id": request_id,
+                            "decision": "declined" if request_id in declined else "applied",
+                            "summary": declined.get(request_id)
+                            or f"Changed what {passage} says, in `heat2d.py`.",
+                        }
+                        for request_id, passage in kept
+                    ],
+                    "document": document,
+                }
         elif task == "plan":
             structured = {
                 "rationale": "Check stability **first**, then accuracy.",

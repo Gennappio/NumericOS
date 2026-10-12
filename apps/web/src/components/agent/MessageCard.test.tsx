@@ -1,7 +1,24 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { fireEvent, screen, within } from "@testing-library/react"
+import type { ReactElement } from "react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { answerRecord, userMessage } from "@/test/agent"
+import { renderApp, stubApi } from "@/test/render"
 import { MessageCard } from "./MessageCard"
+
+afterEach(() => vi.unstubAllGlobals())
+
+/** A final answer reads its comments: the card is rendered with the application's providers. */
+function render(ui: ReactElement) {
+  stubApi({
+    "/v1/annotations": {
+      annotations: [],
+      target_version: 1,
+      pending_message_id: null,
+      pending_session_id: null,
+    },
+  })
+  return renderApp(ui)
+}
 
 describe("MessageCard", () => {
   it("shows a prompt as written", () => {

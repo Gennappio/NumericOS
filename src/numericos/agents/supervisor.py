@@ -25,7 +25,7 @@ from typing import Any, Literal, TypeGuard
 
 import psutil
 
-from numericos.agents import claude_code, documents, layout
+from numericos.agents import claude_code, comments, documents, layout
 from numericos.agents.records import choice_for, finished_payload
 from numericos.config import Settings
 from numericos.core.agents import ActivityItem, TurnResult
@@ -162,16 +162,16 @@ class TurnSupervisor:
         cwd: Path,
         hashes: dict[str, str | None],
     ) -> None:
-        """Hand the answer of a turn that just ended to the documents it was writing."""
-        documents.complete(
-            uow,
-            message,
-            cwd=cwd,
-            hashes=hashes,
-            make_event=lambda event_type, subject, payload, severity: self._event(
-                message, event_type, payload, severity, subject_id=subject
-            ),
-        )
+        """Hand the answer of a turn that just ended to the documents it was writing and to
+        the comments it was answering."""
+
+        def make_event(
+            event_type: EventType, subject: str, payload: dict[str, Any], severity: Severity
+        ) -> Event:
+            return self._event(message, event_type, payload, severity, subject_id=subject)
+
+        documents.complete(uow, message, cwd=cwd, hashes=hashes, make_event=make_event)
+        comments.complete(uow, message, hashes=hashes, make_event=make_event)
 
     # ------------------------------------------------------------------ one round
 
@@ -439,7 +439,11 @@ class TurnSupervisor:
             session = uow.agent_sessions.get(message.session_id)
             assert session is not None
             cwd = Path(session.cwd)
-            read_so_far = list(message.files_read or [])
+            touched_so_far = [
+                *(message.files_read or []),
+                *(message.files_written or []),
+                *comments.source_paths(uow, message.id),
+            ]
 
         reading = read_turn_files(turn_dir, offsets)
         signalled = dict(offsets)
@@ -451,7 +455,7 @@ class TurnSupervisor:
         # Files and Git are read here, between the transactions: what the files the agent
         # read contain now is what a document written from them is later compared with.
         hashes = (
-            self._hashes_of_read_files(cwd, read_so_far, reading.records)
+            self._hashes_of_touched_files(cwd, touched_so_far, reading.records)
             if verdict.kind == "finished"
             else {}
         )
@@ -503,13 +507,16 @@ class TurnSupervisor:
                 uow.commit()
 
     @staticmethod
-    def _hashes_of_read_files(
-        cwd: Path, read_so_far: list[str], records: list[dict[str, Any]]
+    def _hashes_of_touched_files(
+        cwd: Path, touched_so_far: list[str], records: list[dict[str, Any]]
     ) -> dict[str, str | None]:
-        preview = claude_code.Progress(files_read=list(read_so_far))
+        """What the files a turn read or wrote, and the files its text was written from,
+        contain when the turn ends."""
+        preview = claude_code.Progress()
         for record in records:
             preview.fold(record, cwd)
-        inside = [path for path in preview.files_read if not Path(path).is_absolute()]
+        touched = dict.fromkeys([*touched_so_far, *preview.files_read, *preview.files_written])
+        inside = [path for path in touched if not Path(path).is_absolute()]
         if not inside:
             return {}
         try:

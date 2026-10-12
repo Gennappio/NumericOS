@@ -19,6 +19,9 @@ from numericos.core.agents import ActivityItem, PermissionDenial, PlanUsage, Tur
 from numericos.core.enums import (
     AgentProvider,
     AgentTask,
+    AnchorState,
+    AnnotationKind,
+    AnnotationStatus,
     CardOrigin,
     CardType,
     DocumentKind,
@@ -30,6 +33,7 @@ from numericos.core.enums import (
     MessageStatus,
     PermissionMode,
     RunStatus,
+    TargetType,
     WorkflowStatus,
 )
 from numericos.core.execution import LogLine, ResourceSample, ResourceSummary, RunOutcome
@@ -733,6 +737,98 @@ class DescribeOut(BaseModel):
     skipped: int = Field(description="Files left out because they are being described already.")
     left: int = Field(description="Files of the scope beyond the bound of one request.")
     message_ids: list[str]
+
+
+class AnnotationCreate(StrictModel):
+    """A comment on a passage. The passage is given by its text and, to tell equal passages
+    apart, by its offsets in the Markdown source of the target (Unicode code points)."""
+
+    target_type: TargetType
+    target_id: str = Field(min_length=1, max_length=40)
+    kind: AnnotationKind
+    body: str = Field(
+        default="", max_length=5000, description="What is asked. A note may be empty."
+    )
+    quote: str = Field(min_length=1, max_length=20000, description="The passage, as source.")
+    start_offset: int | None = Field(default=None, ge=0)
+    end_offset: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _both_offsets_or_none(self) -> Self:
+        if (self.start_offset is None) != (self.end_offset is None):
+            raise ValueError("give both start_offset and end_offset, or neither")
+        if self.kind is not AnnotationKind.NOTE and not self.body.strip():
+            raise ValueError("say what you ask about the passage")
+        return self
+
+
+class AnnotationPatch(StrictModel):
+    version: int = Field(ge=1, description="Current version of the comment.")
+    body: str | None = Field(default=None, max_length=5000)
+    kind: AnnotationKind | None = None
+
+    @model_validator(mode="after")
+    def _no_explicit_nulls(self) -> Self:
+        _reject_explicit_nulls(self, ("body", "kind"))
+        return self
+
+
+class AnnotationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    target_type: TargetType
+    target_id: str
+    target_version: int = Field(description="The version of the text the offsets are for.")
+    kind: AnnotationKind
+    status: AnnotationStatus
+    status_reason: str | None
+    body: str
+    start_offset: int = Field(description="In Unicode code points of the Markdown source.")
+    end_offset: int
+    quote: str
+    prefix: str
+    suffix: str
+    anchor_state: AnchorState = Field(
+        description="detached: the passage is not in the current text; the offsets are void."
+    )
+    response_markdown: str | None = Field(
+        description="The agent's clarification, or what it changed or why it declined."
+    )
+    message_id: str | None
+    pending_message_id: str | None
+    responded_at: datetime | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnnotationList(BaseModel):
+    annotations: list[AnnotationOut]
+    target_version: int = Field(description="The version of the text they are attached to now.")
+    pending_message_id: str | None = Field(
+        description="The turn that is answering some of them, if one is."
+    )
+    pending_session_id: str | None
+
+
+class AnnotationsSend(StrictModel):
+    """Send the open requests of one kind on a text to the agent, together."""
+
+    target_type: TargetType
+    target_id: str = Field(min_length=1, max_length=40)
+    instructions: str | None = Field(default=None, max_length=5000)
+    permission_mode: PermissionMode = Field(
+        default=PermissionMode.EDIT,
+        description="Resolve only: edit (files are edited, commands refused) or full.",
+    )
+
+
+class AnnotationsSent(BaseModel):
+    queued: int = Field(description="Comments sent to the agent in one turn.")
+    message_id: str
+    session_id: str
 
 
 class RunRecord(BaseModel):

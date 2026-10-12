@@ -57,6 +57,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The comments on one text, in the order of their passages */
+        get: operations["list_annotations"];
+        put?: never;
+        /** Comment on a passage of an answer or of a document */
+        post: operations["create_annotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/annotations/{annotation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Reword an open comment or change what it asks for (requires its version) */
+        patch: operations["update_annotation"];
+        trace?: never;
+    };
+    "/v1/annotations/{annotation_id}:dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a comment; it is kept, dismissed */
+        post: operations["dismiss_annotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/annotations:clarify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send every open clarification request on a text to the agent, in one turn */
+        post: operations["clarify_annotations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/annotations:resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send every open change request on a text to the agent, which edits the files */
+        post: operations["resolve_annotations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/artifacts/{artifact_id}/content": {
         parameters: {
             query?: never;
@@ -1027,6 +1113,165 @@ export interface components {
          * @enum {string}
          */
         AgentTask: "conversation" | "clarify" | "resolve" | "theory" | "file_description" | "execution_description" | "plan";
+        /**
+         * AnchorState
+         * @description Whether the passage of a comment is found in the current text of its target.
+         * @enum {string}
+         */
+        AnchorState: "attached" | "detached";
+        /**
+         * AnnotationCreate
+         * @description A comment on a passage. The passage is given by its text and, to tell equal passages
+         *     apart, by its offsets in the Markdown source of the target (Unicode code points).
+         */
+        AnnotationCreate: {
+            /**
+             * Body
+             * @description What is asked. A note may be empty.
+             * @default
+             */
+            body?: string;
+            /** End Offset */
+            end_offset?: number | null;
+            kind: components["schemas"]["AnnotationKind"];
+            /**
+             * Quote
+             * @description The passage, as source.
+             */
+            quote: string;
+            /** Start Offset */
+            start_offset?: number | null;
+            /** Target Id */
+            target_id: string;
+            target_type: components["schemas"]["TargetType"];
+        };
+        /**
+         * AnnotationKind
+         * @description What the researcher wants about a passage. A clarification asks the agent to explain
+         *     it; a change asks for the code or the text to be changed; a note is for people only.
+         * @enum {string}
+         */
+        AnnotationKind: "clarification" | "change" | "note";
+        /** AnnotationList */
+        AnnotationList: {
+            /** Annotations */
+            annotations: components["schemas"]["AnnotationOut"][];
+            /**
+             * Pending Message Id
+             * @description The turn that is answering some of them, if one is.
+             */
+            pending_message_id: string | null;
+            /** Pending Session Id */
+            pending_session_id: string | null;
+            /**
+             * Target Version
+             * @description The version of the text they are attached to now.
+             */
+            target_version: number;
+        };
+        /** AnnotationOut */
+        AnnotationOut: {
+            /** @description detached: the passage is not in the current text; the offsets are void. */
+            anchor_state: components["schemas"]["AnchorState"];
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** End Offset */
+            end_offset: number;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["AnnotationKind"];
+            /** Message Id */
+            message_id: string | null;
+            /** Pending Message Id */
+            pending_message_id: string | null;
+            /** Prefix */
+            prefix: string;
+            /** Project Id */
+            project_id: string;
+            /** Quote */
+            quote: string;
+            /** Responded At */
+            responded_at: string | null;
+            /**
+             * Response Markdown
+             * @description The agent's clarification, or what it changed or why it declined.
+             */
+            response_markdown: string | null;
+            /**
+             * Start Offset
+             * @description In Unicode code points of the Markdown source.
+             */
+            start_offset: number;
+            status: components["schemas"]["AnnotationStatus"];
+            /** Status Reason */
+            status_reason: string | null;
+            /** Suffix */
+            suffix: string;
+            /** Target Id */
+            target_id: string;
+            target_type: components["schemas"]["TargetType"];
+            /**
+             * Target Version
+             * @description The version of the text the offsets are for.
+             */
+            target_version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** AnnotationPatch */
+        AnnotationPatch: {
+            /** Body */
+            body?: string | null;
+            kind?: components["schemas"]["AnnotationKind"] | null;
+            /**
+             * Version
+             * @description Current version of the comment.
+             */
+            version: number;
+        };
+        /**
+         * AnnotationStatus
+         * @enum {string}
+         */
+        AnnotationStatus: "open" | "pending" | "answered" | "resolved" | "declined" | "dismissed";
+        /**
+         * AnnotationsSend
+         * @description Send the open requests of one kind on a text to the agent, together.
+         */
+        AnnotationsSend: {
+            /** Instructions */
+            instructions?: string | null;
+            /**
+             * @description Resolve only: edit (files are edited, commands refused) or full.
+             * @default edit
+             */
+            permission_mode?: components["schemas"]["PermissionMode"];
+            /** Target Id */
+            target_id: string;
+            target_type: components["schemas"]["TargetType"];
+        };
+        /** AnnotationsSent */
+        AnnotationsSent: {
+            /** Message Id */
+            message_id: string;
+            /**
+             * Queued
+             * @description Comments sent to the agent in one turn.
+             */
+            queued: number;
+            /** Session Id */
+            session_id: string;
+        };
         /** ArtifactList */
         ArtifactList: {
             /** Artifacts */
@@ -3141,6 +3386,12 @@ export interface components {
             sha: string | null;
         };
         /**
+         * TargetType
+         * @description What a comment is attached to: an answer of the agent, or a document it wrote.
+         * @enum {string}
+         */
+        TargetType: "message" | "document";
+        /**
          * TaskPolicy
          * @description The model and effort for one kind of task; null takes the provider's default.
          */
@@ -3486,6 +3737,299 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_annotations: {
+        parameters: {
+            query: {
+                target_type: components["schemas"]["TargetType"];
+                target_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_annotation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_annotation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                annotation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    dismiss_annotation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                annotation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    clarify_annotations: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationsSend"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationsSent"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the agent is still answering the previous requests on this text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resolve_annotations: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationsSend"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnotationsSent"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the agent is still answering the previous requests on this text */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

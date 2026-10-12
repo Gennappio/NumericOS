@@ -23,9 +23,10 @@ Code** inside a project, held from the GUI or the command line and executed by t
 with every action of the agent on record; a model and an effort **per kind of task**; the
 **Theory** page (the project as a paper, written by the agent from the code, marked when the
 code changes); the **Files** page (a description per file, kept with the content it was written
-from); and the **plan on the board** (cards proposed by the agent, dragged and edited by you).
-Not done yet: comments on what the agent writes (Clarify and Resolve) and the description of
-an execution.
+from); the **plan on the board** (cards proposed by the agent, dragged and edited by you); and
+**comments** on anything the agent wrote, sent to it together with **Clarify** (explanations
+next to the passages, the text untouched) and **Resolve** (the agent edits the files and
+rewrites the text). Not done yet: the description of an execution.
 
 ## Requirements
 
@@ -103,7 +104,19 @@ Open http://localhost:5173 with the API running.
     cards from the repository and the board as it is; they appear marked "agent", and its
     reasons stay above the board. Drag a card by its handle to another column or position,
     edit it, add your own: the next request starts from what you left.
-12. **Agent** talks to Claude Code about the project. It needs the `claude`
+12. **Comment on anything the agent wrote**: the theory, an answer in a conversation, the
+    description of a file. Select a passage with the pointer; a small bar offers *Ask to
+    clarify*, *Request a change* and *Add a note*. The passage stays highlighted and the
+    comment is listed beside the text (under it, for an answer). Then:
+    - **Clarify (n)** sends all open clarification requests in one turn. Each answer appears
+      right after the paragraph of its passage; the text itself is not rewritten.
+    - **Resolve (n)…** sends all open change requests in one turn. It first says what will
+      happen: the agent edits the files of the project directly, decides itself when requests
+      conflict, and may decline one and say why. If the text had to change, it is rewritten,
+      and every comment is looked for again in the new text; one whose passage is gone says so.
+
+    A note is for you: the agent never sees it.
+13. **Agent** talks to Claude Code about the project. It needs the `claude`
    command installed and logged in, the project directory allowed for execution (the agent
    reads, edits and runs the code as you) and `make worker`. Start a conversation, choose what
    the agent may do (read only; edit files; full autonomy, as with every permission skipped in a
@@ -213,6 +226,10 @@ numericos doc theory -p PROJECT_ID                  # print it again; says if it
 numericos doc files -p PROJECT_ID                   # files with the state of their description
 numericos doc describe -p PROJECT_ID --scope undescribed   # or --scope stale, or paths
 numericos doc plan -p PROJECT_ID --write            # ask for a plan; its cards go to the board
+numericos comment add DOC_OR_MSG_ID "Why?" --quote "exact passage"   # --kind change | note
+numericos comment clarify DOC_OR_MSG_ID             # all open clarifications, wait, print
+numericos comment resolve DOC_OR_MSG_ID --mode edit # all open change requests; edits files
+numericos comment list DOC_OR_MSG_ID
 numericos agent policy -p PROJECT_ID                # model and effort per task
 numericos agent policy -p PROJECT_ID --task file_description --model claude-haiku-5-5 --effort low
 ```

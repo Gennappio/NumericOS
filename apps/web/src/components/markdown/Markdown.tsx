@@ -1,16 +1,24 @@
-import ReactMarkdown from "react-markdown"
+import { useMemo, type ReactNode } from "react"
+import ReactMarkdown, { type Options } from "react-markdown"
 import rehypeKatex from "rehype-katex"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import "katex/dist/katex.min.css"
 import { remarkDisplayDollars } from "@/components/markdown/displayMath"
+import {
+  rehypeSlots,
+  rehypeSourcePositions,
+  type Slot,
+} from "@/components/markdown/sourcePositions"
 import { cn } from "@/lib/utils"
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkDisplayDollars]
 // A formula KaTeX cannot parse is shown as its source in red, never thrown.
-const REHYPE_PLUGINS: [typeof rehypeKatex, { throwOnError: boolean; strict: string }][] = [
-  [rehypeKatex, { throwOnError: false, strict: "ignore" }],
+const KATEX: NonNullable<Options["rehypePlugins"]>[number] = [
+  rehypeKatex,
+  { throwOnError: false, strict: "ignore" },
 ]
+const REHYPE_PLUGINS = [KATEX]
 
 interface MarkdownProps {
   source: string
@@ -20,6 +28,14 @@ interface MarkdownProps {
    * is shown by its caption only: a relative address means nothing to the browser.
    */
   resolveImage?: (path: string) => string
+  /**
+   * Mark every piece of the page with where it comes from in the source, so that a selection
+   * can be turned into a range of the source (see `lib/sourceMap.ts`).
+   */
+  positions?: boolean
+  /** Places after blocks of the text where the page shows something of its own. */
+  slots?: Slot[]
+  renderSlot?: (ids: string[]) => ReactNode
 }
 
 const ABSOLUTE = /^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i
@@ -29,13 +45,40 @@ const ABSOLUTE = /^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i
  * mathematics in LaTeX (`$...$` inline, `$$...$$` displayed). Raw HTML in the source is not
  * rendered, and link protocols are limited to the safe ones by react-markdown.
  */
-export function Markdown({ source, className, resolveImage }: MarkdownProps) {
+export function Markdown({
+  source,
+  className,
+  resolveImage,
+  positions = false,
+  slots,
+  renderSlot,
+}: MarkdownProps) {
+  // Slots are placed on the tree as written, positions are marked next, and formulas are
+  // rendered last, inside their marks.
+  const rehypePlugins = useMemo(() => {
+    if (!positions && !slots?.length) return REHYPE_PLUGINS
+    const plugins: NonNullable<Options["rehypePlugins"]> = []
+    if (slots?.length) plugins.push([rehypeSlots, { slots }])
+    if (positions) plugins.push(rehypeSourcePositions)
+    return [...plugins, KATEX]
+  }, [positions, slots])
   return (
     <div className={cn("markdown", className)}>
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={REHYPE_PLUGINS}
+        rehypePlugins={rehypePlugins}
         components={{
+          div: (given) => {
+            // `node` is the syntax tree's own: it is not an attribute of the element.
+            const props: Record<string, unknown> = { ...given }
+            delete props.node
+            const ids = props["data-slot"]
+            return typeof ids === "string" && renderSlot ? (
+              <div data-slot={ids}>{renderSlot(ids.split(" "))}</div>
+            ) : (
+              <div {...props} />
+            )
+          },
           img: ({ src, alt }) => {
             const address = typeof src === "string" ? src : ""
             if (!address) return null

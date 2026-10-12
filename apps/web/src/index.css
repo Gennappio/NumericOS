@@ -224,3 +224,16 @@
     font-style: italic;
     color: var(--muted-foreground);
 }
+
+/* A clarification of the agent, shown next to the passage it is about. */
+.clarification {
+    border-left: 3px solid rgb(56 189 248);
+    background: rgb(240 249 255);
+    border-radius: 0 0.5rem 0.5rem 0;
+    padding: 0.625rem 0.875rem;
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    text-align: left;
+}
+.clarification + .clarification { margin-top: 0.5rem; }

@@ -1,7 +1,7 @@
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 import { fileContentUrl, type FileEntry } from "@/api/client"
 import { useFileDescription } from "@/api/queries"
-import { Markdown } from "@/components/markdown/Markdown"
+import { Commentable } from "@/components/comments/Commentable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { describeError } from "@/lib/errors"
@@ -24,8 +24,10 @@ interface FileRowProps {
   onToggle: () => void
   /** Why the agent cannot be asked now, if so. */
   blocked: string | null
+  supervisorAlive: boolean
   busy: boolean
   onDescribe: () => void
+  onError: (error: unknown) => void
 }
 
 /**
@@ -33,7 +35,17 @@ interface FileRowProps {
  * sentence. Opened, it shows the whole description, the image if it is one, and whether the
  * file has changed since the description was written.
  */
-export function FileRow({ projectId, file, open, onToggle, blocked, busy, onDescribe }: FileRowProps) {
+export function FileRow({
+  projectId,
+  file,
+  open,
+  onToggle,
+  blocked,
+  supervisorAlive,
+  busy,
+  onDescribe,
+  onError,
+}: FileRowProps) {
   const state = descriptionState(file)
   const { name } = splitPath(file.path)
   return (
@@ -101,6 +113,9 @@ export function FileRow({ projectId, file, open, onToggle, blocked, busy, onDesc
               projectId={projectId}
               path={file.path}
               updatedAt={file.description.updated_at}
+              blocked={blocked}
+              supervisorAlive={supervisorAlive}
+              onError={onError}
             />
           ) : (
             state === "none" && (
@@ -128,10 +143,16 @@ function Description({
   projectId,
   path,
   updatedAt,
+  blocked,
+  supervisorAlive,
+  onError,
 }: {
   projectId: string
   path: string
   updatedAt: string
+  blocked: string | null
+  supervisorAlive: boolean
+  onError: (error: unknown) => void
 }) {
   const description = useFileDescription(projectId, path, updatedAt)
   if (description.isPending) {
@@ -147,7 +168,17 @@ function Description({
   const document = description.data
   return (
     <div className="space-y-2">
-      <Markdown source={document.markdown} />
+      <Commentable
+        key={document.version}
+        projectId={projectId}
+        target={{ type: "document", id: document.id }}
+        source={document.markdown}
+        version={document.version}
+        layout="below"
+        blocked={blocked}
+        supervisorAlive={supervisorAlive}
+        onError={onError}
+      />
       <p className="text-xs text-muted-foreground">
         Version {document.version}
         {document.model && <> · written by {document.model}</>}

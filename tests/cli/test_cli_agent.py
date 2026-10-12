@@ -136,3 +136,68 @@ def test_the_theory_and_the_files_are_asked_for_and_read_from_the_command_line(
     assert planned["summary"] == "2 card(s) added, 0 changed"
     listed = cli(live_server, "doc", "files", "-p", project_id)
     assert f"{solver}  [code," in listed.stdout
+
+
+def test_comments_are_added_clarified_and_resolved_from_the_command_line(
+    live_server: LiveServer, live_worker: LiveWorker, live_lab: Lab
+) -> None:
+    project_id = live_lab.project["id"]
+    solver = "examples/heat2d-python/heat2d.py"
+    cli(
+        live_server,
+        "doc",
+        "theory",
+        "-p",
+        project_id,
+        "--write",
+        "--instructions",
+        f"READ {solver}",
+    )
+    document = cli_json(live_server, "doc", "theory", "-p", project_id)
+
+    asked = cli_json(
+        live_server,
+        "comment",
+        "add",
+        document["id"],
+        "Why homogeneous?",
+        "--quote",
+        "homogeneous Dirichlet",
+    )
+    cli(
+        live_server,
+        "comment",
+        "add",
+        document["id"],
+        "Go implicit.",
+        "--quote",
+        "Forward Euler",
+        "--kind",
+        "change",
+    )
+    twice = cli(
+        live_server, "comment", "add", document["id"], "x", "--quote", "(1)", "--kind", "note"
+    )
+    clarified = cli(live_server, "comment", "clarify", document["id"])
+    resolved = cli(
+        live_server,
+        "comment",
+        "resolve",
+        document["id"],
+        "--instructions",
+        f"WRITE {solver}::print('implicit')\nREPLACE Forward Euler=>Backward Euler",
+    )
+    rewritten = cli_json(live_server, "doc", "theory", "-p", project_id)
+    wrong = cli(live_server, "comment", "list", "prj_x")
+
+    assert asked["status"] == "open" and asked["quote"] == "homogeneous Dirichlet"
+    assert twice.exit_code == 1 and "occurs more than once" in twice.stderr
+    assert clarified.exit_code == 0, clarified.output
+    assert "1 request(s) sent to the agent" in clarified.stderr
+    assert "clarification  answered" in clarified.stdout
+    assert 'the agent: About "homogeneous Dirichlet"' in clarified.stdout
+    assert "change  open" in clarified.stdout  # Clarify left the change request alone
+    assert "change  resolved  (passage no longer in the text)" in resolved.stdout
+    assert rewritten["version"] == 2 and "Backward Euler" in rewritten["markdown"]
+    assert (live_lab.repo.root / solver).read_text() == "print('implicit')"
+    assert wrong.exit_code == 2

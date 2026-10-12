@@ -23,8 +23,9 @@ TABLES = {
     "messages",
     "agent_policies",
     "documents",
+    "annotations",
 }
-HEAD = "0008"
+HEAD = "0009"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:

@@ -70,6 +70,20 @@ export type FileEntry = Schemas["FileEntry"]
 export type FileCategory = Schemas["FileCategory"]
 export type DescribeRequest = Schemas["DescribeRequest"]
 export type DescribeOut = Schemas["DescribeOut"]
+export type Annotation = Schemas["AnnotationOut"]
+export type AnnotationList = Schemas["AnnotationList"]
+export type AnnotationCreate = Schemas["AnnotationCreate"]
+export type AnnotationKind = Schemas["AnnotationKind"]
+export type AnnotationStatus = Schemas["AnnotationStatus"]
+export type AnnotationsSend = Schemas["AnnotationsSend"]
+export type AnnotationsSent = Schemas["AnnotationsSent"]
+export type TargetType = Schemas["TargetType"]
+
+/** What a comment is attached to: an answer of the agent, or a document it wrote. */
+export interface CommentTarget {
+  type: TargetType
+  id: string
+}
 type ErrorBody = ErrorEnvelope["error"]
 
 const DEFAULT_API_URL = "http://127.0.0.1:8765"
@@ -258,6 +272,20 @@ export const api = {
     apiFetch<DocumentOut>(
       `/v1/projects/${seg(projectId)}/files/description?path=${seg(path)}`,
     ),
+  listAnnotations: (target: CommentTarget) =>
+    apiFetch<AnnotationList>(
+      `/v1/annotations?target_type=${target.type}&target_id=${seg(target.id)}`,
+    ),
+  createAnnotation: (body: AnnotationCreate) =>
+    apiFetch<Annotation>("/v1/annotations", send("POST", body)),
+  dismissAnnotation: (annotationId: string) =>
+    apiFetch<Annotation>(`/v1/annotations/${seg(annotationId)}:dismiss`, { method: "POST" }),
+  /** Every open clarification request on the text, to the agent, in one turn. */
+  clarifyAnnotations: (body: AnnotationsSend) =>
+    apiFetch<AnnotationsSent>("/v1/annotations:clarify", send("POST", body)),
+  /** Every open change request on the text, to the agent, which edits the files. */
+  resolveAnnotations: (body: AnnotationsSend) =>
+    apiFetch<AnnotationsSent>("/v1/annotations:resolve", send("POST", body)),
   getAgentPolicy: (projectId: string) =>
     apiFetch<AgentPolicy>(`/v1/projects/${seg(projectId)}/agent-policy`),
   putAgentPolicy: (projectId: string, body: AgentPolicyPut) =>

@@ -182,8 +182,10 @@ export function FilesView() {
                         open={opened === file.path}
                         onToggle={() => setOpened(opened === file.path ? null : file.path)}
                         blocked={readiness.blocked}
+                        supervisorAlive={readiness.supervisorAlive}
                         busy={describe.isPending}
                         onDescribe={() => ask({ paths: [file.path] })}
+                        onError={(error) => setNotice(describeError(error))}
                       />
                     ))}
                   </ul>

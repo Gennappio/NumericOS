@@ -71,6 +71,10 @@ doc = typer.Typer(
     help="Documents the agent writes about a project: theory, files, plan.",
     no_args_is_help=True,
 )
+comment = typer.Typer(
+    help="Comments on what the agent wrote; Clarify and Resolve send them to the agent.",
+    no_args_is_help=True,
+)
 app.add_typer(db, name="db")
 app.add_typer(project, name="project")
 app.add_typer(card, name="card")
@@ -81,6 +85,7 @@ app.add_typer(artifact, name="artifact")
 app.add_typer(worker, name="worker")
 app.add_typer(agent, name="agent")
 app.add_typer(doc, name="doc")
+app.add_typer(comment, name="comment")
 app.add_typer(events, name="events")
 
 Record = dict[str, Any]
@@ -2145,6 +2150,145 @@ def doc_describe(
             + (f"; {d['left']} more beyond one request" if d["left"] else "")
         ),
     )
+
+
+# --------------------------------------------------------------------------- comments
+
+TargetArgument = Annotated[
+    str,
+    typer.Argument(
+        metavar="TARGET_ID",
+        help="What is commented: a document (doc_...) or an answer of the agent (msg_...).",
+    ),
+]
+
+
+def _target(target_id: str) -> Record:
+    kinds = {"doc": "document", "msg": "message"}
+    kind = kinds.get(target_id.split("_", 1)[0])
+    if kind is None:
+        raise typer.BadParameter("a target is a document (doc_...) or an answer (msg_...)")
+    return {"target_type": kind, "target_id": target_id}
+
+
+def _comment_text(item: Record) -> str:
+    quote = " ".join(item["quote"].split())
+    head = f"{item['id']}  {item['kind']}  {item['status']}"
+    if item["anchor_state"] == "detached":
+        head += "  (passage no longer in the text)"
+    lines = [head, f"  on: {quote[:120]}"]
+    if item["body"]:
+        lines.append(f"  {item['body']}")
+    if item["status_reason"]:
+        lines.append(f"  not answered: {item['status_reason']}")
+    if item["response_markdown"]:
+        lines.append("  the agent: " + item["response_markdown"].replace("\n", "\n    "))
+    return "\n".join(lines)
+
+
+@comment.command("list")
+def comment_list(
+    target_id: TargetArgument, json_: JsonFlag = False, api_url: ApiUrlOption = None
+) -> None:
+    """The comments on a text, in the order of their passages."""
+    data = _api(json_, api_url, lambda client: client.get("/v1/annotations", _target(target_id)))
+    _emit(
+        data,
+        json_,
+        lambda d: "\n\n".join(_comment_text(item) for item in d["annotations"]) or "no comments",
+    )
+
+
+@comment.command("add")
+def comment_add(
+    target_id: TargetArgument,
+    quote: Annotated[
+        str, typer.Option("--quote", help="The passage, exactly as in the source; once in it.")
+    ],
+    body: Annotated[str, typer.Argument(metavar="[TEXT]", help="What you ask or note.")] = "",
+    kind: Annotated[
+        str, typer.Option("--kind", help="clarification (default), change or note.")
+    ] = "clarification",
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Comment on a passage of a text. The passage must occur exactly once in it."""
+    payload = {**_target(target_id), "kind": kind, "quote": quote, "body": body}
+    data = _api(json_, api_url, lambda client: client.post("/v1/annotations", payload))
+    _emit(data, json_, _comment_text)
+
+
+def _send_comments(
+    action: str,
+    target_id: str,
+    options: Record,
+    watch: bool,
+    timeout: float | None,
+    as_json: bool,
+    api_url: str | None,
+) -> None:
+    target = _target(target_id)
+
+    def run(client: ApiClient) -> Record:
+        sent: Record = client.post(f"/v1/annotations:{action}", {**target, **options})
+        typer.echo(f"{sent['queued']} request(s) sent to the agent", err=True)
+        if watch:
+            _watch_turn(
+                client,
+                sent["message_id"],
+                on_activity=lambda item: typer.echo(_activity_line(item), err=True),
+                timeout=timeout,
+            )
+        listed: Record = client.get("/v1/annotations", target)
+        return listed
+
+    try:
+        data = _api(as_json, api_url, run)
+    except StillRunning:
+        typer.echo(f"not answered after {timeout} s; the agent keeps going", err=True)
+        raise typer.Exit(EXIT_STILL_RUNNING) from None
+    _emit(
+        data,
+        as_json,
+        lambda d: "\n\n".join(_comment_text(item) for item in d["annotations"]),
+    )
+
+
+@comment.command("clarify")
+def comment_clarify(
+    target_id: TargetArgument,
+    instructions: InstructionsOption = None,
+    watch: Annotated[
+        bool, typer.Option("--watch/--no-watch", help="Wait for the answers and print them.")
+    ] = True,
+    timeout: TimeoutOption = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Send every open clarification request on a text to the agent, in one turn."""
+    _send_comments(
+        "clarify", target_id, _given(instructions=instructions), watch, timeout, json_, api_url
+    )
+
+
+@comment.command("resolve")
+def comment_resolve(
+    target_id: TargetArgument,
+    mode: Annotated[
+        str, typer.Option("--mode", help="edit (default): files only; full: commands too.")
+    ] = "edit",
+    instructions: InstructionsOption = None,
+    watch: Annotated[
+        bool, typer.Option("--watch/--no-watch", help="Wait for the agent and print the outcome.")
+    ] = True,
+    timeout: TimeoutOption = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Send every open change request on a text to the agent, which edits the project's files
+    directly and may rewrite the text."""
+    options = _given(instructions=instructions, permission_mode=mode)
+    _send_comments("resolve", target_id, options, watch, timeout, json_, api_url)
 
 
 def main() -> None:

@@ -120,6 +120,29 @@ function describeAgentEvent(event: EventOut): string | undefined {
       const rest = failures > 0 ? `; ${failures} not written` : ""
       return `Agent wrote ${documentWords(payload.kind, written)}${rest}`
     }
+    case "ANNOTATION_CREATED":
+      return `Comment added: ${commentWords(payload.annotation)}`
+    case "ANNOTATION_UPDATED":
+      return `Comment changed: ${commentWords(payload.annotation)}`
+    case "ANNOTATIONS_SENT": {
+      const count = Array.isArray(payload.annotation_ids) ? payload.annotation_ids.length : 0
+      return payload.task === "resolve"
+        ? `Resolve: ${count} change request(s) sent to the agent`
+        : `Clarify: ${count} clarification request(s) sent to the agent`
+    }
+    case "ANNOTATIONS_ANSWERED": {
+      const answered = Array.isArray(payload.answered) ? payload.answered.length : 0
+      const reopened = Object.keys(fields(payload.reopened) ?? {}).length
+      const rest = reopened > 0 ? `; ${reopened} not answered` : ""
+      if (payload.task === "resolve") {
+        const rewritten =
+          typeof payload.document_version === "number"
+            ? `; the text is now version ${payload.document_version}`
+            : ""
+        return `Resolve: ${text(payload.applied)} applied, ${text(payload.declined)} declined${rewritten}${rest}`
+      }
+      return `Clarify: ${answered} answered${rest}`
+    }
     case "AGENT_TURN_ADOPTED":
       return "Another supervisor took the agent turn over"
     case "AGENT_TURN_REQUEUED":
@@ -137,6 +160,16 @@ function documentWords(kind: unknown, keys: unknown): string {
   return paths.length === 1
     ? `the description of ${String(paths[0])}`
     : `the descriptions of ${paths.length} files`
+}
+
+/** "clarification on “…passage…”" for a comment as the ledger keeps it. */
+function commentWords(value: unknown): string {
+  const comment = fields(value)
+  const quote = typeof comment?.quote === "string" ? comment.quote.replace(/\s+/g, " ") : ""
+  const passage = quote.length > 60 ? `${quote.slice(0, 59)}…` : quote
+  const kind = comment?.kind === "change" ? "change request" : text(comment?.kind)
+  const status = comment?.status === "dismissed" ? ", withdrawn" : ""
+  return `${kind} on “${passage}”${status}`
 }
 
 function named(value: unknown, field: string): string {

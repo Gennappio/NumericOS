@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from numericos.agents import claude_code
+from numericos.agents import comments as agent_comments
 from numericos.agents import documents as agent_documents
 from numericos.agents.records import finished_payload
 from numericos.config import Settings
@@ -47,7 +48,13 @@ from numericos.core.schemas import (
 )
 from numericos.events.ledger import EventContext, build_event
 from numericos.persistence.engine import utcnow
-from numericos.persistence.models import AgentMessage, AgentPolicy, AgentSession, Project
+from numericos.persistence.models import (
+    AgentMessage,
+    AgentPolicy,
+    AgentSession,
+    Event,
+    Project,
+)
 from numericos.persistence.unit_of_work import UnitOfWork
 from numericos.services.guards import (
     check_version,
@@ -283,8 +290,10 @@ def open_session(
     context: EventContext,
     model: str | None = None,
     effort: str | None = None,
+    target: tuple[str, str, int] | None = None,
 ) -> AgentSession:
-    """Add a session of ``task`` to the open transaction, with its event."""
+    """Add a session of ``task`` to the open transaction, with its event. ``target`` is the
+    text a Clarify or Resolve session is about: its type, ID and version."""
     now = utcnow()
     session = uow.agent_sessions.add(
         AgentSession(
@@ -296,6 +305,9 @@ def open_session(
             task=task.value,
             model=model,
             effort=effort,
+            target_type=target[0] if target else None,
+            target_id=target[1] if target else None,
+            target_version=target[2] if target else None,
             native_session_id=str(uuid.uuid4()),
             cwd=str(root),
             system_prompt=claude_code.system_prompt(project.name, project.research_question),
@@ -534,21 +546,23 @@ def cancel_message(
                 )
             )
             project_id = message.project_id
-            # No supervisor will end this turn: the documents it was to write are told here.
-            agent_documents.complete(
-                uow,
-                message,
-                cwd=Path("."),
-                hashes={},
-                make_event=lambda event_type, subject, payload, severity: build_event(
+
+            def make_event(
+                event_type: EventType, subject: str, payload: dict[str, Any], severity: Severity
+            ) -> Event:
+                return build_event(
                     event_type=event_type,
                     project_id=project_id,
                     subject_id=subject,
                     payload=payload,
                     context=context,
                     severity=severity,
-                ),
-            )
+                )
+
+            # No supervisor will end this turn: the documents it was to write and the comments
+            # it was to answer are told here.
+            agent_documents.complete(uow, message, cwd=Path("."), hashes={}, make_event=make_event)
+            agent_comments.complete(uow, message, hashes={}, make_event=make_event)
         out = MessageOut.model_validate(message)
         uow.commit()
     return out

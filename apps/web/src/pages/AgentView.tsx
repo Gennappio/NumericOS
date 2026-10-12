@@ -194,7 +194,8 @@ function Conversation({
             key={message.id}
             message={message}
             supervisorAlive={supervisorAlive}
-            disabled={blocked !== null}
+            blocked={blocked}
+            onError={onError}
             onStop={(reason) => cancel.mutate({ messageId: message.id, reason }, { onError })}
           />
         ))}

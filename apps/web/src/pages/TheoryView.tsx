@@ -3,11 +3,11 @@ import { Link } from "react-router"
 import { fileContentUrl, type DocumentOut } from "@/api/client"
 import { useGenerateTheory, useTheory } from "@/api/queries"
 import { AgentPreconditions } from "@/components/agent/Preconditions"
+import { Commentable } from "@/components/comments/Commentable"
 import { useAgentReadiness } from "@/components/agent/readiness"
 import { GenerateForm } from "@/components/documents/GenerateForm"
 import { GenerationProgress } from "@/components/documents/GenerationProgress"
 import { ErrorPanel } from "@/components/ErrorPanel"
-import { Markdown } from "@/components/markdown/Markdown"
 import { Notice } from "@/components/Notice"
 import { describeError } from "@/lib/errors"
 import { formatTimestamp } from "@/lib/time"
@@ -90,8 +90,10 @@ export function TheoryView() {
                 projectId={project.id}
                 document={document}
                 blocked={readiness.blocked}
+                supervisorAlive={readiness.supervisorAlive}
                 pending={generate.isPending || Boolean(document.pending_message_id)}
                 onGenerate={ask}
+                onError={onError}
               />
             )
           )}
@@ -105,11 +107,21 @@ interface PaperProps {
   projectId: string
   document: DocumentOut
   blocked: string | null
+  supervisorAlive: boolean
   pending: boolean
   onGenerate: (instructions: string) => void
+  onError: (error: unknown) => void
 }
 
-function Paper({ projectId, document, blocked, pending, onGenerate }: PaperProps) {
+function Paper({
+  projectId,
+  document,
+  blocked,
+  supervisorAlive,
+  pending,
+  onGenerate,
+  onError,
+}: PaperProps) {
   const changedSources = document.changed_sources ?? []
   const changed = new Set(changedSources)
   return (
@@ -135,16 +147,22 @@ function Paper({ projectId, document, blocked, pending, onGenerate }: PaperProps
         </p>
       )}
 
-      <article
-        aria-label={document.title || "Theory"}
-        className="rounded-lg border border-border bg-card px-6 py-10 md:px-12"
-      >
-        <Markdown
-          source={document.markdown}
-          className="paper"
-          resolveImage={(path) => fileContentUrl(projectId, path)}
-        />
-      </article>
+      {/* Keyed by version: a text written again starts without a half-written comment. */}
+      <Commentable
+        key={document.version}
+        projectId={projectId}
+        target={{ type: "document", id: document.id }}
+        source={document.markdown}
+        version={document.version}
+        className="paper"
+        boxClassName="rounded-lg border border-border bg-card px-6 py-10 md:px-12"
+        label={document.title || "Theory"}
+        resolveImage={(path) => fileContentUrl(projectId, path)}
+        layout="side"
+        blocked={blocked}
+        supervisorAlive={supervisorAlive}
+        onError={onError}
+      />
 
       <footer className="space-y-3 rounded-lg border border-border bg-muted/30 p-4 text-sm">
         <p className="text-muted-foreground">

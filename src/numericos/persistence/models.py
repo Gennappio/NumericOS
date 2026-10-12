@@ -24,6 +24,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from numericos.core.enums import (
     AgentProvider,
     AgentTask,
+    AnchorState,
+    AnnotationKind,
+    AnnotationStatus,
     CardOrigin,
     CardType,
     DocumentKind,
@@ -35,6 +38,7 @@ from numericos.core.enums import (
     PermissionMode,
     RunStatus,
     Severity,
+    TargetType,
     WorkflowStatus,
 )
 from numericos.persistence.engine import UTCDateTime
@@ -317,6 +321,11 @@ class AgentSession(Base):
     #: Overrides of the policy for this session; null takes the policy's choice.
     model: Mapped[str | None] = mapped_column(String(100))
     effort: Mapped[str | None] = mapped_column(String(20))
+    #: Clarify and Resolve sessions: the text they are about, and which version of it the
+    #: agent was shown. A later request about the same version continues the session.
+    target_type: Mapped[str | None] = mapped_column(String(20))
+    target_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    target_version: Mapped[int | None] = mapped_column(Integer)
     #: The provider's own session identifier, chosen by NumericOS before the first turn.
     native_session_id: Mapped[str] = mapped_column(String(64))
     #: The directory the agent works in: the project's trusted root when the session started.
@@ -428,6 +437,54 @@ class Document(Base):
     pending_message_id: Mapped[str | None] = mapped_column(String(40))
     model: Mapped[str | None] = mapped_column(String(100))
     generated_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class Annotation(Base):
+    """A comment of the researcher on a passage of something the agent wrote.
+
+    The passage is a range of the Markdown source of the target, in Unicode code points, kept
+    with the text it selects and a little of what surrounds it. When the target is rewritten
+    the passage is looked for again; a comment whose passage is gone stays, detached.
+    """
+
+    __tablename__ = "annotations"
+    __table_args__ = (
+        CheckConstraint(one_of("target_type", TargetType), name="target_type"),
+        CheckConstraint(one_of("kind", AnnotationKind), name="kind"),
+        CheckConstraint(one_of("status", AnnotationStatus), name="status"),
+        CheckConstraint(one_of("anchor_state", AnchorState), name="anchor_state"),
+        CheckConstraint("start_offset >= 0 AND end_offset > start_offset", name="offsets"),
+        Index("ix_annotations_target", "target_type", "target_id", "start_offset"),
+        Index("ix_annotations_pending_message_id", "pending_message_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT")
+    )
+    target_type: Mapped[str] = mapped_column(String(20))
+    target_id: Mapped[str] = mapped_column(String(40))
+    #: The version of the target the offsets are valid for.
+    target_version: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20))
+    status_reason: Mapped[str | None] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text)
+    start_offset: Mapped[int] = mapped_column(Integer)
+    end_offset: Mapped[int] = mapped_column(Integer)
+    quote: Mapped[str] = mapped_column(Text)
+    prefix: Mapped[str] = mapped_column(Text, default="")
+    suffix: Mapped[str] = mapped_column(Text, default="")
+    anchor_state: Mapped[str] = mapped_column(String(20), default=AnchorState.ATTACHED.value)
+    #: What the agent answered: the clarification, or what it changed or why it did not.
+    response_markdown: Mapped[str | None] = mapped_column(Text)
+    #: The turn that answered, and the turn that is answering now.
+    message_id: Mapped[str | None] = mapped_column(String(40))
+    pending_message_id: Mapped[str | None] = mapped_column(String(40))
+    responded_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)

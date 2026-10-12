@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from numericos.agents.anchoring import reanchor
 from numericos.core.enums import (
     CardOrigin,
     CardType,
@@ -22,6 +23,7 @@ from numericos.core.enums import (
     FileCategory,
     MessageStatus,
     Severity,
+    TargetType,
     WorkflowStatus,
 )
 from numericos.core.ids import new_id
@@ -120,6 +122,9 @@ def complete(
     for document in documents:
         if document.key in failed:
             _fail(document, failed[document.key], now)
+        elif kind is not DocumentKind.PLAN or document.markdown:
+            # The text is new: the comments on the one before are looked for again in it.
+            reanchor(uow, TargetType.DOCUMENT, document.id, document.markdown, document.version)
     written = [document.key for document in documents if document.key not in failed]
     uow.record(
         make_event(

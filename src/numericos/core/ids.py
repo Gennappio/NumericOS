@@ -11,7 +11,7 @@ import re
 from ulid import ULID
 
 #: Prefixes in use. Reserved for later milestones (not yet persisted): ``res`` (research),
-#: ``ann`` (annotation), ``ctx`` (context snapshot).
+#: ``ctx`` (context snapshot).
 PREFIXES: dict[str, str] = {
     "project": "prj",
     "card": "card",
@@ -26,6 +26,7 @@ PREFIXES: dict[str, str] = {
     "agent_session": "ases",
     "message": "msg",
     "document": "doc",
+    "annotation": "ann",
 }
 
 ID_PATTERN = re.compile(r"^[a-z]{2,6}_[0-9A-HJKMNP-TV-Z]{26}$")

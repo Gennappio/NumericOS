@@ -15,6 +15,7 @@ from numericos.persistence.models import Event
 from numericos.persistence.repositories import (
     AgentPolicyRepository,
     AgentSessionRepository,
+    AnnotationRepository,
     ArtifactRepository,
     CardRepository,
     DocumentRepository,
@@ -50,6 +51,7 @@ class UnitOfWork:
         self.messages = MessageRepository(self.session)
         self.agent_policies = AgentPolicyRepository(self.session)
         self.documents = DocumentRepository(self.session)
+        self.annotations = AnnotationRepository(self.session)
         return self
 
     def __exit__(

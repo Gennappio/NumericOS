@@ -2,6 +2,9 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import {
   api,
   type AgentPolicyPut,
+  type AnnotationCreate,
+  type AnnotationsSend,
+  type CommentTarget,
   type AgentSessionCreate,
   type AgentSessionPatch,
   type CardCreate,
@@ -59,6 +62,8 @@ export const queryKeys = {
   files: (projectId: string) => ["projects", projectId, "files"] as const,
   fileDescription: (projectId: string, path: string) =>
     ["projects", projectId, "files", "description", path] as const,
+  annotations: (projectId: string, target: CommentTarget) =>
+    ["projects", projectId, "annotations", target.type, target.id] as const,
 }
 
 /**
@@ -510,5 +515,53 @@ export function useFileDescription(projectId: string, path: string, updatedAt: s
   return useQuery({
     queryKey: [...queryKeys.fileDescription(projectId, path), updatedAt],
     queryFn: () => api.getFileDescription(projectId, path),
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Comments on what the agent wrote. While a turn is answering some of them they are re-read at
+// the short interval; when it ends, everything of the project is re-read once, because a
+// Resolve may have rewritten the text and changed files.
+
+export function useAnnotations(projectId: string, target: CommentTarget, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.annotations(projectId, target),
+    queryFn: () => api.listAnnotations(target),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.pending_message_id ? RUN_POLL_MS : false),
+  })
+}
+
+export function useCreateAnnotation(projectId: string, target: CommentTarget) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Omit<AnnotationCreate, "target_type" | "target_id">) =>
+      api.createAnnotation({ ...body, target_type: target.type, target_id: target.id }),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations(projectId, target) }),
+  })
+}
+
+export function useDismissAnnotation(projectId: string, target: CommentTarget) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (annotationId: string) => api.dismissAnnotation(annotationId),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations(projectId, target) }),
+  })
+}
+
+export function useSendAnnotations(projectId: string, target: CommentTarget) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      action,
+      ...options
+    }: { action: "clarify" | "resolve" } & Omit<AnnotationsSend, "target_type" | "target_id">) => {
+      const body = { ...options, target_type: target.type, target_id: target.id }
+      return action === "clarify" ? api.clarifyAnnotations(body) : api.resolveAnnotations(body)
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations(projectId, target) }),
   })
 }

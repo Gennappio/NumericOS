@@ -104,8 +104,8 @@ The owner, seeing only the conversations after M1-T01, asked for the pages first
 board con la spiegazione dei file, la teoria, i trello del piano"). The pages were therefore
 delivered before the comments: the theory (T04), the file descriptions with staleness (T05, and
 requirement 4 as "marked and updated with one click", not yet by itself) and the plan on the
-board with drag and drop (T07). Comments with Clarify and Resolve (T02, T03) and the execution
-description (T06) follow.
+board with drag and drop (T07). Comments with Clarify and Resolve (T02, T03) followed on
+2026-10-13 (ADR-0009); the execution description (T06) is next.
 
 ## Consequences
 

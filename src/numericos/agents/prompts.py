@@ -7,6 +7,7 @@ researcher's own instructions come last, so that they have the final word.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from numericos.core.enums import CardType, FileCategory, WorkflowStatus
@@ -79,6 +80,117 @@ means.
 
 Do not modify any file.
 """
+
+
+CLARIFY = """[NumericOS task: clarify]
+A researcher is reading {what} and asks for clarifications of specific passages. Answer every \
+request, each on its own.
+
+For each request write a clarification of that passage only: Markdown, 2 to 8 sentences, with \
+a short derivation or a small example when that is what makes it clear; mathematics in LaTeX \
+between $...$ or $$...$$. It is shown next to the passage: do not repeat the passage, do not \
+rewrite the text around it, do not answer other requests in it. Read the code when you need it \
+to be exact. If a request shows that the text or the code is wrong, say so plainly: the \
+researcher can then ask for a change.
+
+Do not modify any file.
+"""
+
+RESOLVE = """[NumericOS task: resolve]
+A researcher read {what} and asks for the changes listed below. Carry them out as you would in \
+a terminal session: read what you need, edit the files of the project directly, and decide \
+yourself how to reconcile requests that conflict. A request you judge wrong or impossible is \
+declined, with the reason. Nobody can answer a question during this turn.
+
+A request may be about the code, about the text itself (it says something wrong, unclear or \
+incomplete), or about both.
+{rewriting}
+For each request give:
+- decision: applied or declined;
+- summary: Markdown, 1 to 5 sentences: what you changed and where (files, functions), or why \
+you declined.
+"""
+
+REWRITABLE = """When the text must change, because a request asks for it or because your \
+changes to the code make a statement of it false, give the complete revised text in \
+`document`: the same structure and style, changed only where needed. Otherwise leave \
+`document` null.
+"""
+
+NOT_REWRITABLE = """The text is an answer that was already given: it is a record and is not \
+rewritten. Leave `document` null and say in the summaries what is different now.
+"""
+
+DOCUMENT_START = "--- document start ---"
+DOCUMENT_END = "--- document end ---"
+REQUESTS = "Requests:"
+
+
+def _text_block(what: str, title: str, markdown: str, question: str | None) -> str:
+    asked = (
+        f"The question it answered:\n--- question start ---\n{question.rstrip()}\n"
+        "--- question end ---\n\n"
+        if question
+        else ""
+    )
+    return (
+        f"{asked}The text ({what}; {title}):\n{DOCUMENT_START}\n{markdown.rstrip()}\n"
+        f"{DOCUMENT_END}\n"
+    )
+
+
+def _requests(items: list[dict[str, str]]) -> str:
+    """One numbered entry per comment. Strings are JSON so that each stays on one line."""
+    lines = [REQUESTS]
+    for number, item in enumerate(items, 1):
+        around = f"{item['prefix']}[[{item['quote']}]]{item['suffix']}"
+        lines += [
+            f"{number}. id: {item['id']}",
+            f"   passage: {json.dumps(item['quote'], ensure_ascii=False)}",
+            f"   where (passage between [[ ]]): {json.dumps(around, ensure_ascii=False)}",
+            f"   request: {json.dumps(item['body'], ensure_ascii=False)}",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def clarify(
+    *,
+    what: str,
+    title: str,
+    markdown: str,
+    question: str | None,
+    items: list[dict[str, str]],
+    first: bool,
+    instructions: str,
+) -> str:
+    """The first turn of a session shows the text; later turns only add requests about it."""
+    if first:
+        head = f"{CLARIFY.format(what=what)}\n{_text_block(what, title, markdown, question)}"
+    else:
+        head = "[NumericOS task: clarify]\nMore requests about the same text, on the same terms.\n"
+    return _with_instructions(f"{head}\n{_requests(items)}", instructions)
+
+
+def resolve(
+    *,
+    what: str,
+    title: str,
+    markdown: str,
+    question: str | None,
+    items: list[dict[str, str]],
+    first: bool,
+    rewritable: bool,
+    instructions: str,
+) -> str:
+    if first:
+        rules = RESOLVE.format(what=what, rewriting=REWRITABLE if rewritable else NOT_REWRITABLE)
+        head = f"{rules}\n{_text_block(what, title, markdown, question)}"
+    else:
+        head = (
+            "[NumericOS task: resolve]\n"
+            "More change requests about the same text, on the same terms.\n"
+        )
+    return _with_instructions(f"{head}\n{_requests(items)}", instructions)
 
 
 def _project_lines(project_name: str, research_question: str) -> str:
@@ -174,4 +286,39 @@ PLAN_SCHEMA: dict[str, Any] = {
         },
     },
     "required": ["rationale", "cards"],
+}
+
+CLARIFY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "answers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}, "markdown": {"type": "string"}},
+                "required": ["id", "markdown"],
+            },
+        }
+    },
+    "required": ["answers"],
+}
+
+RESOLVE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "decision": {"type": "string", "enum": ["applied", "declined"]},
+                    "summary": {"type": "string"},
+                },
+                "required": ["id", "decision", "summary"],
+            },
+        },
+        "document": {"type": ["string", "null"]},
+    },
+    "required": ["results", "document"],
 }

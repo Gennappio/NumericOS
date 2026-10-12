@@ -2,6 +2,7 @@ import type {
   AgentCapabilities,
   AgentPolicy,
   AgentSession,
+  Annotation,
   DocumentOut,
   FileEntry,
   Message,
@@ -202,6 +203,34 @@ export function fileRecord(overrides: Partial<FileEntry> = {}): FileEntry {
       status_reason: null,
       updated_at: "2026-10-12T10:00:04Z",
     },
+    ...overrides,
+  }
+}
+
+export function annotationRecord(overrides: Partial<Annotation> = {}): Annotation {
+  return {
+    id: "ann_1",
+    project_id: "prj_1",
+    target_type: "document",
+    target_id: "doc_1",
+    target_version: 1,
+    kind: "clarification",
+    status: "open",
+    status_reason: null,
+    body: "Why?",
+    start_offset: 0,
+    end_offset: 1,
+    quote: "x",
+    prefix: "",
+    suffix: "",
+    anchor_state: "attached",
+    response_markdown: null,
+    message_id: null,
+    pending_message_id: null,
+    responded_at: null,
+    version: 1,
+    created_at: "2026-10-12T10:00:00Z",
+    updated_at: "2026-10-12T10:00:00Z",
     ...overrides,
   }
 }

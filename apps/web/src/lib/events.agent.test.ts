@@ -94,3 +94,55 @@ describe("describeEvent for the documents of the agent", () => {
     ).toBe("Agent did not write the theory: the turn was cancelled")
   })
 })
+
+describe("describeEvent for comments", () => {
+  it("says what was commented, sent and answered", () => {
+    expect(
+      describeEvent(
+        ledgerEvent(1, {
+          type: "ANNOTATION_CREATED",
+          payload: { annotation: { kind: "change", quote: "Forward\nEuler", status: "open" } },
+        }),
+      ),
+    ).toBe("Comment added: change request on “Forward Euler”")
+    expect(
+      describeEvent(
+        ledgerEvent(2, {
+          type: "ANNOTATION_UPDATED",
+          payload: { annotation: { kind: "note", quote: "dt", status: "dismissed" } },
+        }),
+      ),
+    ).toBe("Comment changed: note on “dt”, withdrawn")
+    expect(
+      describeEvent(
+        ledgerEvent(3, {
+          type: "ANNOTATIONS_SENT",
+          payload: { task: "clarify", annotation_ids: ["a", "b"] },
+        }),
+      ),
+    ).toBe("Clarify: 2 clarification request(s) sent to the agent")
+    expect(
+      describeEvent(
+        ledgerEvent(4, {
+          type: "ANNOTATIONS_ANSWERED",
+          payload: { task: "clarify", answered: ["a"], reopened: { b: "no answer" } },
+        }),
+      ),
+    ).toBe("Clarify: 1 answered; 1 not answered")
+    expect(
+      describeEvent(
+        ledgerEvent(5, {
+          type: "ANNOTATIONS_ANSWERED",
+          payload: {
+            task: "resolve",
+            answered: ["a", "b"],
+            reopened: {},
+            applied: 1,
+            declined: 1,
+            document_version: 2,
+          },
+        }),
+      ),
+    ).toBe("Resolve: 1 applied, 1 declined; the text is now version 2")
+  })
+})

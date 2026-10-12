@@ -12,6 +12,7 @@ from numericos.persistence.models import (
     AgentMessage,
     AgentPolicy,
     AgentSession,
+    Annotation,
     Artifact,
     BoardCard,
     Document,
@@ -277,6 +278,23 @@ class AgentSessionRepository:
         statement = statement.order_by(AgentSession.created_at.desc(), AgentSession.id.desc())
         return list(self._session.scalars(statement))
 
+    def latest_for_target(
+        self, task: str, target_type: str, target_id: str, target_version: int
+    ) -> AgentSession | None:
+        """The newest session of ``task`` in which the agent was shown this version of a text."""
+        statement = (
+            select(AgentSession)
+            .where(
+                AgentSession.task == task,
+                AgentSession.target_type == target_type,
+                AgentSession.target_id == target_id,
+                AgentSession.target_version == target_version,
+            )
+            .order_by(AgentSession.created_at.desc(), AgentSession.id.desc())
+            .limit(1)
+        )
+        return self._session.scalars(statement).first()
+
 
 class AgentPolicyRepository:
     def __init__(self, session: Session) -> None:
@@ -289,6 +307,37 @@ class AgentPolicyRepository:
 
     def get(self, project_id: str) -> AgentPolicy | None:
         return self._session.get(AgentPolicy, project_id)
+
+
+class AnnotationRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, annotation: Annotation) -> Annotation:
+        self._session.add(annotation)
+        self._session.flush()
+        return annotation
+
+    def get(self, annotation_id: str) -> Annotation | None:
+        return self._session.get(Annotation, annotation_id)
+
+    def list_for_target(self, target_type: str, target_id: str) -> list[Annotation]:
+        """The comments on one text, in the order of their passages."""
+        statement = (
+            select(Annotation)
+            .where(Annotation.target_type == target_type, Annotation.target_id == target_id)
+            .order_by(Annotation.start_offset, Annotation.created_at, Annotation.id)
+        )
+        return list(self._session.scalars(statement))
+
+    def pending_for_message(self, message_id: str) -> list[Annotation]:
+        """The comments a turn is answering."""
+        statement = (
+            select(Annotation)
+            .where(Annotation.pending_message_id == message_id)
+            .order_by(Annotation.start_offset, Annotation.id)
+        )
+        return list(self._session.scalars(statement))
 
 
 class DocumentRepository:

@@ -16,6 +16,7 @@ from numericos.api.middleware import CorrelationIdMiddleware
 from numericos.api.routes import (
     agents,
     cards,
+    comments,
     documents,
     events,
     execution,
@@ -79,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         execution.router,
         agents.router,
         documents.router,
+        comments.router,
         events.router,
     ):
         app.include_router(router, prefix="/v1", responses=ERROR_RESPONSES)

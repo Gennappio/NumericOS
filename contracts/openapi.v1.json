@@ -460,6 +460,404 @@
         "title": "AgentTask",
         "type": "string"
       },
+      "AnchorState": {
+        "description": "Whether the passage of a comment is found in the current text of its target.",
+        "enum": [
+          "attached",
+          "detached"
+        ],
+        "title": "AnchorState",
+        "type": "string"
+      },
+      "AnnotationCreate": {
+        "additionalProperties": false,
+        "description": "A comment on a passage. The passage is given by its text and, to tell equal passages\napart, by its offsets in the Markdown source of the target (Unicode code points).",
+        "properties": {
+          "body": {
+            "default": "",
+            "description": "What is asked. A note may be empty.",
+            "maxLength": 5000,
+            "title": "Body",
+            "type": "string"
+          },
+          "end_offset": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Offset"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AnnotationKind"
+          },
+          "quote": {
+            "description": "The passage, as source.",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Quote",
+            "type": "string"
+          },
+          "start_offset": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Offset"
+          },
+          "target_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id",
+          "kind",
+          "quote"
+        ],
+        "title": "AnnotationCreate",
+        "type": "object"
+      },
+      "AnnotationKind": {
+        "description": "What the researcher wants about a passage. A clarification asks the agent to explain\nit; a change asks for the code or the text to be changed; a note is for people only.",
+        "enum": [
+          "clarification",
+          "change",
+          "note"
+        ],
+        "title": "AnnotationKind",
+        "type": "string"
+      },
+      "AnnotationList": {
+        "properties": {
+          "annotations": {
+            "items": {
+              "$ref": "#/components/schemas/AnnotationOut"
+            },
+            "title": "Annotations",
+            "type": "array"
+          },
+          "pending_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The turn that is answering some of them, if one is.",
+            "title": "Pending Message Id"
+          },
+          "pending_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Session Id"
+          },
+          "target_version": {
+            "description": "The version of the text they are attached to now.",
+            "title": "Target Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "annotations",
+          "target_version",
+          "pending_message_id",
+          "pending_session_id"
+        ],
+        "title": "AnnotationList",
+        "type": "object"
+      },
+      "AnnotationOut": {
+        "properties": {
+          "anchor_state": {
+            "$ref": "#/components/schemas/AnchorState",
+            "description": "detached: the passage is not in the current text; the offsets are void."
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "end_offset": {
+            "title": "End Offset",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AnnotationKind"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "pending_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Message Id"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          },
+          "response_markdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agent's clarification, or what it changed or why it declined.",
+            "title": "Response Markdown"
+          },
+          "start_offset": {
+            "description": "In Unicode code points of the Markdown source.",
+            "title": "Start Offset",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnnotationStatus"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "suffix": {
+            "title": "Suffix",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "target_version": {
+            "description": "The version of the text the offsets are for.",
+            "title": "Target Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "target_type",
+          "target_id",
+          "target_version",
+          "kind",
+          "status",
+          "status_reason",
+          "body",
+          "start_offset",
+          "end_offset",
+          "quote",
+          "prefix",
+          "suffix",
+          "anchor_state",
+          "response_markdown",
+          "message_id",
+          "pending_message_id",
+          "responded_at",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AnnotationOut",
+        "type": "object"
+      },
+      "AnnotationPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnnotationKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "description": "Current version of the comment.",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "AnnotationPatch",
+        "type": "object"
+      },
+      "AnnotationStatus": {
+        "enum": [
+          "open",
+          "pending",
+          "answered",
+          "resolved",
+          "declined",
+          "dismissed"
+        ],
+        "title": "AnnotationStatus",
+        "type": "string"
+      },
+      "AnnotationsSend": {
+        "additionalProperties": false,
+        "description": "Send the open requests of one kind on a text to the agent, together.",
+        "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "permission_mode": {
+            "$ref": "#/components/schemas/PermissionMode",
+            "default": "edit",
+            "description": "Resolve only: edit (files are edited, commands refused) or full."
+          },
+          "target_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "title": "AnnotationsSend",
+        "type": "object"
+      },
+      "AnnotationsSent": {
+        "properties": {
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "queued": {
+            "description": "Comments sent to the agent in one turn.",
+            "title": "Queued",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "queued",
+          "message_id",
+          "session_id"
+        ],
+        "title": "AnnotationsSent",
+        "type": "object"
+      },
       "ArtifactList": {
         "properties": {
           "artifacts": {
@@ -5446,6 +5844,15 @@
         "title": "SourceRef",
         "type": "object"
       },
+      "TargetType": {
+        "description": "What a comment is attached to: an answer of the agent, or a document it wrote.",
+        "enum": [
+          "message",
+          "document"
+        ],
+        "title": "TargetType",
+        "type": "string"
+      },
       "TaskPolicy": {
         "additionalProperties": false,
         "description": "The model and effort for one kind of task; null takes the provider's default.",
@@ -6019,6 +6426,434 @@
         "summary": "Whether the coding agent can be started where NumericOS runs",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/v1/annotations": {
+      "get": {
+        "operationId": "list_annotations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TargetType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The comments on one text, in the order of their passages",
+        "tags": [
+          "annotations"
+        ]
+      },
+      "post": {
+        "operationId": "create_annotation",
+        "parameters": [
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Comment on a passage of an answer or of a document",
+        "tags": [
+          "annotations"
+        ]
+      }
+    },
+    "/v1/annotations/{annotation_id}": {
+      "patch": {
+        "operationId": "update_annotation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "annotation_id",
+            "required": true,
+            "schema": {
+              "title": "Annotation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotationPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Reword an open comment or change what it asks for (requires its version)",
+        "tags": [
+          "annotations"
+        ]
+      }
+    },
+    "/v1/annotations/{annotation_id}:dismiss": {
+      "post": {
+        "operationId": "dismiss_annotation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "annotation_id",
+            "required": true,
+            "schema": {
+              "title": "Annotation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Withdraw a comment; it is kept, dismissed",
+        "tags": [
+          "annotations"
+        ]
+      }
+    },
+    "/v1/annotations:clarify": {
+      "post": {
+        "operationId": "clarify_annotations",
+        "parameters": [
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotationsSend"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationsSent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the agent is still answering the previous requests on this text"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Send every open clarification request on a text to the agent, in one turn",
+        "tags": [
+          "annotations"
+        ]
+      }
+    },
+    "/v1/annotations:resolve": {
+      "post": {
+        "operationId": "resolve_annotations",
+        "parameters": [
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotationsSend"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationsSent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The agent command is not installed, the project is not trusted for execution, or the agent is still answering the previous requests on this text"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Send every open change request on a text to the agent, which edits the files",
+        "tags": [
+          "annotations"
         ]
       }
     },

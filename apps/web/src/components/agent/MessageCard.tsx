@@ -3,7 +3,7 @@ import type { Message } from "@/api/client"
 import { isTurnActive } from "@/api/queries"
 import { ActivityList } from "@/components/agent/ActivityList"
 import { TurnStatusBadge } from "@/components/agent/TurnStatusBadge"
-import { Markdown } from "@/components/markdown/Markdown"
+import { Commentable } from "@/components/comments/Commentable"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,7 +22,9 @@ interface MessageCardProps {
   /** A supervisor is alive to serve queued turns. */
   supervisorAlive: boolean
   onStop?: (reason: string) => void
-  disabled?: boolean
+  /** Why the agent cannot be asked now, if so: an answer can still be read and commented. */
+  blocked?: string | null
+  onError?: (error: unknown) => void
 }
 
 /**
@@ -30,7 +32,13 @@ interface MessageCardProps {
  * is known about it at this moment: its state, what the agent did, what the permission mode
  * refused, what it cost, and the answer once there is one.
  */
-export function MessageCard({ message, supervisorAlive, onStop, disabled }: MessageCardProps) {
+export function MessageCard({
+  message,
+  supervisorAlive,
+  onStop,
+  blocked = null,
+  onError = () => {},
+}: MessageCardProps) {
   if (message.role === "user") {
     return (
       <article
@@ -66,7 +74,7 @@ export function MessageCard({ message, supervisorAlive, onStop, disabled }: Mess
           {actions > 0 && <span>{actions === 1 ? "1 action" : `${actions} actions`}</span>}
           {message.plan_usage && <span>{formatPlanUsage(message.plan_usage)}</span>}
         </div>
-        {active && onStop && <StopButton onStop={onStop} disabled={disabled} />}
+        {active && onStop && <StopButton onStop={onStop} disabled={blocked !== null} />}
       </header>
 
       {message.status === "queued" && (
@@ -84,7 +92,18 @@ export function MessageCard({ message, supervisorAlive, onStop, disabled }: Mess
       {message.status === "running" && (
         <ActivityList items={message.activity} dropped={message.activity_dropped} />
       )}
-      {message.status === "final" && <Markdown source={message.markdown} />}
+      {message.status === "final" && (
+        <Commentable
+          projectId={message.project_id}
+          target={{ type: "message", id: message.id }}
+          source={message.markdown}
+          version={1}
+          layout="below"
+          blocked={blocked}
+          supervisorAlive={supervisorAlive}
+          onError={onError}
+        />
+      )}
       {(message.status === "failed" ||
         message.status === "cancelled" ||
         message.status === "interrupted") && (

@@ -129,3 +129,26 @@ export async function queueRun(
   expect(queued.status()).toBe(201)
   return (await queued.json()) as RunRecord
 }
+
+/**
+ * Select a passage of a commentable text as a person would with the pointer: the selection
+ * is made on the text as shown, and the release of the button is what the page listens to.
+ */
+export async function selectPassage(text: Locator, passage: string): Promise<void> {
+  await text.evaluate((root, wanted) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = node.textContent!.indexOf(wanted)
+      if (at < 0) continue
+      const range = document.createRange()
+      range.setStart(node, at)
+      range.setEnd(node, at + wanted.length)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }))
+      return
+    }
+    throw new Error(`passage not found on the page: ${wanted}`)
+  }, passage)
+}

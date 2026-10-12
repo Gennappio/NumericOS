@@ -83,4 +83,10 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "get_file_description",
         "get_file_content",
         "get_document",
+        "list_annotations",
+        "create_annotation",
+        "clarify_annotations",
+        "resolve_annotations",
+        "update_annotation",
+        "dismiss_annotation",
     }

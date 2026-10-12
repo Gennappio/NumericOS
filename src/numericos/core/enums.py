@@ -97,11 +97,51 @@ class AgentTask(StrEnum):
 AVAILABLE_TASKS: frozenset[AgentTask] = frozenset(
     {
         AgentTask.CONVERSATION,
+        AgentTask.CLARIFY,
+        AgentTask.RESOLVE,
         AgentTask.THEORY,
         AgentTask.FILE_DESCRIPTION,
         AgentTask.PLAN,
     }
 )
+
+
+class TargetType(StrEnum):
+    """What a comment is attached to: an answer of the agent, or a document it wrote."""
+
+    MESSAGE = "message"
+    DOCUMENT = "document"
+
+
+class AnnotationKind(StrEnum):
+    """What the researcher wants about a passage. A clarification asks the agent to explain
+    it; a change asks for the code or the text to be changed; a note is for people only."""
+
+    CLARIFICATION = "clarification"
+    CHANGE = "change"
+    NOTE = "note"
+
+
+class AnnotationStatus(StrEnum):
+    OPEN = "open"
+    #: Sent to the agent with Clarify or Resolve; its turn has not ended.
+    PENDING = "pending"
+    #: A clarification the agent answered.
+    ANSWERED = "answered"
+    #: A change the agent carried out.
+    RESOLVED = "resolved"
+    #: A change the agent decided not to make, with its reason.
+    DECLINED = "declined"
+    #: Withdrawn by the researcher.
+    DISMISSED = "dismissed"
+
+
+class AnchorState(StrEnum):
+    """Whether the passage of a comment is found in the current text of its target."""
+
+    ATTACHED = "attached"
+    #: The text was rewritten and the passage is not in it any more, or not unambiguously.
+    DETACHED = "detached"
 
 
 class DocumentKind(StrEnum):
@@ -195,6 +235,10 @@ class EventType(StrEnum):
     AGENT_POLICY_UPDATED = "AGENT_POLICY_UPDATED"
     DOCUMENT_GENERATION_QUEUED = "DOCUMENT_GENERATION_QUEUED"
     DOCUMENT_GENERATION_FINISHED = "DOCUMENT_GENERATION_FINISHED"
+    ANNOTATION_CREATED = "ANNOTATION_CREATED"
+    ANNOTATION_UPDATED = "ANNOTATION_UPDATED"
+    ANNOTATIONS_SENT = "ANNOTATIONS_SENT"
+    ANNOTATIONS_ANSWERED = "ANNOTATIONS_ANSWERED"
     AGENT_TURN_QUEUED = "AGENT_TURN_QUEUED"
     AGENT_TURN_STARTED = "AGENT_TURN_STARTED"
     AGENT_TURN_FINISHED = "AGENT_TURN_FINISHED"
