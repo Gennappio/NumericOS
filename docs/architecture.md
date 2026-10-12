@@ -2,7 +2,8 @@
 
 Status: **M0 accepted** on 2026-10-12 (tag `m0-gate`, evidence in
 `docs/milestones/M0-gate.md`). The active milestone is M3; ADR-0004 records why it precedes M1
-and M2. Everything below describes
+and M2. M3 so far: T01 (typed hypotheses, experiments and runs; the experiment contract; queued
+runs). **Runs are not executed yet**: the supervisor arrives with M3-T03. Everything below describes
 what exists; later milestones extend this file instead of replacing it. Roadmap and acceptance
 gates live in `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md` and `milestones/`.
 
@@ -90,10 +91,16 @@ only rows whose rank changed.
 ### Migrations
 
 Alembic scripts live in `src/numericos/persistence/migrations/` with named constraints and batch
-mode enabled. They are applied by `numericos serve` at startup (`--no-migrate` skips) or by
-`numericos db upgrade`; `numericos db current` reports the current and expected revision. The
-test suite runs `alembic check`, so models and migrations cannot drift. Authoring a revision:
-`uv run alembic revision --autogenerate -m "..."` (uses `alembic.ini`).
+mode enabled. They are applied by `numericos serve` at startup and again after every `--reload`
+restart (`--no-migrate` skips both), or by `numericos db upgrade`; `numericos db current`
+reports the current and expected revision. Before a database that already holds data is moved
+to a newer revision, the file is copied to `numericos.db.before-<revision>.bak`. The test suite
+runs `alembic check` and migrates a populated database of the previous revision, so models and
+migrations cannot drift. Authoring a revision: `uv run alembic revision --autogenerate -m "..."`
+(uses `alembic.ini`).
+
+Revisions: `0001` projects, board cards, events; `0002` hypotheses, experiments, runs and
+`events.run_id`.
 
 ## Events
 
@@ -130,6 +137,42 @@ data: {"event_id":"evt_...","seq":3,"project_id":"prj_...","type":"CARD_MOVED",.
   (409 `CURSOR_AHEAD`), which can only come from another ledger.
 - Open streams end promptly when the server is asked to stop, so restarts are not held up.
 
+## Research entities (M3)
+
+| Entity | What it is | Rules |
+| --- | --- | --- |
+| Hypothesis (`hyp_`) | A falsifiable claim with rationale, prediction, falsification conditions and assumptions | Created `proposed`. Its epistemic status (`proposed`, `supported`, `contradicted`, `inconclusive`) cannot be set by hand: it will change only through recorded evidence and decisions (M3-T05). It is unrelated to any workflow status |
+| Experiment (`exp_`) | A protocol that tests a hypothesis, or characterises a baseline when it has none | The protocol can be replaced only while the experiment has no runs (`PROTOCOL_FROZEN` afterwards). A different protocol is a different experiment |
+| Run (`run_`) | One concrete execution: parameters, seed, exact argument vector, the digest of the protocol it ran under | Created `queued`; statuses `queued`, `starting`, `running`, `succeeded`, `failed`, `cancelled`, `timed_out`, `lost`. `succeeded` means the process ended normally, never that the result is valid |
+
+One commit is not one experiment is not one run: a hypothesis can have several experiments, an
+experiment many runs, and many runs can share a code revision.
+
+### The experiment contract
+
+`numericos.experiment.v1` (`core/experiment.py`) states the question, the expected observation
+and the falsification conditions; the **independent variables** with the values the experiment
+will use and the **controls** that stay fixed; how one run is **executed** (argument vector with
+`{name}` placeholders, working directory, which code, environment, input files, environment
+probes, build commands); the **metrics** with unit and who measures them (`instrumentation`,
+`parser`, `supervisor`); output **parsers**; **guardrails** (what to do on NaN or infinity, and
+explicit numeric bounds with a patience); and the **limits** of a run. No threshold has a
+default: a guardrail or limit exists only if the contract states it, except the wall-clock
+limit, which is mandatory.
+
+The contract is validated as a whole: every placeholder must be a declared variable, a control
+or `{seed}`; a metric must be measurable by what the contract declares; a guardrail must refer
+to a declared metric. Its canonical JSON has a SHA-256 **digest** that every run records.
+
+A run is derived from the contract, not typed freely: it gets all controls plus exactly one
+*declared* value for every independent variable. A missing variable, an undeclared value, an
+attempt to override a control or an unknown name is a 422 and queues nothing. The command is
+never a shell line.
+
+Submitting a run returns at once. With an `Idempotency-Key` header the submission is
+repeatable: the same key and request return the run created the first time (200,
+`Idempotency-Replayed: true`); the same key with a different request is `IDEMPOTENCY_CONFLICT`.
+
 ## Use cases and their events
 
 `services/` holds the business rules; routes only translate HTTP. Every successful mutation writes
@@ -143,6 +186,9 @@ bumps no version.
 | create card (appended to its column) | `CARD_CREATED` | `card` |
 | edit card content | `CARD_UPDATED` | `card`, `changed_fields` |
 | move card (alone or together with an edit) | `CARD_MOVED` | `card`, `changed_fields`, `from`, `to`, `reindexed` siblings |
+| state / reword a hypothesis | `HYPOTHESIS_CREATED` / `HYPOTHESIS_UPDATED` | `hypothesis`, `changed_fields` |
+| define / change an experiment | `EXPERIMENT_CREATED` / `EXPERIMENT_UPDATED` | `experiment`, `changed_fields` |
+| queue a run | `RUN_QUEUED` | `run`; the event carries `run_id` |
 
 `project` and `card` are the public representations after the change. Placement rules: a new
 `workflow_status` moves the card to `position` in that column (appended when omitted); `position`
@@ -159,7 +205,10 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `GET /v1/projects/{project_id}/board` | `workflow_statuses` in column order and `cards` in board order |
 | `POST /v1/projects/{project_id}/cards` | create a typed card at the end of its column |
 | `GET /v1/cards/{card_id}`, `PATCH /v1/cards/{card_id}` | read, edit and/or move (needs `version`; optional `project_id` assertion) |
-| `GET /v1/events?project_id=&after=&before=&limit=&order=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
+| `POST`, `GET /v1/projects/{project_id}/hypotheses`; `GET`, `PATCH /v1/hypotheses/{id}` | state, list, read, reword (needs `version`) |
+| `POST`, `GET /v1/projects/{project_id}/experiments`; `GET`, `PATCH /v1/experiments/{id}` | define by protocol, list, read; rename, relink or replace the protocol while there are no runs |
+| `POST`, `GET /v1/experiments/{id}/runs`; `GET /v1/runs/{id}` | queue a run (optional `Idempotency-Key`), list, read |
+| `GET /v1/events?project_id=&after=&before=&limit=&order=&run_id=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
 
 Operation IDs equal the handler names (`create_project`, `update_card`, ...), so generated
 clients get stable method names.
@@ -178,8 +227,10 @@ clients get stable method names.
 
   Codes are stable UPPER_SNAKE identifiers: `VALIDATION_ERROR` (422), `NOT_FOUND` (404),
   `STALE_REVISION` (409, the `version` sent is not the current one; details carry both),
-  `PROJECT_MISMATCH` (409, the card is not in the asserted project), `CURSOR_AHEAD` (409, a
-  stream cursor beyond the ledger head), `METHOD_NOT_ALLOWED` (405), `INTERNAL_ERROR` (500).
+  `PROJECT_MISMATCH` (409, a record is not in the asserted project), `PROTOCOL_FROZEN` (409,
+  the experiment already has runs), `IDEMPOTENCY_CONFLICT` (409, a key reused for another
+  request), `CURSOR_AHEAD` (409, a stream cursor beyond the ledger head), `METHOD_NOT_ALLOWED`
+  (405), `INTERNAL_ERROR` (500).
 - `X-Correlation-ID`: accepted from the client when it matches `[A-Za-z0-9_.-]{1,64}`, otherwise a
   `cor_<ULID>` is generated; always echoed on the response and stored on every event.
 - `X-Actor`: label of the calling surface in the form `<surface>:<name>` (`web:local`,
@@ -207,6 +258,9 @@ printed on stderr), `2` usage error, `3` API unreachable.
 | `numericos events list -p PROJECT [--after N] [--limit N] [--desc]` | the ordered ledger |
 | `numericos events follow -p PROJECT [--after N] [--limit N] [--json]` | replay from a cursor, then follow; JSON Lines with `--json`; on a broken stream it prints the `seq` to resume from and exits 3 |
 | `numericos seed-demo` | one demo project flagged `is_demo` (explicit, idempotent, actor `cli:seed`) |
+| `numericos hypothesis add -p PROJECT --title T --claim C` / `list` / `show ID` | hypotheses |
+| `numericos experiment add FILE -p PROJECT` / `list -p PROJECT` / `show ID` | experiments from a contract file (YAML or JSON; it may carry `name` and `hypothesis_id`) |
+| `numericos run submit EXPERIMENT_ID -P name=value [--seed N] [--label L] [--idempotency-key K]` / `list -e EXPERIMENT` / `show ID` | queue and inspect runs |
 
 `update` and `move` use optimistic locking: without `--version` they read the latest version
 first (last write wins); with `--version N` a concurrent change is reported as `STALE_REVISION`.
@@ -300,7 +354,6 @@ the M3 supervisor defines a trust boundary.
 - **The event strip shows the 20 newest entries.** Older ones are read with
   `numericos events list` / `follow`. A full timeline view belongs to M3.
 - **No drag and drop yet** (M1): cards move through their status select and up/down buttons.
-- **Schema migrations need a manual restart** of a server started with `--reload`.
 - **SQLite transactions serialise writers and readers** (`BEGIN IMMEDIATE`). Invisible for one
   local user; to be measured when the job supervisor writes telemetry in M3.
 

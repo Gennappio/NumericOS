@@ -58,3 +58,34 @@ def event(project_id: str, subject_id: str, **overrides: Any) -> Event:
         "context": context(),
     }
     return build_event(**{**values, **overrides})
+
+
+def protocol(**overrides: Any) -> dict[str, Any]:
+    """A valid ``numericos.experiment.v1`` contract as a client would send it."""
+    base: dict[str, Any] = {
+        "schema": "numericos.experiment.v1",
+        "question": "Does reducing dt restore the stability of the explicit scheme?",
+        "prediction": "Residual growth disappears below the stability limit of this scheme.",
+        "falsification": ["Divergence persists for every smaller dt on the same grid."],
+        "independent_variables": {"dt": [0.02, 0.01, 0.005]},
+        "controls": {"grid": 32, "steps": 100},
+        "execution": {
+            "command": [
+                "python3",
+                "heat2d.py",
+                "--dt",
+                "{dt}",
+                "--grid",
+                "{grid}",
+                "--steps",
+                "{steps}",
+            ],
+            "workdir": "examples/heat2d-python",
+        },
+        "metrics": [
+            {"name": "residual_l2", "unit": "dimensionless", "sampled_by": "instrumentation"},
+            {"name": "wall_time", "unit": "s", "sampled_by": "supervisor"},
+        ],
+        "limits": {"wall_seconds": 60},
+    }
+    return {**base, **overrides}

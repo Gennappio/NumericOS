@@ -11,6 +11,7 @@ EVENT_FIELDS = {
     "event_id",
     "seq",
     "project_id",
+    "run_id",
     "type",
     "subject_id",
     "actor",

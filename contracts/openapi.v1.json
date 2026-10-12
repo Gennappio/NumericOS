@@ -252,6 +252,42 @@
         "title": "CardType",
         "type": "string"
       },
+      "CodeSpec": {
+        "additionalProperties": false,
+        "description": "Which code a run executes.\n\n``ref``: an exact commit, resolved when the run is created and executed from an export of\nthat commit, never from the working tree. ``working_tree``: the project directory as it is\nwhen the run starts, uncommitted changes included; an explicit choice because it is only\nreproducible through the recorded diff.",
+        "properties": {
+          "mode": {
+            "default": "ref",
+            "enum": [
+              "ref",
+              "working_tree"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "ref": {
+            "default": "HEAD",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^-\\s][^\\s]*$",
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "title": "CodeSpec",
+        "type": "object"
+      },
+      "EpistemicStatus": {
+        "description": "What the evidence says about a hypothesis. Independent of any workflow status.",
+        "enum": [
+          "proposed",
+          "supported",
+          "contradicted",
+          "inconclusive"
+        ],
+        "title": "EpistemicStatus",
+        "type": "string"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -326,6 +362,18 @@
           "project_id": {
             "title": "Project Id",
             "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The run this event belongs to, if any.",
+            "title": "Run Id"
           },
           "schema_version": {
             "title": "Schema Version",
@@ -404,6 +452,458 @@
         "title": "EventPage",
         "type": "object"
       },
+      "ExecutionSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "build": {
+            "description": "Commands run in the code directory before the program starts.",
+            "items": {
+              "items": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "type": "array"
+            },
+            "maxItems": 20,
+            "title": "Build",
+            "type": "array"
+          },
+          "code": {
+            "$ref": "#/components/schemas/CodeSpec"
+          },
+          "command": {
+            "description": "Argument vector, never a shell line. {name} is replaced by a parameter.",
+            "items": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Command",
+            "type": "array"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Environment set for the run.",
+            "title": "Env",
+            "type": "object"
+          },
+          "environment_probes": {
+            "description": "Commands whose output is recorded as environment provenance.",
+            "items": {
+              "items": {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "type": "array"
+            },
+            "maxItems": 20,
+            "title": "Environment Probes",
+            "type": "array"
+          },
+          "inherit_env": {
+            "description": "Names passed through from the supervisor's environment.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Inherit Env",
+            "type": "array"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/InputSpec"
+            },
+            "maxItems": 200,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "workdir": {
+            "default": ".",
+            "description": "Inside the code root.",
+            "maxLength": 1000,
+            "title": "Workdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "title": "ExecutionSpec",
+        "type": "object"
+      },
+      "ExperimentCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "hypothesis_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The hypothesis this experiment tests, if any (not a baseline).",
+            "title": "Hypothesis Id"
+          },
+          "name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ExperimentProtocol"
+          }
+        },
+        "required": [
+          "name",
+          "protocol"
+        ],
+        "title": "ExperimentCreate",
+        "type": "object"
+      },
+      "ExperimentList": {
+        "properties": {
+          "experiments": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentOut"
+            },
+            "title": "Experiments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "experiments"
+        ],
+        "title": "ExperimentList",
+        "type": "object"
+      },
+      "ExperimentOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hypothesis_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypothesis Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ExperimentProtocol"
+          },
+          "protocol_digest": {
+            "description": "SHA-256 of the canonical protocol; runs record it.",
+            "title": "Protocol Digest",
+            "type": "string"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "hypothesis_id",
+          "name",
+          "protocol",
+          "protocol_digest",
+          "run_count",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExperimentOut",
+        "type": "object"
+      },
+      "ExperimentPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "hypothesis_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit null unlinks the hypothesis; an absent field keeps it.",
+            "title": "Hypothesis Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentProtocol"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Replaceable only while the experiment has no runs."
+          },
+          "version": {
+            "description": "Current version of the experiment.",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ExperimentPatch",
+        "type": "object"
+      },
+      "ExperimentProtocol": {
+        "additionalProperties": false,
+        "properties": {
+          "controls": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Parameters that are identical in every run.",
+            "title": "Controls",
+            "type": "object"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/ExecutionSpec"
+          },
+          "falsification": {
+            "items": {
+              "maxLength": 5000,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Falsification",
+            "type": "array"
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/Guardrails"
+          },
+          "independent_variables": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "description": "What varies between runs, with the values the experiment will use.",
+            "title": "Independent Variables",
+            "type": "object"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricSpec"
+            },
+            "maxItems": 100,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observability": {
+            "$ref": "#/components/schemas/ObservabilitySpec"
+          },
+          "prediction": {
+            "default": "",
+            "maxLength": 5000,
+            "title": "Prediction",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "schema": {
+            "const": "numericos.experiment.v1",
+            "title": "Schema",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "question",
+          "execution",
+          "limits"
+        ],
+        "title": "ExperimentProtocol",
+        "type": "object"
+      },
+      "FailureClass": {
+        "description": "Why a run did not end normally. The classes call for different reactions.",
+        "enum": [
+          "code_error",
+          "resource_limit",
+          "numerical_instability",
+          "infrastructure",
+          "unknown"
+        ],
+        "title": "FailureClass",
+        "type": "string"
+      },
+      "GuardrailRule": {
+        "additionalProperties": false,
+        "description": "An explicit numeric limit on a metric. No threshold is ever assumed by NumericOS.",
+        "properties": {
+          "above": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above"
+          },
+          "action": {
+            "default": "halt",
+            "enum": [
+              "halt",
+              "record"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "below": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Below"
+          },
+          "metric": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,99}$",
+            "title": "Metric",
+            "type": "string"
+          },
+          "patience": {
+            "default": 1,
+            "description": "Consecutive violating samples.",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Patience",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "metric"
+        ],
+        "title": "GuardrailRule",
+        "type": "object"
+      },
+      "Guardrails": {
+        "additionalProperties": false,
+        "properties": {
+          "non_finite": {
+            "default": "record",
+            "description": "What to do when a metric is NaN or infinite. It is always recorded.",
+            "enum": [
+              "halt",
+              "record"
+            ],
+            "title": "Non Finite",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/GuardrailRule"
+            },
+            "maxItems": 50,
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "title": "Guardrails",
+        "type": "object"
+      },
       "HealthOut": {
         "properties": {
           "app": {
@@ -467,6 +967,434 @@
           "expected_revision"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "HypothesisCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptions": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "claim": {
+            "description": "What is asserted, so that it can turn out wrong.",
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Claim",
+            "type": "string"
+          },
+          "falsification": {
+            "description": "Outcomes that would contradict the claim.",
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Falsification",
+            "type": "array"
+          },
+          "prediction": {
+            "default": "",
+            "description": "What should be observed.",
+            "maxLength": 5000,
+            "title": "Prediction",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "description": "Why it might hold.",
+            "maxLength": 5000,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "claim"
+        ],
+        "title": "HypothesisCreate",
+        "type": "object"
+      },
+      "HypothesisList": {
+        "properties": {
+          "hypotheses": {
+            "items": {
+              "$ref": "#/components/schemas/HypothesisOut"
+            },
+            "title": "Hypotheses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "hypotheses"
+        ],
+        "title": "HypothesisList",
+        "type": "object"
+      },
+      "HypothesisOut": {
+        "properties": {
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "claim": {
+            "title": "Claim",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "epistemic_status": {
+            "$ref": "#/components/schemas/EpistemicStatus",
+            "description": "What the evidence says so far. It changes only through recorded decisions."
+          },
+          "falsification": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Falsification",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "prediction": {
+            "title": "Prediction",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "title",
+          "claim",
+          "rationale",
+          "prediction",
+          "falsification",
+          "assumptions",
+          "epistemic_status",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "HypothesisOut",
+        "type": "object"
+      },
+      "HypothesisPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptions": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptions"
+          },
+          "claim": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim"
+          },
+          "falsification": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Falsification"
+          },
+          "prediction": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "version": {
+            "description": "Current version of the hypothesis.",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "HypothesisPatch",
+        "type": "object"
+      },
+      "InputSpec": {
+        "additionalProperties": false,
+        "description": "A file the run reads; its checksum is recorded and, if given, enforced.",
+        "properties": {
+          "base": {
+            "default": "code",
+            "description": "code: inside the executed code; project: under the project root.",
+            "enum": [
+              "code",
+              "project"
+            ],
+            "title": "Base",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 1000,
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "InputSpec",
+        "type": "object"
+      },
+      "Limits": {
+        "additionalProperties": false,
+        "description": "Resource envelope of one run, enforced by the supervisor.",
+        "properties": {
+          "grace_seconds": {
+            "default": 10.0,
+            "description": "Between SIGTERM and SIGKILL when a run is stopped.",
+            "maximum": 300.0,
+            "minimum": 0.0,
+            "title": "Grace Seconds",
+            "type": "number"
+          },
+          "max_output_mb": {
+            "default": 256,
+            "exclusiveMinimum": 0.0,
+            "maximum": 65536.0,
+            "title": "Max Output Mb",
+            "type": "integer"
+          },
+          "max_rss_mb": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 4194304.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Rss Mb"
+          },
+          "wall_seconds": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 604800.0,
+            "title": "Wall Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "wall_seconds"
+        ],
+        "title": "Limits",
+        "type": "object"
+      },
+      "MetricSpec": {
+        "additionalProperties": false,
+        "description": "A quantity the experiment measures, with its unit and who measures it.",
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,99}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "sampled_by": {
+            "description": "instrumentation: the program emits numericos.metric.v1 records; parser: extracted from its output by a parser of this contract; supervisor: measured by the supervisor (wall_time, cpu_time, max_rss).",
+            "enum": [
+              "instrumentation",
+              "parser",
+              "supervisor"
+            ],
+            "title": "Sampled By",
+            "type": "string"
+          },
+          "unit": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sampled_by"
+        ],
+        "title": "MetricSpec",
+        "type": "object"
+      },
+      "ObservabilitySpec": {
+        "additionalProperties": false,
+        "properties": {
+          "parsers": {
+            "items": {
+              "$ref": "#/components/schemas/ParserSpec"
+            },
+            "maxItems": 20,
+            "title": "Parsers",
+            "type": "array"
+          },
+          "resource_interval_seconds": {
+            "default": 1.0,
+            "maximum": 60.0,
+            "minimum": 0.2,
+            "title": "Resource Interval Seconds",
+            "type": "number"
+          }
+        },
+        "title": "ObservabilitySpec",
+        "type": "object"
+      },
+      "ParserSpec": {
+        "additionalProperties": false,
+        "description": "Extracts metrics from the program's output lines (observability level L1).\n\n``pattern`` is a Python regular expression. Every named group except ``step`` is a metric\nof that name; the optional group ``step`` is the sample's step.",
+        "properties": {
+          "name": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "pattern": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Pattern",
+            "type": "string"
+          },
+          "stream": {
+            "default": "stdout",
+            "enum": [
+              "stdout",
+              "stderr",
+              "any"
+            ],
+            "title": "Stream",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "pattern"
+        ],
+        "title": "ParserSpec",
         "type": "object"
       },
       "ProjectCreate": {
@@ -657,6 +1585,205 @@
         ],
         "title": "ProjectPatch",
         "type": "object"
+      },
+      "RunCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Label",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "One declared value for every independent variable of the experiment.",
+            "title": "Parameters",
+            "type": "object"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "title": "RunCreate",
+        "type": "object"
+      },
+      "RunList": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "RunList",
+        "type": "object"
+      },
+      "RunOut": {
+        "properties": {
+          "argv": {
+            "description": "The exact argument vector of the program.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Argv",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "failure_class": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The complete assignment: controls and the chosen independent values.",
+            "title": "Parameters",
+            "type": "object"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "protocol_digest": {
+            "title": "Protocol Digest",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus",
+            "description": "Operational state. 'succeeded' is a normal process end, not a valid result."
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "experiment_id",
+          "label",
+          "status",
+          "status_reason",
+          "failure_class",
+          "parameters",
+          "seed",
+          "argv",
+          "protocol_digest",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RunOut",
+        "type": "object"
+      },
+      "RunStatus": {
+        "description": "Operational state of one execution. ``succeeded`` means the process ended normally;\nit says nothing about the scientific validity of what it computed.",
+        "enum": [
+          "queued",
+          "starting",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "timed_out",
+          "lost"
+        ],
+        "title": "RunStatus",
+        "type": "string"
       },
       "WorkflowStatus": {
         "enum": [
@@ -903,6 +2030,24 @@
             }
           },
           {
+            "description": "Only events correlated with this run. JSON only.",
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events correlated with this run. JSON only.",
+              "title": "Run Id"
+            }
+          },
+          {
             "description": "Sent by EventSource clients when they reconnect to a stream.",
             "in": "header",
             "name": "last-event-id",
@@ -975,6 +2120,305 @@
         ]
       }
     },
+    "/v1/experiments/{experiment_id}": {
+      "get": {
+        "operationId": "get_experiment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one experiment",
+        "tags": [
+          "experiments"
+        ]
+      },
+      "patch": {
+        "operationId": "update_experiment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Rename, relink or (while it has no runs) replace the protocol of an experiment",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/experiments/{experiment_id}/runs": {
+      "get": {
+        "operationId": "list_runs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "List the runs of an experiment in creation order",
+        "tags": [
+          "runs"
+        ]
+      },
+      "post": {
+        "operationId": "create_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Makes the submission repeatable: the same key and request return the run created the first time; the same key with another request is a conflict.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Makes the submission repeatable: the same key and request return the run created the first time; the same key with another request is a conflict.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "The run an earlier identical request created"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Queue one run of an experiment; returns at once",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
     "/v1/health": {
       "get": {
         "operationId": "health",
@@ -1013,6 +2457,141 @@
         "summary": "Liveness of the API process and state of its database",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/hypotheses/{hypothesis_id}": {
+      "get": {
+        "operationId": "get_hypothesis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hypothesis_id",
+            "required": true,
+            "schema": {
+              "title": "Hypothesis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one hypothesis",
+        "tags": [
+          "hypotheses"
+        ]
+      },
+      "patch": {
+        "operationId": "update_hypothesis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hypothesis_id",
+            "required": true,
+            "schema": {
+              "title": "Hypothesis Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HypothesisPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Reword a hypothesis (requires its current version)",
+        "tags": [
+          "hypotheses"
         ]
       }
     },
@@ -1380,6 +2959,318 @@
         "summary": "Create a typed card at the end of its column",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/experiments": {
+      "get": {
+        "operationId": "list_experiments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "List a project's experiments in creation order",
+        "tags": [
+          "experiments"
+        ]
+      },
+      "post": {
+        "operationId": "create_experiment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Define an experiment by its protocol",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/hypotheses": {
+      "get": {
+        "operationId": "list_hypotheses",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "List a project's hypotheses in creation order",
+        "tags": [
+          "hypotheses"
+        ]
+      },
+      "post": {
+        "operationId": "create_hypothesis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HypothesisCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "State a hypothesis",
+        "tags": [
+          "hypotheses"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Get one run",
+        "tags": [
+          "runs"
         ]
       }
     }

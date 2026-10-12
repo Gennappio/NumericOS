@@ -16,10 +16,18 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from numericos.core.enums import CardType, Severity, WorkflowStatus
+from numericos.core.enums import (
+    CardType,
+    EpistemicStatus,
+    FailureClass,
+    RunStatus,
+    Severity,
+    WorkflowStatus,
+)
 from numericos.persistence.engine import UTCDateTime
 
 #: Named constraints are mandatory for Alembic batch mode on SQLite.
@@ -84,6 +92,97 @@ class BoardCard(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
+class Hypothesis(Base):
+    """A falsifiable claim. Its epistemic status is separate from any workflow status."""
+
+    __tablename__ = "hypotheses"
+    __table_args__ = (
+        CheckConstraint(one_of("epistemic_status", EpistemicStatus), name="epistemic_status"),
+        CheckConstraint("length(title) BETWEEN 1 AND 300", name="title_length"),
+        Index("ix_hypotheses_project_created", "project_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT")
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    claim: Mapped[str] = mapped_column(Text)
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    prediction: Mapped[str] = mapped_column(Text, default="")
+    falsification: Mapped[list[str]] = mapped_column(JSON, default=list)
+    assumptions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    epistemic_status: Mapped[str] = mapped_column(
+        String(20), default=EpistemicStatus.PROPOSED.value
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class Experiment(Base):
+    """A protocol that tests a hypothesis (or characterises a baseline) through runs."""
+
+    __tablename__ = "experiments"
+    __table_args__ = (
+        CheckConstraint("length(name) BETWEEN 1 AND 300", name="name_length"),
+        Index("ix_experiments_project_created", "project_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT")
+    )
+    hypothesis_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("hypotheses.id", ondelete="RESTRICT"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(300))
+    protocol: Mapped[dict[str, Any]] = mapped_column(JSON)
+    protocol_digest: Mapped[str] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class Run(Base):
+    """One concrete execution of an experiment: a code revision, parameters and their outcome."""
+
+    __tablename__ = "runs"
+    __table_args__ = (
+        CheckConstraint(one_of("status", RunStatus), name="status"),
+        CheckConstraint(
+            f"failure_class IS NULL OR {one_of('failure_class', FailureClass)}",
+            name="failure_class",
+        ),
+        UniqueConstraint(
+            "experiment_id", "idempotency_key", name="uq_runs_experiment_idempotency_key"
+        ),
+        Index("ix_runs_experiment_created", "experiment_id", "created_at"),
+        Index("ix_runs_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT")
+    )
+    experiment_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("experiments.id", ondelete="RESTRICT")
+    )
+    label: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[str] = mapped_column(String(20))
+    status_reason: Mapped[str | None] = mapped_column(String(300))
+    failure_class: Mapped[str | None] = mapped_column(String(30))
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON)
+    seed: Mapped[int | None] = mapped_column(Integer)
+    argv: Mapped[list[str]] = mapped_column(JSON)
+    protocol_digest: Mapped[str] = mapped_column(String(64))
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    request_digest: Mapped[str | None] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
 class Event(Base):
     """Append-only ledger row. ``seq`` is the only ordering authority; the timestamp is metadata."""
 
@@ -97,6 +196,8 @@ class Event(Base):
     seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_id: Mapped[str] = mapped_column(String(40), unique=True)
     project_id: Mapped[str] = mapped_column(String(40), ForeignKey("projects.id"))
+    #: Correlation with a run. Like ``subject_id`` it is a reference without a foreign key.
+    run_id: Mapped[str | None] = mapped_column(String(40), index=True)
     type: Mapped[str] = mapped_column("event_type", String(60))
     subject_id: Mapped[str] = mapped_column(String(40), index=True)
     actor: Mapped[str] = mapped_column(String(120))

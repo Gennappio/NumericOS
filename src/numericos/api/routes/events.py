@@ -68,6 +68,9 @@ def list_events(
     order: Annotated[
         Literal["asc", "desc"], Query(description="Ordering by seq. A stream is always asc.")
     ] = "asc",
+    run_id: Annotated[
+        str | None, Query(description="Only events correlated with this run. JSON only.")
+    ] = None,
     last_event_id: Annotated[
         str | None,
         Header(
@@ -84,6 +87,7 @@ def list_events(
             before=before,
             limit=limit or DEFAULT_PAGE_SIZE,
             descending=order == "desc",
+            run_id=run_id,
         )
 
     unsupported = [
@@ -92,6 +96,7 @@ def list_events(
             ("before", before is not None),
             ("limit", limit is not None),
             ("order", order != "asc"),
+            ("run_id", run_id is not None),
         )
         if given
     ]

@@ -8,7 +8,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from numericos.core.enums import WORKFLOW_ORDER
-from numericos.persistence.models import BoardCard, Event, Project
+from numericos.persistence.models import (
+    BoardCard,
+    Event,
+    Experiment,
+    Hypothesis,
+    Project,
+    Run,
+)
 from numericos.persistence.ordering import STEP, ranks
 
 
@@ -86,6 +93,83 @@ class CardRepository:
         return changed
 
 
+class HypothesisRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, hypothesis: Hypothesis) -> Hypothesis:
+        self._session.add(hypothesis)
+        self._session.flush()
+        return hypothesis
+
+    def get(self, hypothesis_id: str) -> Hypothesis | None:
+        return self._session.get(Hypothesis, hypothesis_id)
+
+    def list_for_project(self, project_id: str) -> list[Hypothesis]:
+        statement = (
+            select(Hypothesis)
+            .where(Hypothesis.project_id == project_id)
+            .order_by(Hypothesis.created_at, Hypothesis.id)
+        )
+        return list(self._session.scalars(statement))
+
+
+class ExperimentRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, experiment: Experiment) -> Experiment:
+        self._session.add(experiment)
+        self._session.flush()
+        return experiment
+
+    def get(self, experiment_id: str) -> Experiment | None:
+        return self._session.get(Experiment, experiment_id)
+
+    def list_for_project(self, project_id: str) -> list[Experiment]:
+        statement = (
+            select(Experiment)
+            .where(Experiment.project_id == project_id)
+            .order_by(Experiment.created_at, Experiment.id)
+        )
+        return list(self._session.scalars(statement))
+
+
+class RunRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, run: Run) -> Run:
+        self._session.add(run)
+        self._session.flush()
+        return run
+
+    def get(self, run_id: str) -> Run | None:
+        return self._session.get(Run, run_id)
+
+    def list_for_experiment(self, experiment_id: str) -> list[Run]:
+        statement = (
+            select(Run).where(Run.experiment_id == experiment_id).order_by(Run.created_at, Run.id)
+        )
+        return list(self._session.scalars(statement))
+
+    def count_by_experiment(self, experiment_ids: Sequence[str]) -> dict[str, int]:
+        if not experiment_ids:
+            return {}
+        statement = (
+            select(Run.experiment_id, func.count())
+            .where(Run.experiment_id.in_(experiment_ids))
+            .group_by(Run.experiment_id)
+        )
+        return {experiment_id: count for experiment_id, count in self._session.execute(statement)}
+
+    def by_idempotency_key(self, experiment_id: str, key: str) -> Run | None:
+        statement = select(Run).where(
+            Run.experiment_id == experiment_id, Run.idempotency_key == key
+        )
+        return self._session.scalars(statement).first()
+
+
 class EventRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -104,8 +188,11 @@ class EventRepository:
         before: int | None = None,
         limit: int = 100,
         descending: bool = False,
+        run_id: str | None = None,
     ) -> list[Event]:
         statement = select(Event).where(Event.project_id == project_id)
+        if run_id is not None:
+            statement = statement.where(Event.run_id == run_id)
         if after is not None:
             statement = statement.where(Event.seq > after)
         if before is not None:

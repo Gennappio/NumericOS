@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from numericos import __version__
 from numericos.cli.main import EXIT_UNREACHABLE, app
+from numericos.persistence import migrate
 from tests.conftest import LiveServer, free_port
 
 runner = CliRunner()
@@ -59,11 +60,12 @@ def test_db_upgrade_and_current(tmp_path: Path) -> None:
     assert before.exit_code == 0, before.output
     assert json.loads(before.stdout)["up_to_date"] is False
     assert upgrade.exit_code == 0, upgrade.output
-    assert json.loads(upgrade.stdout)["schema_revision"] == "0001"
+    head = migrate.head_revision()
+    assert json.loads(upgrade.stdout)["schema_revision"] == head
     assert json.loads(after.stdout) == {
         "db_path": f"{data_dir}/numericos.db",
-        "schema_revision": "0001",
-        "expected_revision": "0001",
+        "schema_revision": head,
+        "expected_revision": head,
         "up_to_date": True,
     }
 

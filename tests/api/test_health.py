@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from numericos import __version__
 from numericos.api.app import create_app
 from numericos.config import Settings
+from numericos.persistence import migrate
 
 
 def test_health_reports_version_time_and_migrated_database(client: TestClient) -> None:
@@ -19,7 +20,7 @@ def test_health_reports_version_time_and_migrated_database(client: TestClient) -
     assert body["version"] == __version__
     assert body["time_utc"].endswith("Z")
     assert body["db"] == "ok"
-    assert body["schema_revision"] == body["expected_revision"] == "0001"
+    assert body["schema_revision"] == body["expected_revision"] == migrate.head_revision()
 
 
 def test_health_is_degraded_when_the_schema_is_missing(tmp_path: Path) -> None:

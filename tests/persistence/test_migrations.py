@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 from numericos.persistence import migrate
+from numericos.persistence.engine import make_engine
 
-TABLES = {"projects", "board_cards", "events"}
+TABLES = {"projects", "board_cards", "events", "hypotheses", "experiments", "runs"}
+HEAD = "0002"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:
-    assert migrate.current_revision(engine) == migrate.head_revision() == "0001"
+    assert migrate.current_revision(engine) == migrate.head_revision() == HEAD
     assert set(inspect(engine).get_table_names()) >= TABLES
 
 
@@ -19,7 +25,7 @@ def test_models_and_migrations_agree(engine: Engine) -> None:
 
 def test_upgrade_is_idempotent(engine: Engine) -> None:
     migrate.upgrade(engine)
-    assert migrate.current_revision(engine) == "0001"
+    assert migrate.current_revision(engine) == HEAD
 
 
 def test_downgrade_then_upgrade_round_trip(engine: Engine) -> None:
@@ -28,8 +34,18 @@ def test_downgrade_then_upgrade_round_trip(engine: Engine) -> None:
     assert not TABLES & set(inspect(engine).get_table_names())
 
     migrate.upgrade(engine)
-    assert migrate.current_revision(engine) == "0001"
+    assert migrate.current_revision(engine) == HEAD
     assert set(inspect(engine).get_table_names()) >= TABLES
+
+
+def test_every_step_can_be_undone_and_redone(engine: Engine) -> None:
+    migrate.downgrade(engine, "0001")
+    assert migrate.current_revision(engine) == "0001"
+    assert "runs" not in inspect(engine).get_table_names()
+    assert "run_id" not in {column["name"] for column in inspect(engine).get_columns("events")}
+
+    migrate.upgrade(engine)
+    migrate.check(engine)
 
 
 def test_every_connection_has_the_required_pragmas(engine: Engine) -> None:
@@ -50,3 +66,81 @@ def test_event_sequence_uses_autoincrement(engine: Engine) -> None:
         ).scalar_one()
 
     assert "AUTOINCREMENT" in ddl
+
+
+def _database_with_m0_data(path: Path) -> Engine:
+    """A database as M0 left it (revision 0001), holding one project, one card and two events."""
+    engine = make_engine(path)
+    migrate.upgrade(engine, "0001")
+    now = "2026-10-12T10:36:00.000000Z"
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO projects VALUES ('prj_1', 'My study', 'Is it stable?', '', NULL, 0,"
+                " 1, :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO board_cards VALUES ('card_1', 'prj_1', 'hypothesis', 'H01', '',"
+                " 'backlog', 0, NULL, 1, :now, :now)"
+            ),
+            {"now": now},
+        )
+        for event_id, kind, subject in (
+            ("evt_1", "PROJECT_CREATED", "prj_1"),
+            ("evt_2", "CARD_CREATED", "card_1"),
+        ):
+            connection.execute(
+                text(
+                    "INSERT INTO events (event_id, project_id, event_type, subject_id, actor,"
+                    " producer, severity, correlation_id, schema_version, payload, timestamp_utc)"
+                    " VALUES (:id, 'prj_1', :kind, :subject, 'web:local', 'api', 'info', 'cor_1',"
+                    " 1, '{}', :now)"
+                ),
+                {"id": event_id, "kind": kind, "subject": subject, "now": now},
+            )
+    return engine
+
+
+def test_upgrading_existing_data_keeps_it_and_leaves_a_backup(tmp_path: Path) -> None:
+    path = tmp_path / "numericos.db"
+    engine = _database_with_m0_data(path)
+
+    migrate.upgrade(engine)
+
+    assert migrate.current_revision(engine) == HEAD
+    migrate.check(engine)
+    with engine.connect() as connection:
+        counts = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM projects), (SELECT count(*) FROM board_cards),"
+                " (SELECT count(*) FROM events), (SELECT count(*) FROM runs)"
+            )
+        ).one()
+        events = connection.execute(
+            text("SELECT seq, event_id, run_id FROM events ORDER BY seq")
+        ).all()
+    assert tuple(counts) == (1, 1, 2, 0)
+    assert [tuple(row) for row in events] == [(1, "evt_1", None), (2, "evt_2", None)]
+    engine.dispose()
+
+    # The file as it was before the migration is kept next to the database.
+    backup = tmp_path / f"numericos.db.before-{HEAD}.bak"
+    assert backup.exists()
+    with closing(sqlite3.connect(backup)) as copy:
+        assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
+        assert copy.execute("SELECT count(*) FROM events").fetchone() == (2,)
+        tables = {row[0] for row in copy.execute("SELECT name FROM sqlite_master")}
+    assert "runs" not in tables
+
+
+def test_no_backup_for_a_fresh_or_current_database(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path / "numericos.db")
+
+    migrate.upgrade(engine)  # fresh: there is nothing to protect
+    migrate.upgrade(engine)  # already at the head
+    engine.dispose()
+
+    assert [path.name for path in tmp_path.glob("*.bak")] == []

@@ -22,6 +22,7 @@ def list_events(
     before: int | None = None,
     limit: int = 100,
     descending: bool = False,
+    run_id: str | None = None,
 ) -> EventPage:
     """One page of a project's ledger.
 
@@ -31,7 +32,12 @@ def list_events(
     with uow:
         require_project(uow, project_id)
         rows = uow.events.page(
-            project_id, after=after, before=before, limit=limit + 1, descending=descending
+            project_id,
+            after=after,
+            before=before,
+            limit=limit + 1,
+            descending=descending,
+            run_id=run_id,
         )
         events = [EventOut.model_validate(row) for row in rows[:limit]]
         return EventPage(

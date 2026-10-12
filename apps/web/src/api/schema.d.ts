@@ -39,6 +39,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/experiments/{experiment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one experiment */
+        get: operations["get_experiment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename, relink or (while it has no runs) replace the protocol of an experiment */
+        patch: operations["update_experiment"];
+        trace?: never;
+    };
+    "/v1/experiments/{experiment_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the runs of an experiment in creation order */
+        get: operations["list_runs"];
+        put?: never;
+        /** Queue one run of an experiment; returns at once */
+        post: operations["create_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/health": {
         parameters: {
             query?: never;
@@ -54,6 +90,24 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/hypotheses/{hypothesis_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one hypothesis */
+        get: operations["get_hypothesis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Reword a hypothesis (requires its current version) */
+        patch: operations["update_hypothesis"];
         trace?: never;
     };
     "/v1/projects": {
@@ -120,6 +174,59 @@ export interface paths {
         put?: never;
         /** Create a typed card at the end of its column */
         post: operations["create_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's experiments in creation order */
+        get: operations["list_experiments"];
+        put?: never;
+        /** Define an experiment by its protocol */
+        post: operations["create_experiment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/hypotheses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's hypotheses in creation order */
+        get: operations["list_hypotheses"];
+        put?: never;
+        /** State a hypothesis */
+        post: operations["create_hypothesis"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one run */
+        get: operations["get_run"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -217,6 +324,34 @@ export interface components {
          * @enum {string}
          */
         CardType: "task" | "hypothesis" | "experiment" | "issue" | "decision";
+        /**
+         * CodeSpec
+         * @description Which code a run executes.
+         *
+         *     ``ref``: an exact commit, resolved when the run is created and executed from an export of
+         *     that commit, never from the working tree. ``working_tree``: the project directory as it is
+         *     when the run starts, uncommitted changes included; an explicit choice because it is only
+         *     reproducible through the recorded diff.
+         */
+        CodeSpec: {
+            /**
+             * Mode
+             * @default ref
+             * @enum {string}
+             */
+            mode?: "ref" | "working_tree";
+            /**
+             * Ref
+             * @default HEAD
+             */
+            ref?: string;
+        };
+        /**
+         * EpistemicStatus
+         * @description What the evidence says about a hypothesis. Independent of any workflow status.
+         * @enum {string}
+         */
+        EpistemicStatus: "proposed" | "supported" | "contradicted" | "inconclusive";
         /** ErrorBody */
         ErrorBody: {
             /**
@@ -256,6 +391,11 @@ export interface components {
             producer: string;
             /** Project Id */
             project_id: string;
+            /**
+             * Run Id
+             * @description The run this event belongs to, if any.
+             */
+            run_id?: string | null;
             /** Schema Version */
             schema_version: number;
             /**
@@ -283,6 +423,188 @@ export interface components {
             has_more: boolean;
             /** Next Cursor */
             next_cursor: number | null;
+        };
+        /** ExecutionSpec */
+        ExecutionSpec: {
+            /**
+             * Build
+             * @description Commands run in the code directory before the program starts.
+             */
+            build?: string[][];
+            code?: components["schemas"]["CodeSpec"];
+            /**
+             * Command
+             * @description Argument vector, never a shell line. {name} is replaced by a parameter.
+             */
+            command: string[];
+            /**
+             * Env
+             * @description Environment set for the run.
+             */
+            env?: {
+                [key: string]: string;
+            };
+            /**
+             * Environment Probes
+             * @description Commands whose output is recorded as environment provenance.
+             */
+            environment_probes?: string[][];
+            /**
+             * Inherit Env
+             * @description Names passed through from the supervisor's environment.
+             */
+            inherit_env?: string[];
+            /** Inputs */
+            inputs?: components["schemas"]["InputSpec"][];
+            /**
+             * Workdir
+             * @description Inside the code root.
+             * @default .
+             */
+            workdir?: string;
+        };
+        /** ExperimentCreate */
+        ExperimentCreate: {
+            /**
+             * Hypothesis Id
+             * @description The hypothesis this experiment tests, if any (not a baseline).
+             */
+            hypothesis_id?: string | null;
+            /** Name */
+            name: string;
+            protocol: components["schemas"]["ExperimentProtocol"];
+        };
+        /** ExperimentList */
+        ExperimentList: {
+            /** Experiments */
+            experiments: components["schemas"]["ExperimentOut"][];
+        };
+        /** ExperimentOut */
+        ExperimentOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hypothesis Id */
+            hypothesis_id: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string;
+            protocol: components["schemas"]["ExperimentProtocol"];
+            /**
+             * Protocol Digest
+             * @description SHA-256 of the canonical protocol; runs record it.
+             */
+            protocol_digest: string;
+            /** Run Count */
+            run_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** ExperimentPatch */
+        ExperimentPatch: {
+            /**
+             * Hypothesis Id
+             * @description Explicit null unlinks the hypothesis; an absent field keeps it.
+             */
+            hypothesis_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** @description Replaceable only while the experiment has no runs. */
+            protocol?: components["schemas"]["ExperimentProtocol"] | null;
+            /**
+             * Version
+             * @description Current version of the experiment.
+             */
+            version: number;
+        };
+        /** ExperimentProtocol */
+        ExperimentProtocol: {
+            /**
+             * Controls
+             * @description Parameters that are identical in every run.
+             */
+            controls?: {
+                [key: string]: boolean | number | string;
+            };
+            execution: components["schemas"]["ExecutionSpec"];
+            /** Falsification */
+            falsification?: string[];
+            guardrails?: components["schemas"]["Guardrails"];
+            /**
+             * Independent Variables
+             * @description What varies between runs, with the values the experiment will use.
+             */
+            independent_variables?: {
+                [key: string]: (boolean | number | string)[];
+            };
+            limits: components["schemas"]["Limits"];
+            /** Metrics */
+            metrics?: components["schemas"]["MetricSpec"][];
+            observability?: components["schemas"]["ObservabilitySpec"];
+            /**
+             * Prediction
+             * @default
+             */
+            prediction?: string;
+            /** Question */
+            question: string;
+            /**
+             * Schema
+             * @constant
+             */
+            schema: "numericos.experiment.v1";
+        };
+        /**
+         * FailureClass
+         * @description Why a run did not end normally. The classes call for different reactions.
+         * @enum {string}
+         */
+        FailureClass: "code_error" | "resource_limit" | "numerical_instability" | "infrastructure" | "unknown";
+        /**
+         * GuardrailRule
+         * @description An explicit numeric limit on a metric. No threshold is ever assumed by NumericOS.
+         */
+        GuardrailRule: {
+            /** Above */
+            above?: number | null;
+            /**
+             * Action
+             * @default halt
+             * @enum {string}
+             */
+            action?: "halt" | "record";
+            /** Below */
+            below?: number | null;
+            /** Metric */
+            metric: string;
+            /**
+             * Patience
+             * @description Consecutive violating samples.
+             * @default 1
+             */
+            patience?: number;
+        };
+        /** Guardrails */
+        Guardrails: {
+            /**
+             * Non Finite
+             * @description What to do when a metric is NaN or infinite. It is always recorded.
+             * @default record
+             * @enum {string}
+             */
+            non_finite?: "halt" | "record";
+            /** Rules */
+            rules?: components["schemas"]["GuardrailRule"][];
         };
         /** HealthOut */
         HealthOut: {
@@ -314,6 +636,184 @@ export interface components {
             time_utc: string;
             /** Version */
             version: string;
+        };
+        /** HypothesisCreate */
+        HypothesisCreate: {
+            /** Assumptions */
+            assumptions?: string[];
+            /**
+             * Claim
+             * @description What is asserted, so that it can turn out wrong.
+             */
+            claim: string;
+            /**
+             * Falsification
+             * @description Outcomes that would contradict the claim.
+             */
+            falsification?: string[];
+            /**
+             * Prediction
+             * @description What should be observed.
+             * @default
+             */
+            prediction?: string;
+            /**
+             * Rationale
+             * @description Why it might hold.
+             * @default
+             */
+            rationale?: string;
+            /** Title */
+            title: string;
+        };
+        /** HypothesisList */
+        HypothesisList: {
+            /** Hypotheses */
+            hypotheses: components["schemas"]["HypothesisOut"][];
+        };
+        /** HypothesisOut */
+        HypothesisOut: {
+            /** Assumptions */
+            assumptions: string[];
+            /** Claim */
+            claim: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** @description What the evidence says so far. It changes only through recorded decisions. */
+            epistemic_status: components["schemas"]["EpistemicStatus"];
+            /** Falsification */
+            falsification: string[];
+            /** Id */
+            id: string;
+            /** Prediction */
+            prediction: string;
+            /** Project Id */
+            project_id: string;
+            /** Rationale */
+            rationale: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** HypothesisPatch */
+        HypothesisPatch: {
+            /** Assumptions */
+            assumptions?: string[] | null;
+            /** Claim */
+            claim?: string | null;
+            /** Falsification */
+            falsification?: string[] | null;
+            /** Prediction */
+            prediction?: string | null;
+            /** Rationale */
+            rationale?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Version
+             * @description Current version of the hypothesis.
+             */
+            version: number;
+        };
+        /**
+         * InputSpec
+         * @description A file the run reads; its checksum is recorded and, if given, enforced.
+         */
+        InputSpec: {
+            /**
+             * Base
+             * @description code: inside the executed code; project: under the project root.
+             * @default code
+             * @enum {string}
+             */
+            base?: "code" | "project";
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256?: string | null;
+        };
+        /**
+         * Limits
+         * @description Resource envelope of one run, enforced by the supervisor.
+         */
+        Limits: {
+            /**
+             * Grace Seconds
+             * @description Between SIGTERM and SIGKILL when a run is stopped.
+             * @default 10
+             */
+            grace_seconds?: number;
+            /**
+             * Max Output Mb
+             * @default 256
+             */
+            max_output_mb?: number;
+            /** Max Rss Mb */
+            max_rss_mb?: number | null;
+            /** Wall Seconds */
+            wall_seconds: number;
+        };
+        /**
+         * MetricSpec
+         * @description A quantity the experiment measures, with its unit and who measures it.
+         */
+        MetricSpec: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Name */
+            name: string;
+            /**
+             * Sampled By
+             * @description instrumentation: the program emits numericos.metric.v1 records; parser: extracted from its output by a parser of this contract; supervisor: measured by the supervisor (wall_time, cpu_time, max_rss).
+             * @enum {string}
+             */
+            sampled_by: "instrumentation" | "parser" | "supervisor";
+            /**
+             * Unit
+             * @default
+             */
+            unit?: string;
+        };
+        /** ObservabilitySpec */
+        ObservabilitySpec: {
+            /** Parsers */
+            parsers?: components["schemas"]["ParserSpec"][];
+            /**
+             * Resource Interval Seconds
+             * @default 1
+             */
+            resource_interval_seconds?: number;
+        };
+        /**
+         * ParserSpec
+         * @description Extracts metrics from the program's output lines (observability level L1).
+         *
+         *     ``pattern`` is a Python regular expression. Every named group except ``step`` is a metric
+         *     of that name; the optional group ``step`` is the sample's step.
+         */
+        ParserSpec: {
+            /** Name */
+            name: string;
+            /** Pattern */
+            pattern: string;
+            /**
+             * Stream
+             * @default stdout
+             * @enum {string}
+             */
+            stream?: "stdout" | "stderr" | "any";
         };
         /** ProjectCreate */
         ProjectCreate: {
@@ -392,6 +892,79 @@ export interface components {
              */
             version: number;
         };
+        /** RunCreate */
+        RunCreate: {
+            /**
+             * Label
+             * @default
+             */
+            label?: string;
+            /**
+             * Parameters
+             * @description One declared value for every independent variable of the experiment.
+             */
+            parameters?: {
+                [key: string]: boolean | number | string;
+            };
+            /** Seed */
+            seed?: number | null;
+        };
+        /** RunList */
+        RunList: {
+            /** Runs */
+            runs: components["schemas"]["RunOut"][];
+        };
+        /** RunOut */
+        RunOut: {
+            /**
+             * Argv
+             * @description The exact argument vector of the program.
+             */
+            argv: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Experiment Id */
+            experiment_id: string;
+            failure_class: components["schemas"]["FailureClass"] | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Parameters
+             * @description The complete assignment: controls and the chosen independent values.
+             */
+            parameters: {
+                [key: string]: boolean | number | string;
+            };
+            /** Project Id */
+            project_id: string;
+            /** Protocol Digest */
+            protocol_digest: string;
+            /** Seed */
+            seed: number | null;
+            /** @description Operational state. 'succeeded' is a normal process end, not a valid result. */
+            status: components["schemas"]["RunStatus"];
+            /** Status Reason */
+            status_reason: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * RunStatus
+         * @description Operational state of one execution. ``succeeded`` means the process ended normally;
+         *     it says nothing about the scientific validity of what it computed.
+         * @enum {string}
+         */
+        RunStatus: "queued" | "starting" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "lost";
         /**
          * WorkflowStatus
          * @enum {string}
@@ -515,6 +1088,8 @@ export interface operations {
                 limit?: number | null;
                 /** @description Ordering by seq. A stream is always asc. */
                 order?: "asc" | "desc";
+                /** @description Only events correlated with this run. JSON only. */
+                run_id?: string | null;
             };
             header?: {
                 /** @description Sent by EventSource clients when they reconnect to a stream. */
@@ -533,6 +1108,209 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EventPage"];
                     "text/event-stream": string;
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_experiment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_experiment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_run: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Makes the submission repeatable: the same key and request return the run created the first time; the same key with another request is a conflict. */
+                "idempotency-key"?: string | null;
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description The run an earlier identical request created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
                 };
             };
             /** @description Resource not found */
@@ -584,6 +1362,102 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_hypothesis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hypothesis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypothesisOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_hypothesis: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                hypothesis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HypothesisPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypothesisOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -846,6 +1720,229 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_experiments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_experiment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_hypotheses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypothesisList"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_hypothesis: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HypothesisCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypothesisOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
                 };
             };
             /** @description Resource not found */

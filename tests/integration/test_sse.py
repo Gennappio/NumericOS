@@ -173,6 +173,7 @@ def test_a_cursor_ahead_of_the_ledger_is_refused_not_silently_starved(
         ({"limit": 5}, {}, ["query", "limit"]),
         ({"before": 9}, {}, ["query", "before"]),
         ({"order": "desc"}, {}, ["query", "order"]),
+        ({"run_id": "run_01J9W2Z4K7QX8YB3N5M6T0R1S2"}, {}, ["query", "run_id"]),
         ({}, {"Last-Event-ID": "not-a-seq"}, ["header", "last-event-id"]),
     ],
 )

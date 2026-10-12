@@ -44,6 +44,20 @@ class InvalidRequestError(DomainError):
     status_code = 422
 
 
+class ProtocolFrozenError(DomainError):
+    """The protocol of an experiment that already has runs cannot change."""
+
+    code = "PROTOCOL_FROZEN"
+    status_code = 409
+
+
+class IdempotencyConflictError(DomainError):
+    """An idempotency key was reused with a different request."""
+
+    code = "IDEMPOTENCY_CONFLICT"
+    status_code = 409
+
+
 class CursorAheadError(DomainError):
     """A stream cursor beyond the ledger head: the caller's cursor is from another ledger."""
 

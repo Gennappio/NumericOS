@@ -30,10 +30,12 @@ def build_event(
     payload: dict[str, Any],
     context: EventContext,
     severity: Severity = Severity.INFO,
+    run_id: str | None = None,
 ) -> Event:
     return Event(
         event_id=new_id("evt"),
         project_id=project_id,
+        run_id=run_id,
         type=event_type.value,
         subject_id=subject_id,
         actor=context.actor,

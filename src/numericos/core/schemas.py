@@ -4,11 +4,25 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import PurePath
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
-from numericos.core.enums import CardType, WorkflowStatus
+from numericos.core.enums import (
+    CardType,
+    EpistemicStatus,
+    FailureClass,
+    RunStatus,
+    WorkflowStatus,
+)
+from numericos.core.experiment import ExperimentProtocol, ParameterValue
 
 
 class StrictModel(BaseModel):
@@ -138,12 +152,148 @@ class BoardOut(BaseModel):
     cards: list[CardOut]
 
 
+Statement = Annotated[str, StringConstraints(min_length=1, max_length=2000)]
+
+
+class HypothesisCreate(StrictModel):
+    title: str = Field(min_length=1, max_length=300)
+    claim: str = Field(
+        min_length=1,
+        max_length=5000,
+        description="What is asserted, so that it can turn out wrong.",
+    )
+    rationale: str = Field(default="", max_length=5000, description="Why it might hold.")
+    prediction: str = Field(default="", max_length=5000, description="What should be observed.")
+    falsification: list[Statement] = Field(
+        default_factory=list, max_length=50, description="Outcomes that would contradict the claim."
+    )
+    assumptions: list[Statement] = Field(default_factory=list, max_length=50)
+
+
+class HypothesisPatch(StrictModel):
+    version: int = Field(ge=1, description="Current version of the hypothesis.")
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    claim: str | None = Field(default=None, min_length=1, max_length=5000)
+    rationale: str | None = Field(default=None, max_length=5000)
+    prediction: str | None = Field(default=None, max_length=5000)
+    falsification: list[Statement] | None = Field(default=None, max_length=50)
+    assumptions: list[Statement] | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def _no_explicit_nulls(self) -> Self:
+        _reject_explicit_nulls(
+            self, ("title", "claim", "rationale", "prediction", "falsification", "assumptions")
+        )
+        return self
+
+
+class HypothesisOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    title: str
+    claim: str
+    rationale: str
+    prediction: str
+    falsification: list[str]
+    assumptions: list[str]
+    epistemic_status: EpistemicStatus = Field(
+        description="What the evidence says so far. It changes only through recorded decisions."
+    )
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class HypothesisList(BaseModel):
+    hypotheses: list[HypothesisOut]
+
+
+class ExperimentCreate(StrictModel):
+    name: str = Field(min_length=1, max_length=300)
+    hypothesis_id: str | None = Field(
+        default=None, description="The hypothesis this experiment tests, if any (not a baseline)."
+    )
+    protocol: ExperimentProtocol
+
+
+class ExperimentPatch(StrictModel):
+    version: int = Field(ge=1, description="Current version of the experiment.")
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    hypothesis_id: str | None = Field(
+        default=None, description="Explicit null unlinks the hypothesis; an absent field keeps it."
+    )
+    protocol: ExperimentProtocol | None = Field(
+        default=None, description="Replaceable only while the experiment has no runs."
+    )
+
+    @model_validator(mode="after")
+    def _no_explicit_nulls(self) -> Self:
+        _reject_explicit_nulls(self, ("name", "protocol"))
+        return self
+
+
+class ExperimentOut(BaseModel):
+    id: str
+    project_id: str
+    hypothesis_id: str | None
+    name: str
+    protocol: ExperimentProtocol
+    protocol_digest: str = Field(description="SHA-256 of the canonical protocol; runs record it.")
+    run_count: int
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExperimentList(BaseModel):
+    experiments: list[ExperimentOut]
+
+
+class RunCreate(StrictModel):
+    parameters: dict[str, ParameterValue] = Field(
+        default_factory=dict,
+        description="One declared value for every independent variable of the experiment.",
+    )
+    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    label: str = Field(default="", max_length=200)
+
+
+class RunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    experiment_id: str
+    label: str
+    status: RunStatus = Field(
+        description="Operational state. 'succeeded' is a normal process end, not a valid result."
+    )
+    status_reason: str | None
+    failure_class: FailureClass | None
+    parameters: dict[str, ParameterValue] = Field(
+        description="The complete assignment: controls and the chosen independent values."
+    )
+    seed: int | None
+    argv: list[str] = Field(description="The exact argument vector of the program.")
+    protocol_digest: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class RunList(BaseModel):
+    runs: list[RunOut]
+
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     event_id: str
     seq: int = Field(description="Monotonic ledger position; the replay cursor.")
     project_id: str
+    run_id: str | None = Field(default=None, description="The run this event belongs to, if any.")
     type: str
     subject_id: str
     actor: str

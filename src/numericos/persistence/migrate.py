@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
+from contextlib import closing
 from pathlib import Path
 from typing import cast
 
@@ -60,7 +61,29 @@ def _run(engine: Engine, action: Callable[[Config], None]) -> None:
             raw.execute("PRAGMA foreign_keys=ON")
 
 
+def backup_before_upgrade(engine: Engine) -> Path | None:
+    """Copy a database that is about to be migrated; return the copy, or None if not needed.
+
+    A fresh database and one that is already at the head need no copy. An existing copy for
+    the same target revision is kept: it is the state before the first attempt.
+    """
+    database = engine.url.database
+    if database is None or not Path(database).exists():
+        return None
+    current, head = current_revision(engine), head_revision()
+    if current is None or current == head:
+        return None
+    target = Path(f"{database}.before-{head}.bak")
+    if not target.exists():
+        with closing(sqlite3.connect(database)) as source, closing(sqlite3.connect(target)) as copy:
+            source.backup(copy)
+    return target
+
+
 def upgrade(engine: Engine, revision: str = "head") -> None:
+    """Migrate to ``revision``. Before moving existing data to the head, back the file up."""
+    if revision == "head":
+        backup_before_upgrade(engine)
     _run(engine, lambda config: command.upgrade(config, revision))
 
 

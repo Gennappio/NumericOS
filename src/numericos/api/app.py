@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,9 +13,10 @@ from fastapi.routing import APIRoute
 from numericos import __version__
 from numericos.api.errors import ERROR_RESPONSES, install_error_handlers
 from numericos.api.middleware import CorrelationIdMiddleware
-from numericos.api.routes import cards, events, health, projects
+from numericos.api.routes import cards, events, health, projects, research
 from numericos.config import Settings
 from numericos.events.notifier import EventNotifier
+from numericos.persistence import migrate
 from numericos.persistence.engine import make_engine, make_session_factory
 
 
@@ -55,11 +57,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.add_middleware(CorrelationIdMiddleware)  # outermost: every response carries the ID
     install_error_handlers(app)
-    for router in (health.router, projects.router, cards.router, events.router):
+    for router in (
+        health.router,
+        projects.router,
+        cards.router,
+        research.router,
+        events.router,
+    ):
         app.include_router(router, prefix="/v1", responses=ERROR_RESPONSES)
     return app
 
 
 def create_app_from_env() -> FastAPI:
-    """Factory for ``uvicorn --factory`` (used by ``numericos serve --reload``)."""
-    return create_app(Settings())
+    """Factory for ``uvicorn --factory`` (used by ``numericos serve --reload``).
+
+    It runs again after every reload, so pending migrations are applied here too: code that was
+    just pulled must never serve requests against the schema of the previous revision.
+    """
+    settings = Settings()
+    if os.environ.get("NUMERICOS_MIGRATE_ON_START", "1") != "0":
+        engine = make_engine(settings.db_path)
+        migrate.upgrade(engine)
+        engine.dispose()
+    return create_app(settings)

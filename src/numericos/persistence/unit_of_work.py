@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from numericos.events.notifier import EventNotifier
 from numericos.persistence.models import Event
-from numericos.persistence.repositories import CardRepository, EventRepository, ProjectRepository
+from numericos.persistence.repositories import (
+    CardRepository,
+    EventRepository,
+    ExperimentRepository,
+    HypothesisRepository,
+    ProjectRepository,
+    RunRepository,
+)
 
 
 class UnitOfWork:
@@ -26,6 +33,9 @@ class UnitOfWork:
         self.projects = ProjectRepository(self.session)
         self.cards = CardRepository(self.session)
         self.events = EventRepository(self.session)
+        self.hypotheses = HypothesisRepository(self.session)
+        self.experiments = ExperimentRepository(self.session)
+        self.runs = RunRepository(self.session)
         return self
 
     def __exit__(

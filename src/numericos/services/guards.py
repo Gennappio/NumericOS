@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from numericos.core.errors import NotFoundError, StaleRevisionError
-from numericos.persistence.models import BoardCard, Project
+from numericos.persistence.models import BoardCard, Experiment, Hypothesis, Project, Run
 from numericos.persistence.unit_of_work import UnitOfWork
 
 
@@ -23,6 +23,33 @@ def require_card(uow: UnitOfWork, card_id: str) -> BoardCard:
             f"card {card_id} not found", details={"resource": "card", "id": card_id}
         )
     return card
+
+
+def require_hypothesis(uow: UnitOfWork, hypothesis_id: str) -> Hypothesis:
+    hypothesis = uow.hypotheses.get(hypothesis_id)
+    if hypothesis is None:
+        raise NotFoundError(
+            f"hypothesis {hypothesis_id} not found",
+            details={"resource": "hypothesis", "id": hypothesis_id},
+        )
+    return hypothesis
+
+
+def require_experiment(uow: UnitOfWork, experiment_id: str) -> Experiment:
+    experiment = uow.experiments.get(experiment_id)
+    if experiment is None:
+        raise NotFoundError(
+            f"experiment {experiment_id} not found",
+            details={"resource": "experiment", "id": experiment_id},
+        )
+    return experiment
+
+
+def require_run(uow: UnitOfWork, run_id: str) -> Run:
+    run = uow.runs.get(run_id)
+    if run is None:
+        raise NotFoundError(f"run {run_id} not found", details={"resource": "run", "id": run_id})
+    return run
 
 
 def check_version(resource: str, resource_id: str, *, current: int, provided: int) -> None:

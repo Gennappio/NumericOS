@@ -15,6 +15,7 @@ dependencies = [
   "sqlalchemy>=2.0",
   "alembic>=1.13",
   "sse-starlette>=2.1",
+  "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -25,6 +26,7 @@ dev = [
   "pytest>=8.3",
   "ruff>=0.6",
   "mypy>=1.11",
+  "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]

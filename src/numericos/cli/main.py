@@ -17,6 +17,7 @@ from typing import Annotated, Any
 
 import typer
 import uvicorn
+import yaml
 from sqlalchemy.engine import Engine
 
 from numericos import __version__
@@ -42,9 +43,15 @@ db = typer.Typer(help="Local database administration (server side).", no_args_is
 project = typer.Typer(help="Research projects.", no_args_is_help=True)
 card = typer.Typer(help="Typed cards on a project's scientific board.", no_args_is_help=True)
 events = typer.Typer(help="A project's ordered event ledger.", no_args_is_help=True)
+hypothesis = typer.Typer(help="Falsifiable claims of a project.", no_args_is_help=True)
+experiment = typer.Typer(help="Experiments: protocols that runs execute.", no_args_is_help=True)
+run = typer.Typer(help="Runs: concrete executions of an experiment.", no_args_is_help=True)
 app.add_typer(db, name="db")
 app.add_typer(project, name="project")
 app.add_typer(card, name="card")
+app.add_typer(hypothesis, name="hypothesis")
+app.add_typer(experiment, name="experiment")
+app.add_typer(run, name="run")
 app.add_typer(events, name="events")
 
 Record = dict[str, Any]
@@ -173,6 +180,90 @@ def _board_text(board: Record) -> str:
     return "\n".join(lines)
 
 
+def _hypothesis_line(record: Record) -> str:
+    return f"{record['id']}  v{record['version']}  [{record['epistemic_status']}] {record['title']}"
+
+
+def _hypothesis_detail(record: Record) -> str:
+    lines = [
+        _hypothesis_line(record),
+        f"  claim:      {record['claim']}",
+        f"  prediction: {record['prediction'] or '-'}",
+    ]
+    lines.extend(f"  falsified by: {item}" for item in record["falsification"])
+    return "\n".join(lines)
+
+
+def _experiment_line(record: Record) -> str:
+    return (
+        f"{record['id']}  v{record['version']}  {record['name']}  "
+        f"({record['run_count']} runs, protocol {record['protocol_digest'][:12]})"
+    )
+
+
+def _experiment_detail(record: Record) -> str:
+    protocol = record["protocol"]
+    variables = ", ".join(
+        f"{name} in {values}" for name, values in protocol["independent_variables"].items()
+    )
+    return "\n".join(
+        [
+            _experiment_line(record),
+            f"  question:   {protocol['question']}",
+            f"  hypothesis: {record['hypothesis_id'] or '-'}",
+            f"  varies:     {variables or '-'}",
+            f"  controls:   {protocol['controls'] or '-'}",
+            f"  command:    {' '.join(protocol['execution']['command'])}",
+            f"  limits:     {protocol['limits']}",
+        ]
+    )
+
+
+def _run_line(record: Record) -> str:
+    label = f"  {record['label']}" if record["label"] else ""
+    return f"{record['id']}  {record['status']:<10}{label}  {record['parameters']}"
+
+
+def _run_detail(record: Record) -> str:
+    lines = [
+        _run_line(record),
+        f"  experiment: {record['experiment_id']} (protocol {record['protocol_digest'][:12]})",
+        f"  argv:       {record['argv']}",
+    ]
+    if record["seed"] is not None:
+        lines.append(f"  seed:       {record['seed']}")
+    if record["status_reason"]:
+        lines.append(f"  reason:     {record['status_reason']}")
+    return "\n".join(lines)
+
+
+def _load_mapping(path: Path) -> Record:
+    """A YAML (or JSON) document that must be a mapping."""
+    try:
+        document = yaml.safe_load(path.read_text())
+    except OSError as exc:
+        raise typer.BadParameter(f"cannot read {path}: {exc.strerror}") from exc
+    except yaml.YAMLError as exc:
+        raise typer.BadParameter(f"{path} is not valid YAML: {exc}") from exc
+    if not isinstance(document, dict):
+        raise typer.BadParameter(f"{path} must contain a mapping")
+    return document
+
+
+def _parse_parameters(assignments: list[str]) -> Record:
+    """``name=value`` pairs; the value is read as a YAML scalar (0.01, 32, true, text)."""
+    parameters: Record = {}
+    for assignment in assignments:
+        name, separator, raw = assignment.partition("=")
+        if not separator or not name:
+            raise typer.BadParameter(f"{assignment!r} is not name=value")
+        value = yaml.safe_load(raw)
+        if not isinstance(value, bool | int | float | str):
+            raise typer.BadParameter(f"{assignment!r}: the value must be a number, boolean or text")
+        parameters[name] = value
+    return parameters
+
+
 def _event_line(record: Record) -> str:
     return (
         f"{record['seq']:>6}  {record['timestamp_utc']}  {record['type']:<16}  "
@@ -204,7 +295,7 @@ def serve(
         bool,
         typer.Option(
             "--reload",
-            help="Restart on source changes (development). Migrations run once, at startup.",
+            help="Restart on source changes (development), applying new migrations each time.",
         ),
     ] = False,
 ) -> None:
@@ -234,6 +325,7 @@ def serve(
                 "NUMERICOS_HOST": settings.host,
                 "NUMERICOS_PORT": str(settings.port),
                 "NUMERICOS_DATA_DIR": str(settings.data_dir),
+                "NUMERICOS_MIGRATE_ON_START": "1" if migrate else "0",
             }
         )
         uvicorn.run(
@@ -487,6 +579,168 @@ def card_update(
     path = f"/v1/cards/{card_id}"
     data = _api(json_, api_url, lambda client: _patch(client, path, version, fields))
     _emit(data, json_, _card_detail)
+
+
+@hypothesis.command("add")
+def hypothesis_add(
+    project_id: ProjectOption,
+    title: Annotated[str, typer.Option("--title", help="Short name of the hypothesis.")],
+    claim: Annotated[str, typer.Option("--claim", help="What is asserted.")],
+    rationale: Annotated[str, typer.Option("--rationale")] = "",
+    prediction: Annotated[str, typer.Option("--prediction")] = "",
+    falsification: Annotated[
+        list[str] | None,
+        typer.Option("--falsification", help="An outcome that would contradict it. Repeatable."),
+    ] = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """State a falsifiable hypothesis. It starts as 'proposed'."""
+    body = {
+        "title": title,
+        "claim": claim,
+        "rationale": rationale,
+        "prediction": prediction,
+        "falsification": falsification or [],
+    }
+    data = _api(
+        json_, api_url, lambda client: client.post(f"/v1/projects/{project_id}/hypotheses", body)
+    )
+    _emit(data, json_, _hypothesis_detail)
+
+
+@hypothesis.command("list")
+def hypothesis_list(
+    project_id: ProjectOption, json_: JsonFlag = False, api_url: ApiUrlOption = None
+) -> None:
+    """List a project's hypotheses."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/projects/{project_id}/hypotheses"))
+    _emit(
+        data,
+        json_,
+        lambda d: "\n".join(_hypothesis_line(item) for item in d["hypotheses"]) or "no hypotheses",
+    )
+
+
+@hypothesis.command("show")
+def hypothesis_show(
+    hypothesis_id: Annotated[str, typer.Argument(metavar="HYPOTHESIS_ID")],
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Show one hypothesis."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/hypotheses/{hypothesis_id}"))
+    _emit(data, json_, _hypothesis_detail)
+
+
+@experiment.command("add")
+def experiment_add(
+    file: Annotated[
+        Path, typer.Argument(metavar="FILE", help="Experiment contract (YAML or JSON).")
+    ],
+    project_id: ProjectOption,
+    name: Annotated[
+        str | None, typer.Option("--name", help="Default: 'name' in the file, else its stem.")
+    ] = None,
+    hypothesis_id: Annotated[
+        str | None, typer.Option("--hypothesis", help="The hypothesis this experiment tests.")
+    ] = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Register an experiment from a contract file.
+
+    The file is a numericos.experiment.v1 protocol; it may also carry 'name' and 'hypothesis_id'.
+    """
+    protocol = _load_mapping(file)
+    body = {
+        "name": name or protocol.pop("name", None) or file.stem,
+        "hypothesis_id": hypothesis_id or protocol.pop("hypothesis_id", None),
+        "protocol": protocol,
+    }
+    protocol.pop("name", None)
+    protocol.pop("hypothesis_id", None)
+    data = _api(
+        json_, api_url, lambda client: client.post(f"/v1/projects/{project_id}/experiments", body)
+    )
+    _emit(data, json_, _experiment_detail)
+
+
+@experiment.command("list")
+def experiment_list(
+    project_id: ProjectOption, json_: JsonFlag = False, api_url: ApiUrlOption = None
+) -> None:
+    """List a project's experiments."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/projects/{project_id}/experiments"))
+    _emit(
+        data,
+        json_,
+        lambda d: (
+            "\n".join(_experiment_line(item) for item in d["experiments"]) or "no experiments"
+        ),
+    )
+
+
+@experiment.command("show")
+def experiment_show(
+    experiment_id: Annotated[str, typer.Argument(metavar="EXPERIMENT_ID")],
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Show one experiment and its protocol."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/experiments/{experiment_id}"))
+    _emit(data, json_, _experiment_detail)
+
+
+@run.command("submit")
+def run_submit(
+    experiment_id: Annotated[str, typer.Argument(metavar="EXPERIMENT_ID")],
+    param: Annotated[
+        list[str] | None,
+        typer.Option("--param", "-P", help="name=value for an independent variable. Repeatable."),
+    ] = None,
+    seed: Annotated[int | None, typer.Option("--seed", min=0)] = None,
+    label: Annotated[str, typer.Option("--label", help="Free text, e.g. 'baseline'.")] = "",
+    idempotency_key: Annotated[
+        str | None,
+        typer.Option("--idempotency-key", help="Repeating the command returns the same run."),
+    ] = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Queue one run of an experiment and return at once; a supervisor executes it."""
+    body = {"parameters": _parse_parameters(param or []), "seed": seed, "label": label}
+    headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+    data = _api(
+        json_,
+        api_url,
+        lambda client: client.post(f"/v1/experiments/{experiment_id}/runs", body, headers=headers),
+    )
+    _emit(data, json_, _run_detail)
+
+
+@run.command("list")
+def run_list(
+    experiment_id: Annotated[
+        str, typer.Option("--experiment", "-e", help="Experiment whose runs are listed.")
+    ],
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """List the runs of an experiment."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/experiments/{experiment_id}/runs"))
+    _emit(data, json_, lambda d: "\n".join(_run_line(item) for item in d["runs"]) or "no runs")
+
+
+@run.command("show")
+def run_show(
+    run_id: Annotated[str, typer.Argument(metavar="RUN_ID")],
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Show one run: its status, parameters and exact argument vector."""
+    data = _api(json_, api_url, lambda client: client.get(f"/v1/runs/{run_id}"))
+    _emit(data, json_, _run_detail)
 
 
 @events.command("list")
