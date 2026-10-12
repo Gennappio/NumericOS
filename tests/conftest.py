@@ -22,6 +22,7 @@ from numericos.events.notifier import EventNotifier
 from numericos.persistence import migrate
 from numericos.persistence.engine import make_engine, make_session_factory
 from numericos.persistence.unit_of_work import UnitOfWork
+from tests.gitrepo import Repo, make_repo
 
 
 @pytest.fixture
@@ -60,6 +61,12 @@ def uow(
 def client(settings: Settings, engine: Engine) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Repo:
+    """A Git repository with one commit, standing in for a research project's code."""
+    return make_repo(tmp_path / "repo")
 
 
 def free_port() -> int:

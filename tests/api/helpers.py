@@ -20,6 +20,18 @@ def create_project(client: TestClient, **fields: Any) -> Json:
     return body
 
 
+def trusted_project(client: TestClient, root: Any, **fields: Any) -> Json:
+    """A project whose directory ``root`` has been trusted for execution."""
+    project = create_project(client, root_path=str(root), **fields)
+    response = client.post(
+        f"/v1/projects/{project['id']}:trust-execution",
+        json={"version": project["version"], "root_path": project["root_path"]},
+    )
+    assert response.status_code == 200, response.text
+    trusted: Json = response.json()
+    return trusted
+
+
 def add_card(
     client: TestClient,
     project_id: str,

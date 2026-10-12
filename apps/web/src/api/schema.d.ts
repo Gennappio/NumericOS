@@ -216,6 +216,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}:revoke-execution-trust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop accepting new runs for the project */
+        post: operations["revoke_execution_trust"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}:trust-execution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Allow commands to be executed in the project directory */
+        post: operations["trust_execution"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -227,6 +261,40 @@ export interface paths {
         get: operations["get_run"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export the run with its provenance and protocol, to repeat it elsewhere */
+        get: operations["export_run_record"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/runs/{run_id}:rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a run with the same commit, parameters and seed */
+        post: operations["rerun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -325,6 +393,69 @@ export interface components {
          */
         CardType: "task" | "hypothesis" | "experiment" | "issue" | "decision";
         /**
+         * CodeProvenance
+         * @description The exact code of a run.
+         *
+         *     ``ref`` mode: ``sha`` is fixed when the run is created and the run executes an export of
+         *     that commit, so it is clean by construction. ``working_tree`` mode: the state is captured
+         *     when the run starts; ``sha`` is then the commit under the working tree and ``diff_sha256``
+         *     identifies the uncommitted changes that were executed with it.
+         */
+        CodeProvenance: {
+            /**
+             * Captured At
+             * @description When the executed state was fixed.
+             */
+            captured_at?: string | null;
+            commit?: components["schemas"]["CommitInfo"] | null;
+            /** Diff Bytes */
+            diff_bytes?: number | null;
+            /**
+             * Diff Sha256
+             * @description SHA-256 of the executed uncommitted changes (a binary patch).
+             */
+            diff_sha256?: string | null;
+            /**
+             * Dirty
+             * @description Executed with uncommitted changes. Null until the run starts.
+             */
+            dirty?: boolean | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "ref" | "working_tree";
+            /** Remote Url */
+            remote_url?: string | null;
+            /** Repository Root */
+            repository_root: string;
+            /**
+             * Requested Ref
+             * @description As asked for, e.g. 'HEAD'.
+             */
+            requested_ref?: string | null;
+            /**
+             * Sha
+             * @description Full commit SHA of the executed code.
+             */
+            sha?: string | null;
+            /**
+             * Submitted With Dirty Working Tree
+             * @description The project directory had uncommitted changes when the run was created. In ref mode they are not part of the run.
+             */
+            submitted_with_dirty_working_tree: boolean;
+            /**
+             * Untracked
+             * @description Untracked files that were part of the executed tree.
+             */
+            untracked?: components["schemas"]["FileDigest"][];
+            /**
+             * Untracked Archived
+             * @description Whether the untracked files were small enough to be stored.
+             */
+            untracked_archived?: boolean | null;
+        };
+        /**
          * CodeSpec
          * @description Which code a run executes.
          *
@@ -345,6 +476,32 @@ export interface components {
              * @default HEAD
              */
             ref?: string;
+        };
+        /** CommitInfo */
+        CommitInfo: {
+            /** Author */
+            author: string;
+            /**
+             * Authored At
+             * Format: date-time
+             */
+            authored_at: string;
+            /** Subject */
+            subject: string;
+        };
+        /** EnvironmentRecord */
+        EnvironmentRecord: {
+            executable: components["schemas"]["ExecutableRecord"];
+            host: components["schemas"]["HostFacts"];
+            /** Probes */
+            probes?: components["schemas"]["ProbeRecord"][];
+            /**
+             * Variables
+             * @description Environment of the run. Values of names that look like secrets are redacted.
+             */
+            variables?: {
+                [key: string]: string;
+            };
         };
         /**
          * EpistemicStatus
@@ -424,6 +581,23 @@ export interface components {
             /** Next Cursor */
             next_cursor: number | null;
         };
+        /**
+         * ExecutableRecord
+         * @description The program file that ``argv[0]`` resolved to.
+         */
+        ExecutableRecord: {
+            /** Argv0 */
+            argv0: string;
+            /**
+             * Path
+             * @description Null when it could not be resolved.
+             */
+            path: string | null;
+            /** Sha256 */
+            sha256?: string | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
+        };
         /** ExecutionSpec */
         ExecutionSpec: {
             /**
@@ -462,6 +636,24 @@ export interface components {
              * @default .
              */
             workdir?: string;
+        };
+        /**
+         * ExecutionTrust
+         * @description Allow NumericOS to execute commands in the project directory.
+         *
+         *     The caller repeats the exact path: trust is given to a directory, not to a project name.
+         */
+        ExecutionTrust: {
+            /**
+             * Root Path
+             * @description Must equal the project's root_path.
+             */
+            root_path: string;
+            /**
+             * Version
+             * @description Current version of the project.
+             */
+            version: number;
         };
         /** ExperimentCreate */
         ExperimentCreate: {
@@ -570,6 +762,15 @@ export interface components {
          * @enum {string}
          */
         FailureClass: "code_error" | "resource_limit" | "numerical_instability" | "infrastructure" | "unknown";
+        /** FileDigest */
+        FileDigest: {
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /**
          * GuardrailRule
          * @description An explicit numeric limit on a metric. No threshold is ever assumed by NumericOS.
@@ -636,6 +837,30 @@ export interface components {
             time_utc: string;
             /** Version */
             version: string;
+        };
+        /** HostFacts */
+        HostFacts: {
+            /** Cpu Count Logical */
+            cpu_count_logical: number | null;
+            /** Cpu Count Physical */
+            cpu_count_physical: number | null;
+            /** Hostname */
+            hostname: string;
+            /** Machine */
+            machine: string;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /** Numericos */
+            numericos: string;
+            /** Platform */
+            platform: string;
+            /** Processor */
+            processor: string;
+            /**
+             * Python
+             * @description The interpreter of the NumericOS supervisor, not of the run.
+             */
+            python: string;
         };
         /** HypothesisCreate */
         HypothesisCreate: {
@@ -723,6 +948,20 @@ export interface components {
              * @description Current version of the hypothesis.
              */
             version: number;
+        };
+        /** InputRecord */
+        InputRecord: {
+            /**
+             * Base
+             * @enum {string}
+             */
+            base: "code" | "project";
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
         };
         /**
          * InputSpec
@@ -815,6 +1054,27 @@ export interface components {
              */
             stream?: "stdout" | "stderr" | "any";
         };
+        /**
+         * ProbeRecord
+         * @description Output of one environment probe command, kept as an artifact.
+         */
+        ProbeRecord: {
+            /** Argv */
+            argv: string[];
+            /** Error */
+            error?: string | null;
+            /**
+             * Exit Code
+             * @description Null when the command could not be run.
+             */
+            exit_code: number | null;
+            /** Output File */
+            output_file?: string | null;
+            /** Output Sha256 */
+            output_sha256?: string | null;
+            /** Seconds */
+            seconds: number;
+        };
         /** ProjectCreate */
         ProjectCreate: {
             /**
@@ -855,6 +1115,11 @@ export interface components {
             created_at: string;
             /** Description */
             description: string;
+            /**
+             * Execution Trusted At
+             * @description When executing commands in root_path was explicitly allowed; null if not.
+             */
+            execution_trusted_at?: string | null;
             /** Id */
             id: string;
             /** Is Demo */
@@ -892,8 +1157,21 @@ export interface components {
              */
             version: number;
         };
+        /** ProjectVersion */
+        ProjectVersion: {
+            /**
+             * Version
+             * @description Current version of the project.
+             */
+            version: number;
+        };
         /** RunCreate */
         RunCreate: {
+            /**
+             * Code Ref
+             * @description The commit this run executes (branch, tag or SHA), instead of the protocol's default ref. This is how a candidate and a baseline differ under one protocol.
+             */
+            code_ref?: string | null;
             /**
              * Label
              * @default
@@ -921,16 +1199,25 @@ export interface components {
              * @description The exact argument vector of the program.
              */
             argv: string[];
+            /** @description The exact code this run executes. */
+            code: components["schemas"]["CodeProvenance"] | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** @description Host, program file, probes and variables. Null until the run starts. */
+            environment: components["schemas"]["EnvironmentRecord"] | null;
             /** Experiment Id */
             experiment_id: string;
             failure_class: components["schemas"]["FailureClass"] | null;
             /** Id */
             id: string;
+            /**
+             * Inputs
+             * @description Checksums of the declared inputs. Null until the run starts.
+             */
+            inputs: components["schemas"]["InputRecord"][] | null;
             /** Label */
             label: string;
             /**
@@ -944,6 +1231,11 @@ export interface components {
             project_id: string;
             /** Protocol Digest */
             protocol_digest: string;
+            /**
+             * Reproduces Run Id
+             * @description The run this one repeats with the same code, parameters and seed.
+             */
+            reproduces_run_id: string | null;
             /** Seed */
             seed: number | null;
             /** @description Operational state. 'succeeded' is a normal process end, not a valid result. */
@@ -957,6 +1249,25 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /**
+         * RunRecord
+         * @description Everything needed to repeat a run: the run, with its provenance, and its protocol.
+         */
+        RunRecord: {
+            experiment: components["schemas"]["ExperimentOut"];
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            run: components["schemas"]["RunOut"];
+            /**
+             * Schema
+             * @default numericos.run-record.v1
+             * @constant
+             */
+            schema?: "numericos.run-record.v1";
         };
         /**
          * RunStatus
@@ -1925,6 +2236,118 @@ export interface operations {
             };
         };
     };
+    revoke_execution_trust: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectVersion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    trust_execution: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecutionTrust"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_run: {
         parameters: {
             query?: never;
@@ -1947,6 +2370,109 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    export_run_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRecord"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    rerun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Makes the submission repeatable: the same key and request return the run created the first time; the same key with another request is a conflict. */
+                "idempotency-key"?: string | null;
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run an earlier identical request created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Stale version or project mismatch */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

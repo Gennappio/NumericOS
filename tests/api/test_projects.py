@@ -15,6 +15,7 @@ PROJECT_FIELDS = {
     "description",
     "root_path",
     "is_demo",
+    "execution_trusted_at",
     "version",
     "created_at",
     "updated_at",

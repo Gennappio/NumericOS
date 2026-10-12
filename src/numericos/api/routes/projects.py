@@ -8,10 +8,12 @@ from numericos.core.schemas import (
     BoardOut,
     CardCreate,
     CardOut,
+    ExecutionTrust,
     ProjectCreate,
     ProjectList,
     ProjectOut,
     ProjectPatch,
+    ProjectVersion,
 )
 from numericos.services import cards, projects
 
@@ -40,6 +42,28 @@ def get_project(project_id: str, uow: Uow) -> ProjectOut:
 )
 def update_project(project_id: str, body: ProjectPatch, uow: Uow, context: Context) -> ProjectOut:
     return projects.update_project(uow, project_id, body, context)
+
+
+@router.post(
+    "/projects/{project_id}:trust-execution",
+    summary="Allow commands to be executed in the project directory",
+    responses=CONFLICT_RESPONSES,
+)
+def trust_execution(
+    project_id: str, body: ExecutionTrust, uow: Uow, context: Context
+) -> ProjectOut:
+    return projects.trust_execution(uow, project_id, body, context)
+
+
+@router.post(
+    "/projects/{project_id}:revoke-execution-trust",
+    summary="Stop accepting new runs for the project",
+    responses=CONFLICT_RESPONSES,
+)
+def revoke_execution_trust(
+    project_id: str, body: ProjectVersion, uow: Uow, context: Context
+) -> ProjectOut:
+    return projects.revoke_execution_trust(uow, project_id, body, context)
 
 
 @router.get(

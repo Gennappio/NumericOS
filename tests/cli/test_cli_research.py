@@ -13,6 +13,7 @@ from typer.testing import CliRunner, Result
 from numericos.cli.main import EXIT_API_ERROR, app
 from tests import factories
 from tests.conftest import LiveServer
+from tests.gitrepo import Repo
 
 runner = CliRunner()
 
@@ -28,6 +29,11 @@ def run_json(server: LiveServer, *args: str) -> Any:
     return json.loads(result.stdout)
 
 
+def trusted_project(server: LiveServer, repo: Repo) -> Any:
+    project = run_json(server, "project", "add", "Heat 2D", "--root-path", str(repo.root))
+    return run_json(server, "project", "trust", project["id"], "--yes")
+
+
 def contract_file(tmp_path: Path, **extra: Any) -> Path:
     path = tmp_path / "stability.yaml"
     path.write_text(yaml.safe_dump({**factories.protocol(), **extra}, sort_keys=False))
@@ -35,9 +41,9 @@ def contract_file(tmp_path: Path, **extra: Any) -> Path:
 
 
 def test_an_experiment_is_registered_from_a_contract_file_and_a_run_is_queued(
-    live_server: LiveServer, tmp_path: Path
+    live_server: LiveServer, tmp_path: Path, repo: Repo
 ) -> None:
-    project = run_json(live_server, "project", "add", "Heat 2D")
+    project = trusted_project(live_server, repo)
     hypothesis = run_json(
         live_server,
         "hypothesis",
@@ -79,9 +85,9 @@ def test_an_experiment_is_registered_from_a_contract_file_and_a_run_is_queued(
 
 
 def test_the_file_name_names_an_experiment_that_has_no_name(
-    live_server: LiveServer, tmp_path: Path
+    live_server: LiveServer, tmp_path: Path, repo: Repo
 ) -> None:
-    project = run_json(live_server, "project", "add", "Heat 2D")
+    project = trusted_project(live_server, repo)
 
     experiment = run_json(
         live_server, "experiment", "add", str(contract_file(tmp_path)), "-p", project["id"]
@@ -92,9 +98,9 @@ def test_the_file_name_names_an_experiment_that_has_no_name(
 
 
 def test_repeating_a_submission_with_a_key_returns_the_same_run(
-    live_server: LiveServer, tmp_path: Path
+    live_server: LiveServer, tmp_path: Path, repo: Repo
 ) -> None:
-    project = run_json(live_server, "project", "add", "Heat 2D")
+    project = trusted_project(live_server, repo)
     experiment = run_json(
         live_server, "experiment", "add", str(contract_file(tmp_path)), "-p", project["id"]
     )
@@ -107,8 +113,8 @@ def test_repeating_a_submission_with_a_key_returns_the_same_run(
     assert len(run_json(live_server, "run", "list", "-e", experiment["id"])["runs"]) == 1
 
 
-def test_errors_keep_the_cli_contract(live_server: LiveServer, tmp_path: Path) -> None:
-    project = run_json(live_server, "project", "add", "Heat 2D")
+def test_errors_keep_the_cli_contract(live_server: LiveServer, tmp_path: Path, repo: Repo) -> None:
+    project = trusted_project(live_server, repo)
     experiment = run_json(
         live_server, "experiment", "add", str(contract_file(tmp_path)), "-p", project["id"]
     )
@@ -130,8 +136,10 @@ def test_errors_keep_the_cli_contract(live_server: LiveServer, tmp_path: Path) -
         assert usage_error.stdout == ""
 
 
-def test_human_output_names_what_matters(live_server: LiveServer, tmp_path: Path) -> None:
-    project = run_json(live_server, "project", "add", "Heat 2D")
+def test_human_output_names_what_matters(
+    live_server: LiveServer, tmp_path: Path, repo: Repo
+) -> None:
+    project = trusted_project(live_server, repo)
     experiment = run_json(
         live_server, "experiment", "add", str(contract_file(tmp_path)), "-p", project["id"]
     )
@@ -143,3 +151,60 @@ def test_human_output_names_what_matters(live_server: LiveServer, tmp_path: Path
     assert "python3 heat2d.py --dt {dt}" in shown.stdout
     assert "queued" in submitted.stdout
     assert "'dt': 0.005" in submitted.stdout
+
+
+def test_trust_is_an_explicit_step_and_can_be_withdrawn(
+    live_server: LiveServer, repo: Repo
+) -> None:
+    project = run_json(live_server, "project", "add", "Heat 2D", "--root-path", str(repo.root))
+    assert project["execution_trusted_at"] is None
+
+    declined = runner.invoke(
+        app, ["project", "trust", project["id"], "--api-url", live_server.base_url], input="n\n"
+    )
+    trusted = run_json(live_server, "project", "trust", project["id"], "--yes")
+    shown = run(live_server, "project", "show", project["id"])
+    untrusted = run_json(live_server, "project", "untrust", project["id"])
+    no_path = run_json(live_server, "project", "add", "No code")
+    refused = run(live_server, "project", "trust", no_path["id"], "--yes")
+
+    assert declined.exit_code == 1  # asked, answered no: nothing changes
+    assert str(repo.root) in declined.stderr
+    assert trusted["execution_trusted_at"] is not None
+    assert "trusted since" in shown.stdout
+    assert untrusted["execution_trusted_at"] is None
+    assert refused.exit_code == 2
+
+
+def test_runs_name_their_commit_and_can_be_exported_and_rerun(
+    live_server: LiveServer, tmp_path: Path, repo: Repo
+) -> None:
+    project = trusted_project(live_server, repo)
+    experiment = run_json(
+        live_server, "experiment", "add", str(contract_file(tmp_path)), "-p", project["id"]
+    )
+    baseline = repo.head
+    repo.write("examples/heat2d-python/heat2d.py", "print('candidate')\n")
+    candidate = repo.commit("candidate")
+
+    on_baseline = run_json(
+        live_server, "run", "submit", experiment["id"], "-P", "dt=0.01", "--code-ref", baseline
+    )
+    on_candidate = run_json(live_server, "run", "submit", experiment["id"], "-P", "dt=0.01")
+    record_file = tmp_path / "out" / "record.json"
+    exported = run(live_server, "run", "export", on_baseline["id"], "-o", str(record_file))
+    printed = run(live_server, "run", "export", on_baseline["id"])
+    repeated = run_json(live_server, "run", "rerun", on_baseline["id"])
+    shown = run(live_server, "run", "show", on_candidate["id"])
+
+    assert (on_baseline["code"]["sha"], on_candidate["code"]["sha"]) == (baseline, candidate)
+    assert exported.exit_code == 0
+    assert exported.stdout == ""
+    record = json.loads(record_file.read_text())
+    on_stdout = json.loads(printed.stdout)
+    assert {**record, "exported_at": None} == {**on_stdout, "exported_at": None}
+    assert record["schema"] == "numericos.run-record.v1"
+    assert record["run"]["code"]["sha"] == baseline
+    assert repeated["reproduces_run_id"] == on_baseline["id"]
+    assert repeated["code"]["sha"] == baseline
+    assert f"commit {candidate} (HEAD) candidate" in shown.stdout

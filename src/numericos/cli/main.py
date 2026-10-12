@@ -140,6 +140,11 @@ def _demo_tag(record: Record) -> str:
     return "  [demo]" if record["is_demo"] else ""
 
 
+def _trust_text(record: Record) -> str:
+    trusted_at = record.get("execution_trusted_at")
+    return f"trusted since {trusted_at}" if trusted_at else "not trusted (no run can be queued)"
+
+
 def _project_line(record: Record) -> str:
     return f"{record['id']}  v{record['version']}  {record['name']}{_demo_tag(record)}"
 
@@ -151,6 +156,7 @@ def _project_detail(record: Record) -> str:
             f"  id:                {record['id']} (version {record['version']})",
             f"  research question: {record['research_question'] or '-'}",
             f"  reference:         {record['root_path'] or '-'}",
+            f"  execution:         {_trust_text(record)}",
             f"  updated:           {record['updated_at']}",
         ]
     )
@@ -234,7 +240,22 @@ def _run_detail(record: Record) -> str:
         lines.append(f"  seed:       {record['seed']}")
     if record["status_reason"]:
         lines.append(f"  reason:     {record['status_reason']}")
+    lines.append(f"  code:       {_code_text(record['code'])}")
+    if record["reproduces_run_id"]:
+        lines.append(f"  reproduces: {record['reproduces_run_id']}")
     return "\n".join(lines)
+
+
+def _code_text(code: Record | None) -> str:
+    if code is None:
+        return "not recorded"
+    if code["mode"] == "ref":
+        subject = code["commit"]["subject"] if code["commit"] else ""
+        return f"commit {code['sha']} ({code['requested_ref']}) {subject}".rstrip()
+    if code["sha"] is None and code["dirty"] is None:
+        return "working tree, captured when the run starts"
+    state = "with uncommitted changes" if code["dirty"] else "clean"
+    return f"working tree at {code['sha']}, {state}"
 
 
 def _load_mapping(path: Path) -> Record:
@@ -490,6 +511,48 @@ def project_update(
     _emit(data, json_, _project_detail)
 
 
+@project.command("trust")
+def project_trust(
+    project_id: Annotated[str, typer.Argument(metavar="PROJECT_ID")],
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask for confirmation.")] = False,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Allow NumericOS to execute commands in the project's directory.
+
+    Running an experiment runs the project's code with your permissions. Trust is given to one
+    exact directory and is withdrawn automatically when the project's code path changes.
+    """
+    path = f"/v1/projects/{project_id}"
+    current = _api(json_, api_url, lambda client: client.get(path))
+    if current["root_path"] is None:
+        raise typer.BadParameter("the project has no code path; set one with `project update`")
+    if not yes:
+        typer.confirm(
+            f"Allow NumericOS to execute commands in {current['root_path']}?", abort=True, err=True
+        )
+    body = {"version": current["version"], "root_path": current["root_path"]}
+    data = _api(json_, api_url, lambda client: client.post(f"{path}:trust-execution", body))
+    _emit(data, json_, _project_detail)
+
+
+@project.command("untrust")
+def project_untrust(
+    project_id: Annotated[str, typer.Argument(metavar="PROJECT_ID")],
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Stop accepting new runs for the project. Runs that already started keep going."""
+    path = f"/v1/projects/{project_id}"
+
+    def revoke(client: ApiClient) -> Record:
+        version = int(client.get(path)["version"])
+        result: Record = client.post(f"{path}:revoke-execution-trust", {"version": version})
+        return result
+
+    _emit(_api(json_, api_url, revoke), json_, _project_detail)
+
+
 @card.command("add")
 def card_add(
     project_id: ProjectOption,
@@ -701,6 +764,12 @@ def run_submit(
     ] = None,
     seed: Annotated[int | None, typer.Option("--seed", min=0)] = None,
     label: Annotated[str, typer.Option("--label", help="Free text, e.g. 'baseline'.")] = "",
+    code_ref: Annotated[
+        str | None,
+        typer.Option(
+            "--code-ref", help="Commit to execute (branch, tag or SHA) instead of the default."
+        ),
+    ] = None,
     idempotency_key: Annotated[
         str | None,
         typer.Option("--idempotency-key", help="Repeating the command returns the same run."),
@@ -709,7 +778,12 @@ def run_submit(
     api_url: ApiUrlOption = None,
 ) -> None:
     """Queue one run of an experiment and return at once; a supervisor executes it."""
-    body = {"parameters": _parse_parameters(param or []), "seed": seed, "label": label}
+    body = {
+        "parameters": _parse_parameters(param or []),
+        "seed": seed,
+        "label": label,
+        "code_ref": code_ref,
+    }
     headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
     data = _api(
         json_,
@@ -740,6 +814,42 @@ def run_show(
 ) -> None:
     """Show one run: its status, parameters and exact argument vector."""
     data = _api(json_, api_url, lambda client: client.get(f"/v1/runs/{run_id}"))
+    _emit(data, json_, _run_detail)
+
+
+@run.command("export")
+def run_export(
+    run_id: Annotated[str, typer.Argument(metavar="RUN_ID")],
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write here instead of stdout.")
+    ] = None,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Export the run record: the run with its provenance and protocol, as JSON."""
+    data = _api(True, api_url, lambda client: client.get(f"/v1/runs/{run_id}/record"))
+    text = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    if output is None:
+        typer.echo(text, nl=False)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(text)
+    typer.echo(f"wrote {output}", err=True)
+
+
+@run.command("rerun")
+def run_rerun(
+    run_id: Annotated[str, typer.Argument(metavar="RUN_ID")],
+    idempotency_key: Annotated[str | None, typer.Option("--idempotency-key")] = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """Queue a run with the same commit, parameters and seed as RUN_ID."""
+    headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+    data = _api(
+        json_,
+        api_url,
+        lambda client: client.post(f"/v1/runs/{run_id}:rerun", None, headers=headers),
+    )
     _emit(data, json_, _run_detail)
 
 

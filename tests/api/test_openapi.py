@@ -45,4 +45,8 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "create_run",
         "list_runs",
         "get_run",
+        "export_run_record",
+        "rerun",
+        "trust_execution",
+        "revoke_execution_trust",
     }

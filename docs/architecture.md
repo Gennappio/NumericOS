@@ -3,7 +3,8 @@
 Status: **M0 accepted** on 2026-10-12 (tag `m0-gate`, evidence in
 `docs/milestones/M0-gate.md`). The active milestone is M3; ADR-0004 records why it precedes M1
 and M2. M3 so far: T01 (typed hypotheses, experiments and runs; the experiment contract; queued
-runs). **Runs are not executed yet**: the supervisor arrives with M3-T03. Everything below describes
+runs) and T02 (provenance of code, inputs and environment; explicit execution trust). **Runs are
+not executed yet**: the supervisor arrives with M3-T03. Everything below describes
 what exists; later milestones extend this file instead of replacing it. Roadmap and acceptance
 gates live in `docs/NUMERICOS_IMPLEMENTATION_PLAN_v0.2.md` and `milestones/`.
 
@@ -18,6 +19,7 @@ src/numericos/
   persistence/                 engine policy, ORM models, repositories, unit of work, migrations
   events/                      ledger row builder, in-process wake-up notifier, replay-then-live
                                iteration (`stream.follow`)
+  provenance/                  read-only Git access, code capture, input checksums, environment
   services/                    use cases (projects, cards, events): the only business logic
   api/                         FastAPI app factory, routers, error envelope, correlation middleware
   cli/                         `numericos` command line (HTTP client; `serve`/`db` are server side)
@@ -100,7 +102,8 @@ migrations cannot drift. Authoring a revision: `uv run alembic revision --autoge
 (uses `alembic.ini`).
 
 Revisions: `0001` projects, board cards, events; `0002` hypotheses, experiments, runs and
-`events.run_id`.
+`events.run_id`; `0003` run provenance (code, inputs, environment, reproduced run) and
+`projects.execution_trusted_at`.
 
 ## Events
 
@@ -173,6 +176,41 @@ Submitting a run returns at once. With an `Idempotency-Key` header the submissio
 repeatable: the same key and request return the run created the first time (200,
 `Idempotency-Replayed: true`); the same key with a different request is `IDEMPOTENCY_CONFLICT`.
 
+### Provenance: what exactly ran
+
+A run answers three questions with recorded facts (ADR-0005).
+
+**Which code.** By default a run executes an exact commit. The ref is resolved to a full SHA
+when the run is created, so a moving branch cannot change a queued run, and the files are
+exported from that commit rather than taken from the working tree. A submission may name its
+own commit (`code_ref`): that is how a candidate and a baseline run under one protocol. If the
+working tree had uncommitted changes at submission, the run says so and also says they were not
+executed. An experiment may instead choose `working_tree` mode; the supervisor then records, at
+start, the commit under the tree, a binary patch of the uncommitted changes with its SHA-256,
+and the untracked files (digests, plus an archive up to 64 MB), which together rebuild the
+executed tree.
+
+**Which inputs.** Declared input files are hashed when the run starts; an expected SHA-256 in
+the protocol is enforced.
+
+**Which environment.** Host facts (platform, CPU, cores, memory), the program file that
+`argv[0]` resolves to with its digest, the outputs of the protocol's probe commands, and the
+run's environment variables. A run gets a small base environment plus what the protocol
+declares or asks to inherit, nothing else; secret-looking values are redacted in the record.
+
+NumericOS only reads the user's repository (`provenance/git.py`): no checkout, reset, clean,
+stash, commit or fetch, and no index refresh.
+
+`GET /v1/runs/{id}/record` exports the run with its provenance and protocol;
+`POST /v1/runs/{id}:rerun` queues a run with the same commit, parameters and seed.
+
+### Execution trust
+
+Running an experiment runs the project's code with the user's permissions. No run can be queued
+until the project's `root_path` has been trusted by an explicit action that repeats the exact
+path. The path must be the top of a Git work tree. Changing `root_path` withdraws the trust.
+There is no sandbox: trust means the command runs as the user.
+
 ## Use cases and their events
 
 `services/` holds the business rules; routes only translate HTTP. Every successful mutation writes
@@ -189,6 +227,7 @@ bumps no version.
 | state / reword a hypothesis | `HYPOTHESIS_CREATED` / `HYPOTHESIS_UPDATED` | `hypothesis`, `changed_fields` |
 | define / change an experiment | `EXPERIMENT_CREATED` / `EXPERIMENT_UPDATED` | `experiment`, `changed_fields` |
 | queue a run | `RUN_QUEUED` | `run`; the event carries `run_id` |
+| trust / revoke execution for a project | `PROJECT_EXECUTION_TRUSTED` / `PROJECT_EXECUTION_TRUST_REVOKED` | `project` |
 
 `project` and `card` are the public representations after the change. Placement rules: a new
 `workflow_status` moves the card to `position` in that column (appended when omitted); `position`
@@ -207,7 +246,9 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `GET /v1/cards/{card_id}`, `PATCH /v1/cards/{card_id}` | read, edit and/or move (needs `version`; optional `project_id` assertion) |
 | `POST`, `GET /v1/projects/{project_id}/hypotheses`; `GET`, `PATCH /v1/hypotheses/{id}` | state, list, read, reword (needs `version`) |
 | `POST`, `GET /v1/projects/{project_id}/experiments`; `GET`, `PATCH /v1/experiments/{id}` | define by protocol, list, read; rename, relink or replace the protocol while there are no runs |
-| `POST`, `GET /v1/experiments/{id}/runs`; `GET /v1/runs/{id}` | queue a run (optional `Idempotency-Key`), list, read |
+| `POST`, `GET /v1/experiments/{id}/runs`; `GET /v1/runs/{id}` | queue a run (optional `Idempotency-Key`, optional `code_ref`), list, read |
+| `GET /v1/runs/{id}/record`; `POST /v1/runs/{id}:rerun` | export the run record; queue a repetition with the same commit, parameters and seed |
+| `POST /v1/projects/{id}:trust-execution`, `:revoke-execution-trust` | allow, or stop allowing, commands to be executed in the project directory |
 | `GET /v1/events?project_id=&after=&before=&limit=&order=&run_id=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
 
 Operation IDs equal the handler names (`create_project`, `update_card`, ...), so generated
@@ -229,8 +270,10 @@ clients get stable method names.
   `STALE_REVISION` (409, the `version` sent is not the current one; details carry both),
   `PROJECT_MISMATCH` (409, a record is not in the asserted project), `PROTOCOL_FROZEN` (409,
   the experiment already has runs), `IDEMPOTENCY_CONFLICT` (409, a key reused for another
-  request), `CURSOR_AHEAD` (409, a stream cursor beyond the ledger head), `METHOD_NOT_ALLOWED`
-  (405), `INTERNAL_ERROR` (500).
+  request), `EXECUTION_NOT_TRUSTED` (409, the project directory was not trusted for execution),
+  `NOT_A_GIT_REPOSITORY` (409), `NOT_REPRODUCIBLE` (409, a working-tree run cannot be rerun
+  automatically), `CURSOR_AHEAD` (409, a stream cursor beyond the ledger head),
+  `METHOD_NOT_ALLOWED` (405), `INTERNAL_ERROR` (500).
 - `X-Correlation-ID`: accepted from the client when it matches `[A-Za-z0-9_.-]{1,64}`, otherwise a
   `cor_<ULID>` is generated; always echoed on the response and stored on every event.
 - `X-Actor`: label of the calling surface in the form `<surface>:<name>` (`web:local`,
@@ -260,7 +303,9 @@ printed on stderr), `2` usage error, `3` API unreachable.
 | `numericos seed-demo` | one demo project flagged `is_demo` (explicit, idempotent, actor `cli:seed`) |
 | `numericos hypothesis add -p PROJECT --title T --claim C` / `list` / `show ID` | hypotheses |
 | `numericos experiment add FILE -p PROJECT` / `list -p PROJECT` / `show ID` | experiments from a contract file (YAML or JSON; it may carry `name` and `hypothesis_id`) |
-| `numericos run submit EXPERIMENT_ID -P name=value [--seed N] [--label L] [--idempotency-key K]` / `list -e EXPERIMENT` / `show ID` | queue and inspect runs |
+| `numericos run submit EXPERIMENT_ID -P name=value [--seed N] [--label L] [--code-ref REF] [--idempotency-key K]` / `list -e EXPERIMENT` / `show ID` | queue and inspect runs |
+| `numericos run export ID [-o FILE]` / `rerun ID` | the run record as JSON; a repetition with the same commit, parameters and seed |
+| `numericos project trust ID [--yes]` / `untrust ID` | allow or stop allowing execution in the project directory |
 
 `update` and `move` use optimistic locking: without `--version` they read the latest version
 first (last write wins); with `--version N` a concurrent change is reported as `STALE_REVISION`.
@@ -349,7 +394,9 @@ the M3 supervisor defines a trust boundary.
 - **No idempotency keys.** Updates are protected by optimistic locking (`version`); a retried
   `POST` creates a second record. Idempotency keys arrive with asynchronous submissions (M3-M5).
 - **No delete or archive** for projects and cards, and no cross-project move of a card.
-- **`root_path` is a stored reference.** It is validated as absolute, never opened or executed.
+- **Execution has no sandbox.** A trusted project's commands run with the user's permissions.
+  `root_path` must be the top of a Git work tree; submodule and Git LFS contents are not part of
+  an exported commit.
 - **The list of projects is polled** every 5 seconds; only project pages have an event stream.
 - **The event strip shows the 20 newest entries.** Older ones are read with
   `numericos events list` / `follow`. A full timeline view belongs to M3.
@@ -366,3 +413,5 @@ the M3 supervisor defines a trust boundary.
   the stream as a wake-up signal.
 - ADR-0004: by the owner's decision, observability of code and experiments (M3) comes before
   agents (M1), knowledge (M2) and any further board work.
+- ADR-0005: a run executes an exact commit exported for it (or, by explicit choice, the recorded
+  working tree); NumericOS only reads the repository; execution needs explicit trust.

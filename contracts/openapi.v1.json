@@ -252,6 +252,148 @@
         "title": "CardType",
         "type": "string"
       },
+      "CodeProvenance": {
+        "description": "The exact code of a run.\n\n``ref`` mode: ``sha`` is fixed when the run is created and the run executes an export of\nthat commit, so it is clean by construction. ``working_tree`` mode: the state is captured\nwhen the run starts; ``sha`` is then the commit under the working tree and ``diff_sha256``\nidentifies the uncommitted changes that were executed with it.",
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the executed state was fixed.",
+            "title": "Captured At"
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommitInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diff_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff Bytes"
+          },
+          "diff_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SHA-256 of the executed uncommitted changes (a binary patch).",
+            "title": "Diff Sha256"
+          },
+          "dirty": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Executed with uncommitted changes. Null until the run starts.",
+            "title": "Dirty"
+          },
+          "mode": {
+            "enum": [
+              "ref",
+              "working_tree"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "remote_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Url"
+          },
+          "repository_root": {
+            "title": "Repository Root",
+            "type": "string"
+          },
+          "requested_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "As asked for, e.g. 'HEAD'.",
+            "title": "Requested Ref"
+          },
+          "sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Full commit SHA of the executed code.",
+            "title": "Sha"
+          },
+          "submitted_with_dirty_working_tree": {
+            "description": "The project directory had uncommitted changes when the run was created. In ref mode they are not part of the run.",
+            "title": "Submitted With Dirty Working Tree",
+            "type": "boolean"
+          },
+          "untracked": {
+            "description": "Untracked files that were part of the executed tree.",
+            "items": {
+              "$ref": "#/components/schemas/FileDigest"
+            },
+            "title": "Untracked",
+            "type": "array"
+          },
+          "untracked_archived": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the untracked files were small enough to be stored.",
+            "title": "Untracked Archived"
+          }
+        },
+        "required": [
+          "mode",
+          "repository_root",
+          "submitted_with_dirty_working_tree"
+        ],
+        "title": "CodeProvenance",
+        "type": "object"
+      },
       "CodeSpec": {
         "additionalProperties": false,
         "description": "Which code a run executes.\n\n``ref``: an exact commit, resolved when the run is created and executed from an export of\nthat commit, never from the working tree. ``working_tree``: the project directory as it is\nwhen the run starts, uncommitted changes included; an explicit choice because it is only\nreproducible through the recorded diff.",
@@ -275,6 +417,61 @@
           }
         },
         "title": "CodeSpec",
+        "type": "object"
+      },
+      "CommitInfo": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "authored_at": {
+            "format": "date-time",
+            "title": "Authored At",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "author",
+          "authored_at"
+        ],
+        "title": "CommitInfo",
+        "type": "object"
+      },
+      "EnvironmentRecord": {
+        "properties": {
+          "executable": {
+            "$ref": "#/components/schemas/ExecutableRecord"
+          },
+          "host": {
+            "$ref": "#/components/schemas/HostFacts"
+          },
+          "probes": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeRecord"
+            },
+            "title": "Probes",
+            "type": "array"
+          },
+          "variables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Environment of the run. Values of names that look like secrets are redacted.",
+            "title": "Variables",
+            "type": "object"
+          }
+        },
+        "required": [
+          "host",
+          "executable"
+        ],
+        "title": "EnvironmentRecord",
         "type": "object"
       },
       "EpistemicStatus": {
@@ -452,6 +649,55 @@
         "title": "EventPage",
         "type": "object"
       },
+      "ExecutableRecord": {
+        "description": "The program file that ``argv[0]`` resolved to.",
+        "properties": {
+          "argv0": {
+            "title": "Argv0",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when it could not be resolved.",
+            "title": "Path"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          }
+        },
+        "required": [
+          "argv0",
+          "path"
+        ],
+        "title": "ExecutableRecord",
+        "type": "object"
+      },
       "ExecutionSpec": {
         "additionalProperties": false,
         "properties": {
@@ -539,6 +785,29 @@
           "command"
         ],
         "title": "ExecutionSpec",
+        "type": "object"
+      },
+      "ExecutionTrust": {
+        "additionalProperties": false,
+        "description": "Allow NumericOS to execute commands in the project directory.\n\nThe caller repeats the exact path: trust is given to a directory, not to a project name.",
+        "properties": {
+          "root_path": {
+            "description": "Must equal the project's root_path.",
+            "title": "Root Path",
+            "type": "string"
+          },
+          "version": {
+            "description": "Current version of the project.",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "root_path"
+        ],
+        "title": "ExecutionTrust",
         "type": "object"
       },
       "ExperimentCreate": {
@@ -824,6 +1093,29 @@
         "title": "FailureClass",
         "type": "string"
       },
+      "FileDigest": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "size_bytes"
+        ],
+        "title": "FileDigest",
+        "type": "object"
+      },
       "GuardrailRule": {
         "additionalProperties": false,
         "description": "An explicit numeric limit on a metric. No threshold is ever assumed by NumericOS.",
@@ -967,6 +1259,74 @@
           "expected_revision"
         ],
         "title": "HealthOut",
+        "type": "object"
+      },
+      "HostFacts": {
+        "properties": {
+          "cpu_count_logical": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Count Logical"
+          },
+          "cpu_count_physical": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Count Physical"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "memory_total_bytes": {
+            "title": "Memory Total Bytes",
+            "type": "integer"
+          },
+          "numericos": {
+            "title": "Numericos",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "processor": {
+            "title": "Processor",
+            "type": "string"
+          },
+          "python": {
+            "description": "The interpreter of the NumericOS supervisor, not of the run.",
+            "title": "Python",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "machine",
+          "processor",
+          "cpu_count_logical",
+          "cpu_count_physical",
+          "memory_total_bytes",
+          "hostname",
+          "python",
+          "numericos"
+        ],
+        "title": "HostFacts",
         "type": "object"
       },
       "HypothesisCreate": {
@@ -1220,6 +1580,38 @@
         "title": "HypothesisPatch",
         "type": "object"
       },
+      "InputRecord": {
+        "properties": {
+          "base": {
+            "enum": [
+              "code",
+              "project"
+            ],
+            "title": "Base",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "base",
+          "sha256",
+          "size_bytes"
+        ],
+        "title": "InputRecord",
+        "type": "object"
+      },
       "InputSpec": {
         "additionalProperties": false,
         "description": "A file the run reads; its checksum is recorded and, if given, enforced.",
@@ -1397,6 +1789,74 @@
         "title": "ParserSpec",
         "type": "object"
       },
+      "ProbeRecord": {
+        "description": "Output of one environment probe command, kept as an artifact.",
+        "properties": {
+          "argv": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Argv",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the command could not be run.",
+            "title": "Exit Code"
+          },
+          "output_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File"
+          },
+          "output_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Sha256"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "argv",
+          "exit_code",
+          "seconds"
+        ],
+        "title": "ProbeRecord",
+        "type": "object"
+      },
       "ProjectCreate": {
         "additionalProperties": false,
         "properties": {
@@ -1469,6 +1929,19 @@
           "description": {
             "title": "Description",
             "type": "string"
+          },
+          "execution_trusted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When executing commands in root_path was explicitly allowed; null if not.",
+            "title": "Execution Trusted At"
           },
           "id": {
             "title": "Id",
@@ -1586,9 +2059,40 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "ProjectVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "description": "Current version of the project.",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "ProjectVersion",
+        "type": "object"
+      },
       "RunCreate": {
         "additionalProperties": false,
         "properties": {
+          "code_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[^-\\s][^\\s]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The commit this run executes (branch, tag or SHA), instead of the protocol's default ref. This is how a candidate and a baseline differ under one protocol.",
+            "title": "Code Ref"
+          },
           "label": {
             "default": "",
             "maxLength": 200,
@@ -1659,10 +2163,32 @@
             "title": "Argv",
             "type": "array"
           },
+          "code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The exact code this run executes."
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Host, program file, probes and variables. Null until the run starts."
           },
           "experiment_id": {
             "title": "Experiment Id",
@@ -1681,6 +2207,21 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InputRecord"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Checksums of the declared inputs. Null until the run starts.",
+            "title": "Inputs"
           },
           "label": {
             "title": "Label",
@@ -1714,6 +2255,18 @@
           "protocol_digest": {
             "title": "Protocol Digest",
             "type": "string"
+          },
+          "reproduces_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The run this one repeats with the same code, parameters and seed.",
+            "title": "Reproduces Run Id"
           },
           "seed": {
             "anyOf": [
@@ -1763,11 +2316,44 @@
           "seed",
           "argv",
           "protocol_digest",
+          "code",
+          "inputs",
+          "environment",
+          "reproduces_run_id",
           "version",
           "created_at",
           "updated_at"
         ],
         "title": "RunOut",
+        "type": "object"
+      },
+      "RunRecord": {
+        "description": "Everything needed to repeat a run: the run, with its provenance, and its protocol.",
+        "properties": {
+          "experiment": {
+            "$ref": "#/components/schemas/ExperimentOut"
+          },
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "run": {
+            "$ref": "#/components/schemas/RunOut"
+          },
+          "schema": {
+            "const": "numericos.run-record.v1",
+            "default": "numericos.run-record.v1",
+            "title": "Schema",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exported_at",
+          "run",
+          "experiment"
+        ],
+        "title": "RunRecord",
         "type": "object"
       },
       "RunStatus": {
@@ -3222,6 +3808,176 @@
         ]
       }
     },
+    "/v1/projects/{project_id}:revoke-execution-trust": {
+      "post": {
+        "operationId": "revoke_execution_trust",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Stop accepting new runs for the project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}:trust-execution": {
+      "post": {
+        "operationId": "trust_execution",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionTrust"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Allow commands to be executed in the project directory",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/v1/runs/{run_id}": {
       "get": {
         "operationId": "get_run",
@@ -3269,6 +4025,162 @@
           }
         },
         "summary": "Get one run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/record": {
+      "get": {
+        "operationId": "export_run_record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Export the run with its provenance and protocol, to repeat it elsewhere",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}:rerun": {
+      "post": {
+        "operationId": "rerun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Makes the submission repeatable: the same key and request return the run created the first time; the same key with another request is a conflict.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Makes the submission repeatable: the same key and request return the run created the first time; the same key with another request is a conflict.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "The run an earlier identical request created"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Stale version or project mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Queue a run with the same commit, parameters and seed",
         "tags": [
           "runs"
         ]

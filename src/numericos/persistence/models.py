@@ -61,6 +61,8 @@ class Project(Base):
     is_demo: Mapped[bool] = mapped_column(
         Boolean(create_constraint=True, name="is_demo_bool"), default=False
     )
+    #: Set by an explicit action: commands may be executed in ``root_path`` from then on.
+    execution_trusted_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)
@@ -178,6 +180,12 @@ class Run(Base):
     protocol_digest: Mapped[str] = mapped_column(String(64))
     idempotency_key: Mapped[str | None] = mapped_column(String(128))
     request_digest: Mapped[str | None] = mapped_column(String(64))
+    #: Provenance. ``code`` is fixed at creation; inputs and environment when the run starts.
+    code: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    code_sha: Mapped[str | None] = mapped_column(String(40), index=True)
+    inputs: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    environment: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    reproduces_run_id: Mapped[str | None] = mapped_column(String(40))
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)

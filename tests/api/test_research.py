@@ -8,7 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests import factories
-from tests.api.helpers import Json, create_project, error_of, events
+from tests.api.helpers import Json, create_project, error_of, events, trusted_project
+from tests.gitrepo import Repo
 
 UNKNOWN = "01J9W2Z4K7QX8YB3N5M6T0R1S2"
 HYPOTHESIS = {
@@ -20,8 +21,8 @@ HYPOTHESIS = {
 
 
 @pytest.fixture
-def project(client: TestClient) -> Json:
-    return create_project(client)
+def project(client: TestClient, repo: Repo) -> Json:
+    return trusted_project(client, repo.root)
 
 
 def new_hypothesis(client: TestClient, project_id: str, **fields: Any) -> Json:
@@ -214,6 +215,7 @@ def test_a_run_is_queued_with_its_exact_argument_vector(client: TestClient, proj
         "100",
     ]
     assert run["protocol_digest"] == experiment["protocol_digest"]
+    assert (run["inputs"], run["environment"], run["reproduces_run_id"]) == (None, None, None)
     assert client.get(f"/v1/runs/{run['id']}").json() == run
     assert client.get(f"/v1/experiments/{experiment['id']}/runs").json() == {"runs": [run]}
     assert client.get(f"/v1/experiments/{experiment['id']}").json()["run_count"] == 1
@@ -230,7 +232,7 @@ def test_run_events_are_correlated_with_the_run(client: TestClient, project: Jso
     assert [(event["type"], event["run_id"]) for event in of_first] == [("RUN_QUEUED", first["id"])]
     assert of_first[0]["payload"] == {"run": first}
     assert [event["run_id"] for event in everything][-2:] == [first["id"], second["id"]]
-    assert everything[0]["run_id"] is None  # PROJECT_CREATED belongs to no run
+    assert {event["run_id"] for event in everything[:3]} == {None}  # project events have no run
 
 
 @pytest.mark.parametrize(

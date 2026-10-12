@@ -20,6 +20,7 @@ from numericos.core.schemas import (
     RunCreate,
     RunList,
     RunOut,
+    RunRecord,
 )
 from numericos.services import experiments, hypotheses, runs
 
@@ -153,3 +154,36 @@ def list_runs(experiment_id: str, uow: Uow) -> RunList:
 @router.get("/runs/{run_id}", tags=["runs"], summary="Get one run")
 def get_run(run_id: str, uow: Uow) -> RunOut:
     return runs.get_run(uow, run_id)
+
+
+@router.get(
+    "/runs/{run_id}/record",
+    tags=["runs"],
+    summary="Export the run with its provenance and protocol, to repeat it elsewhere",
+)
+def export_run_record(run_id: str, uow: Uow) -> RunRecord:
+    return runs.export_record(uow, run_id)
+
+
+@router.post(
+    "/runs/{run_id}:rerun",
+    status_code=201,
+    tags=["runs"],
+    summary="Queue a run with the same commit, parameters and seed",
+    responses={
+        200: {"model": RunOut, "description": "The run an earlier identical request created"},
+        **CONFLICT_RESPONSES,
+    },
+)
+def rerun(
+    run_id: str,
+    uow: Uow,
+    context: Context,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> RunOut:
+    run, created = runs.rerun(uow, run_id, context, idempotency_key=idempotency_key)
+    if not created:
+        response.status_code = 200
+        response.headers["Idempotency-Replayed"] = "true"
+    return run

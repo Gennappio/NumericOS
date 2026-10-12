@@ -11,7 +11,7 @@ from numericos.persistence import migrate
 from numericos.persistence.engine import make_engine
 
 TABLES = {"projects", "board_cards", "events", "hypotheses", "experiments", "runs"}
-HEAD = "0002"
+HEAD = "0003"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:
@@ -39,6 +39,12 @@ def test_downgrade_then_upgrade_round_trip(engine: Engine) -> None:
 
 
 def test_every_step_can_be_undone_and_redone(engine: Engine) -> None:
+    migrate.downgrade(engine, "0002")
+    assert "code" not in {column["name"] for column in inspect(engine).get_columns("runs")}
+    assert "execution_trusted_at" not in {
+        column["name"] for column in inspect(engine).get_columns("projects")
+    }
+
     migrate.downgrade(engine, "0001")
     assert migrate.current_revision(engine) == "0001"
     assert "runs" not in inspect(engine).get_table_names()

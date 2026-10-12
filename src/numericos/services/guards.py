@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from numericos.core.errors import NotFoundError, StaleRevisionError
+from pathlib import Path
+
+from numericos.core.errors import ExecutionNotTrustedError, NotFoundError, StaleRevisionError
 from numericos.persistence.models import BoardCard, Experiment, Hypothesis, Project, Run
 from numericos.persistence.unit_of_work import UnitOfWork
 
@@ -50,6 +52,17 @@ def require_run(uow: UnitOfWork, run_id: str) -> Run:
     if run is None:
         raise NotFoundError(f"run {run_id} not found", details={"resource": "run", "id": run_id})
     return run
+
+
+def require_trusted_root(project: Project) -> Path:
+    """The directory in which the project's commands may be executed."""
+    if project.root_path is None or project.execution_trusted_at is None:
+        raise ExecutionNotTrustedError(
+            f"project {project.id} is not trusted for execution: running an experiment executes "
+            "its code with your permissions, which has to be allowed explicitly for its directory",
+            details={"project_id": project.id, "root_path": project.root_path},
+        )
+    return Path(project.root_path)
 
 
 def check_version(resource: str, resource_id: str, *, current: int, provided: int) -> None:

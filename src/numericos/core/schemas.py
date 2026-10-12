@@ -23,6 +23,7 @@ from numericos.core.enums import (
     WorkflowStatus,
 )
 from numericos.core.experiment import ExperimentProtocol, ParameterValue
+from numericos.core.provenance import CodeProvenance, EnvironmentRecord, InputRecord
 
 
 class StrictModel(BaseModel):
@@ -89,9 +90,27 @@ class ProjectOut(BaseModel):
     description: str
     root_path: str | None
     is_demo: bool
+    execution_trusted_at: datetime | None = Field(
+        default=None,
+        description="When executing commands in root_path was explicitly allowed; null if not.",
+    )
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class ExecutionTrust(StrictModel):
+    """Allow NumericOS to execute commands in the project directory.
+
+    The caller repeats the exact path: trust is given to a directory, not to a project name.
+    """
+
+    version: int = Field(ge=1, description="Current version of the project.")
+    root_path: str = Field(description="Must equal the project's root_path.")
+
+
+class ProjectVersion(StrictModel):
+    version: int = Field(ge=1, description="Current version of the project.")
 
 
 class ProjectList(BaseModel):
@@ -258,6 +277,16 @@ class RunCreate(StrictModel):
     )
     seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
     label: str = Field(default="", max_length=200)
+    code_ref: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        pattern=r"^[^-\s][^\s]*$",
+        description=(
+            "The commit this run executes (branch, tag or SHA), instead of the protocol's "
+            "default ref. This is how a candidate and a baseline differ under one protocol."
+        ),
+    )
 
 
 class RunOut(BaseModel):
@@ -278,6 +307,16 @@ class RunOut(BaseModel):
     seed: int | None
     argv: list[str] = Field(description="The exact argument vector of the program.")
     protocol_digest: str
+    code: CodeProvenance | None = Field(description="The exact code this run executes.")
+    inputs: list[InputRecord] | None = Field(
+        description="Checksums of the declared inputs. Null until the run starts."
+    )
+    environment: EnvironmentRecord | None = Field(
+        description="Host, program file, probes and variables. Null until the run starts."
+    )
+    reproduces_run_id: str | None = Field(
+        description="The run this one repeats with the same code, parameters and seed."
+    )
     version: int
     created_at: datetime
     updated_at: datetime
@@ -285,6 +324,19 @@ class RunOut(BaseModel):
 
 class RunList(BaseModel):
     runs: list[RunOut]
+
+
+class RunRecord(BaseModel):
+    """Everything needed to repeat a run: the run, with its provenance, and its protocol."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: Literal["numericos.run-record.v1"] = Field(
+        default="numericos.run-record.v1", alias="schema"
+    )
+    exported_at: datetime
+    run: RunOut
+    experiment: ExperimentOut
 
 
 class EventOut(BaseModel):

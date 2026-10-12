@@ -58,6 +58,27 @@ class IdempotencyConflictError(DomainError):
     status_code = 409
 
 
+class NotReproducibleError(DomainError):
+    """The run cannot be repeated automatically from what was recorded."""
+
+    code = "NOT_REPRODUCIBLE"
+    status_code = 409
+
+
+class ExecutionNotTrustedError(DomainError):
+    """Commands may be executed only for a project whose directory was explicitly trusted."""
+
+    code = "EXECUTION_NOT_TRUSTED"
+    status_code = 409
+
+
+class NotAGitRepositoryError(DomainError):
+    """The project directory is not the top of a Git work tree."""
+
+    code = "NOT_A_GIT_REPOSITORY"
+    status_code = 409
+
+
 class CursorAheadError(DomainError):
     """A stream cursor beyond the ledger head: the caller's cursor is from another ledger."""
 
