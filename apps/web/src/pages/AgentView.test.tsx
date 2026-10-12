@@ -39,7 +39,8 @@ describe("AgentView", () => {
     expect(
       within(conversations).getByRole("link", { name: /Why is the explicit scheme unstable/ }),
     ).toHaveAttribute("aria-current", "page")
-    expect(within(conversations).getByText(/Edit files · 2 messages/)).toBeVisible()
+    expect(within(conversations).getByText("Edit files")).toBeVisible() // its mode, as a tag
+    expect(within(conversations).getByText(/2 messages/)).toBeVisible()
     expect(screen.getByLabelText("Message to the agent")).toBeEnabled()
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled() // nothing typed yet
     expect(screen.getByLabelText("Permission mode")).toHaveValue("edit")

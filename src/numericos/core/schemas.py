@@ -565,6 +565,16 @@ class MessageOut(BaseModel):
     activity_dropped: int = Field(description="Actions beyond the bound, kept only in the file.")
     files_read: list[str]
     files_written: list[str]
+    files_created: list[str] = Field(
+        default_factory=list,
+        description=(
+            "New files the turn left in the repository, outside the NumericOS folder: "
+            "untracked after it and not there before it."
+        ),
+    )
+    files_moved: list[str] = Field(
+        default_factory=list, description="Those of them moved to the NumericOS folder since."
+    )
     permission_denials: list[PermissionDenial]
     cost_usd: float | None = Field(
         description=(
@@ -596,6 +606,25 @@ class MessageList(BaseModel):
 
 class MessageCancel(StrictModel):
     reason: str = Field(default="", max_length=300)
+
+
+class MoveCreatedFiles(StrictModel):
+    paths: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=1000,
+        description="Which of the files the turn created; absent moves all that are left.",
+    )
+
+
+class WorkspaceOut(BaseModel):
+    """The NumericOS folder of a project: where everything generated about it is kept."""
+
+    path: str
+    shown: str = Field(description="As it is named to people: relative to the project if inside.")
+    inside_project: bool
+    exists: bool
+    ignored_by_git: bool = Field(description="Nothing in it shows in `git status`.")
 
 
 class TaskPolicy(StrictModel):

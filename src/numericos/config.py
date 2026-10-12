@@ -52,11 +52,20 @@ class Settings(BaseSettings):
     agent_files_per_turn: int = Field(
         default=8, ge=1, le=50, description="Files the agent is asked to describe in one turn."
     )
+    workspace_root: Path | None = Field(
+        default=None,
+        description=(
+            "Where the NumericOS folder of each project is kept: everything NumericOS and its "
+            "agent generate about a project. Unset: `.numericos/` inside the project "
+            "directory, which ignores itself for Git. Set: `<this directory>/<project id>/`, "
+            "outside the project."
+        ),
+    )
 
-    @field_validator("data_dir")
+    @field_validator("data_dir", "workspace_root")
     @classmethod
-    def _expand_user(cls, value: Path) -> Path:
-        return value.expanduser()
+    def _expand_user(cls, value: Path | None) -> Path | None:
+        return value.expanduser() if value is not None else None
 
     @property
     def db_path(self) -> Path:

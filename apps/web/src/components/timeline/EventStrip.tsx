@@ -1,7 +1,7 @@
 import type { EventPage } from "@/api/client"
 import { POLL_MS } from "@/api/queries"
 import type { Transport } from "@/api/useEventStream"
-import { describeEvent } from "@/lib/events"
+import { describeEvent, eventFamily } from "@/lib/events"
 import { formatEventTime } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
@@ -64,6 +64,14 @@ export function EventStrip({ projectId, page, transport }: EventStripProps) {
                 >
                   {formatEventTime(event.timestamp_utc)}
                 </time>
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 text-xs font-medium",
+                    eventFamily(event).className,
+                  )}
+                >
+                  {eventFamily(event).label}
+                </span>
                 <span className="min-w-0 flex-1 basis-48 break-words">{describeEvent(event)}</span>
                 <span
                   className="font-mono text-xs text-muted-foreground"

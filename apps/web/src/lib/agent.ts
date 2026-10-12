@@ -25,7 +25,7 @@ export const TURN_STATUS_LABELS: Record<MessageStatus, string> = {
 export const TURN_STATUS_STYLES: Record<MessageStatus, string> = {
   queued: "border-slate-300 bg-slate-100 text-slate-800",
   running: "border-sky-300 bg-sky-100 text-sky-900",
-  final: "border-slate-400 bg-white text-slate-900",
+  final: "border-indigo-300 bg-indigo-100 text-indigo-900",
   failed: "border-red-300 bg-red-100 text-red-900",
   cancelled: "border-amber-300 bg-amber-100 text-amber-900",
   interrupted: "border-purple-300 bg-purple-100 text-purple-900",
@@ -121,4 +121,26 @@ export function turnDuration(message: Message): string | null {
   if (!message.started_at || !message.finished_at) return null
   const seconds = (Date.parse(message.finished_at) - Date.parse(message.started_at)) / 1000
   return seconds >= 0 ? formatSeconds(seconds) : null
+}
+
+/**
+ * How much a permission mode lets the agent do to the project, as a colour: reading changes
+ * nothing, editing changes files, full autonomy also runs commands.
+ */
+export const PERMISSION_MODE_STYLES: Record<PermissionMode, string> = {
+  read_only: "border-emerald-300 bg-emerald-100 text-emerald-900",
+  edit: "border-amber-300 bg-amber-100 text-amber-900",
+  full: "border-rose-300 bg-rose-100 text-rose-900",
+}
+
+/** A colour per family of tool: looking, changing, running, the rest. */
+export function toolStyle(name: string): string {
+  if (["Read", "Grep", "Glob", "WebFetch", "WebSearch"].includes(name)) {
+    return "bg-sky-100 text-sky-900"
+  }
+  if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(name)) {
+    return "bg-amber-100 text-amber-900"
+  }
+  if (name === "Bash") return "bg-violet-100 text-violet-900"
+  return "bg-slate-100 text-slate-800"
 }

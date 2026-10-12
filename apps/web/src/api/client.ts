@@ -78,6 +78,7 @@ export type AnnotationStatus = Schemas["AnnotationStatus"]
 export type AnnotationsSend = Schemas["AnnotationsSend"]
 export type AnnotationsSent = Schemas["AnnotationsSent"]
 export type TargetType = Schemas["TargetType"]
+export type Workspace = Schemas["WorkspaceOut"]
 
 /** What a comment is attached to: an answer of the agent, or a document it wrote. */
 export interface CommentTarget {
@@ -251,6 +252,11 @@ export const api = {
   getMessage: (messageId: string) => apiFetch<Message>(`/v1/messages/${seg(messageId)}`),
   cancelMessage: (messageId: string, reason: string) =>
     apiFetch<Message>(`/v1/messages/${seg(messageId)}:cancel`, send("POST", { reason })),
+  /** Move the files a turn left in the repository to the project's NumericOS folder. */
+  moveCreatedFiles: (messageId: string) =>
+    apiFetch<Message>(`/v1/messages/${seg(messageId)}:move-created-files`, send("POST", {})),
+  getWorkspace: (projectId: string) =>
+    apiFetch<Workspace>(`/v1/projects/${seg(projectId)}/workspace`),
   getTheory: (projectId: string) =>
     apiFetch<DocumentSlot>(`/v1/projects/${seg(projectId)}/theory`),
   /** `instructions` undefined keeps the ones of the previous request. */

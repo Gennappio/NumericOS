@@ -25,7 +25,7 @@ TABLES = {
     "documents",
     "annotations",
 }
-HEAD = "0009"
+HEAD = "0010"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:

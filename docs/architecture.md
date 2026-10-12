@@ -124,7 +124,8 @@ schema a structured turn must answer in).
 | `annotations` | `id` PK, `project_id` FK, `target_type`, `target_id`, `target_version`, `kind`, `status`, `status_reason`, `body`, `start_offset`, `end_offset`, `quote`, `prefix`, `suffix`, `anchor_state`, `response_markdown`, `message_id`, `pending_message_id`, `responded_at`, `version`, `created_at`, `updated_at` | a comment on a passage of an answer (`message`) or of a document; offsets are Unicode code points of the Markdown source of `target_version`; kinds `clarification | change | note`; status `open | pending | answered | resolved | declined | dismissed`; `anchor_state` `attached | detached` |
 
 The same revision adds `agent_sessions.target_type`, `target_id`, `target_version`: the text a
-Clarify or Resolve session is about.
+Clarify or Resolve session is about. Revision `0010` adds `messages.files_created` and
+`files_moved`: the new files a turn left in the repository, and the ones moved out since.
 
 ### Unit of work and ordering
 
@@ -154,7 +155,8 @@ cancellation, exit, outcome, resource summary, read offsets), `workers` and `art
 `0005` `metric_series` (one summary row per run and metric) and `runs.metric_report`; `0006`
 `agent_sessions` and `messages`; `0007` `agent_policies`, session overrides, what a turn was
 started with and what it consumed of the plan; `0008` `documents`, the origin of a card and the
-schema of a structured turn; `0009` `annotations` and the target of a session.
+schema of a structured turn; `0009` `annotations` and the target of a session; `0010` what a
+turn left in the repository.
 
 ## Events
 
@@ -397,6 +399,7 @@ bumps no version.
 | trust / revoke execution for a project | `PROJECT_EXECUTION_TRUSTED` / `PROJECT_EXECUTION_TRUST_REVOKED` | `project` |
 | open / change a conversation with the agent | `AGENT_SESSION_STARTED` / `AGENT_SESSION_UPDATED` | `session`, `changed_fields` |
 | set the model and effort per task | `AGENT_POLICY_UPDATED` | `tasks`, `version` |
+| move the files a turn left in the repository to the NumericOS folder | `AGENT_FILES_MOVED` | `paths`, `destination`, `session_id` |
 | ask the agent for the theory, a plan, or the description of files | `DOCUMENT_GENERATION_QUEUED` (one per turn; with the session and turn events of the turn it queues) | `kind`, `keys`, `message_id`, `session_id` |
 | the turn of a document ends (written by the supervisor, or by the API for a turn cancelled before it started) | `DOCUMENT_GENERATION_FINISHED`; for a plan, also `CARD_CREATED` / `CARD_UPDATED` / `CARD_MOVED` per card | `kind`, `written`, `failed` (`{key: reason}`), `message_id`, `session_id`; for a plan `cards_created`, `cards_changed`, `entries_skipped` |
 | send a prompt (records the user message, queues the turn) | `AGENT_TURN_QUEUED` | `session_id`, `prompt_message_id`, `prompt_excerpt`, `permission_mode`; the subject is the turn |
@@ -479,6 +482,8 @@ where it already is changes nothing. Only the moved card's `version` is bumped.
 | `GET /v1/annotations?target_type=&target_id=`; `POST /v1/annotations` | the comments on one text in the order of their passages, with the turn that is answering some of them; comment on a passage (`quote`, and `start_offset`/`end_offset` in code points, or a quote that occurs once) |
 | `PATCH /v1/annotations/{id}`; `POST /v1/annotations/{id}:dismiss` | reword an open comment or change its kind (needs `version`); withdraw it |
 | `POST /v1/annotations:clarify`, `:resolve` | send every open request of that kind on a text to the agent in one turn (202; `instructions`; for resolve `permission_mode` `edit` or `full`); 409 `SESSION_BUSY` while the previous ones are being answered |
+| `GET /v1/projects/{id}/workspace` | the NumericOS folder of the project: its path, how it is named to people, whether it is inside the project, exists and is ignored by Git |
+| `POST /v1/messages/{id}:move-created-files` | move the new files a turn left in the repository to the NumericOS folder (optional `paths`; all that are left otherwise); only files that turn created, still there and still untracked |
 | `GET /v1/projects/{id}/agent-sessions?task=` | the conversations by default; `task=theory`, `file_description`, `plan` or `all` for the sessions in which documents were written |
 | `GET /v1/events?project_id=&after=&before=&limit=&order=&run_id=` | one page of the ledger: `events`, `next_cursor`, `has_more`; with `Accept: text/event-stream` a replayable stream (`project_id`, `after`) |
 
@@ -560,6 +565,22 @@ first (last write wins); with `--version N` a concurrent change is reported as `
 The GUI is a client of the public API like any other; it holds no state of its own beyond a
 query cache and never ships mock data.
 
+- **Colour:** colour says what a thing is, the same way everywhere. Indigo is what can be
+  pressed and what is selected. Each view has its colour and icon on its tab (plan indigo,
+  theory violet, files sky, agent fuchsia, experiments cyan), and the tag of an event in the
+  strip takes the colour of what it is about. Cards carry the colour of their type on a solid
+  tag, on their edge and as a tint (task sky, hypothesis violet, experiment cyan, issue
+  orange, decision pink; none green or red: a type never signals validity); columns carry
+  the colour of the workflow status (Completed green, Blocked red, as on any Kanban board:
+  about the work, not about the result). File kinds have a tag and an icon each; the state
+  of a description is green when current, amber when the file changed, sky while written,
+  red when it failed. Comments are sky (clarification), orange (change) and violet (note) on
+  their tag, their card and their highlight in the text; a passage whose comment was dealt
+  with turns green. Permission modes read as risk: read only green, edit files amber, full
+  autonomy red. Tools in the agent's activity are tinted by family (looking, changing,
+  running). Code blocks are coloured by language (rehype-highlight). What the process of a
+  run did, and how far its observation reaches, stays without green: "ended normally" and
+  "observed" are not verdicts, and unit tests assert it.
 - **Routes:** `/` lists projects. `/projects/:projectId` frames the views of one project and
   owns its event stream: the board (index), `experiments`, `experiments/:experimentId`,
   `runs/:runId`, `agent` and `agent/:sessionId`. Any other path is a not-found page.
@@ -582,8 +603,8 @@ query cache and never ships mock data.
 - **Files view:** every file of the project by directory, with its kind (guessed from the name
   until a description says more: code, input, output, image, config, documentation), size,
   one-sentence summary and state: not described, being described, described, changed since,
-  failed. A row opens to the whole description, to the image if it is one, and to "describe it
-  again". Two buttons ask for all files not described and for all that changed; filters by
+  failed. A line says where NumericOS keeps what it generates about the project. A row opens
+  to the whole description, to the image if it is one, and to "describe it again". Two buttons ask for all files not described and for all that changed; filters by
   path and kind. The directory is read only for a project that was trusted.
 - **Comments:** the theory, every answer in a conversation and every file description is a
   commentable text (`components/comments/Commentable.tsx`). Selecting a passage shows a small
@@ -610,7 +631,9 @@ query cache and never ships mock data.
   a turn: queued (and the page says if no supervisor can serve it), working (every action of
   the agent as it is recorded: the file, the command, the pattern, whether it succeeded),
   answered (Markdown with mathematics rendered by KaTeX; raw HTML is not rendered), failed,
-  stopped or interrupted, with the reason. Every answer shows the model that answered, the
+  stopped or interrupted, with the reason. An answer names the new files its turn left in the
+  repository, if any, with a button that moves them to the NumericOS folder. Every answer
+  shows the model that answered, the
   effort, the tokens used, what the turn would cost at list prices (a measure, not a charge:
   the owner has a subscription), its duration, and the use of the plan's 5-hour and 7-day
   windows as the provider reported it; what the permission mode refused is listed, never
@@ -694,10 +717,11 @@ Pydantic models in `numericos.core.schemas` are the single source of the public 
 | Examples | pytest running the shipped programs alone and, from their own contract files, under a supervisor | closed forms of norm and error of the heat scheme to round-off; time steps on both sides of the exact stability limit; a guardrail halt that leaves its evidence; overflow as typed samples; conjugate gradient in two precisions with the true residual far from the reported one; binary and compiler provenance |
 | Execution | pytest with real monitor processes and real programs from a real Git repository; `LiveWorker` (real `numericos worker run` subprocess) where a supervisor must die | the monitor (output, limits, signals, process tree, leftovers, build, one monitor per run); the worker (recording, classification, cancellation, trust and input checks, working tree against commit, results next to the sources, binary identity, parallelism); recovery (supervisor killed and run taken over with complete output, orderly hand-over, lost monitor, re-queue, two supervisors competing for the queue, overtaken readings); API restarted during a run; run events on an open stream |
 | Documents | pytest; the API alone, and the stand-in agent under a real supervisor | file kinds from names, prompts and schemas, content hashes (index, changed, new, missing, hashed once); the API (theory and plan requests, their sessions and prompts, pending and cancelled requests, the listing with kinds, sizes, hashes and counts, batches per turn, files outside the project refused, content served with its type); generation (theory with sources and hashes, stale after an edit or a deletion and current again after a rewrite, failure keeping the earlier text, descriptions with normalized paths, stale and updated, a file left out, a plan creating cards and a second one changing them) |
+| NumericOS folder | pytest with the stand-in agent under a real supervisor | a helper file written to the folder with `git status` unchanged; the note of each kind of turn; caches redirected; a file left in the repository reported, the researcher's own untracked file and an edit of a tracked file not reported; move one, move the rest, refuse a file the turn did not create, leave a file committed since; documents mirrored as Markdown and rewritten after a Resolve; the folder neither listed nor described; the folder outside the project with `--add-dir` |
 | Comments | pytest; pure anchor rules, and the stand-in agent under a real supervisor | locating a quote (once, by context, ambiguous, missing, code points); comments by quote and by offsets in passage order, refused places, reword and withdraw; Clarify (one turn, read-only, both requests and not the change, the text untouched, answers on the comments); a later Clarify continuing the session without the text, busy and nothing-to-send; a request left out, a failed turn and a cancelled one reopening comments; Resolve (file edited, applied and declined, the text rewritten and current, comments moved or detached); an answer commented and never rewritten; a text written again keeping or detaching comments |
 | Agent | pytest with the stand-in command as a real subprocess of the supervisor | the adapter (argument vector per mode, resume and fork, folding of the stream, bounds); the API (capabilities, missing command, trust, sessions, one turn at a time, cancellation, validation); turns (everything observed and the turn's files, resume of the provider session, refusals of the mode recorded, failure, agent gone without an answer, stop while working, sessions in parallel, worker died after claiming, running turn taken over, cancelled before start); the CLI (`ask` follows and prints, exit codes, give up and cancel) |
 | Web unit | Vitest (jsdom) | API client, error mapping, connection indicator, card (no validity label), projects page (empty, list, load failure), event descriptions (board, runs, guardrails, agent), event strip, stream hook (subscribe after the head, de-duplicate, reconnect, no retry on typed answers), cursor feed, chart geometry and the chart itself (breaks at non-finite samples, logarithmic axis, bands, bounds), number formats, coverage panel, status badge, execution panel, run page (normal end, failure, in progress, queued without a supervisor), Markdown (GFM, KaTeX inline and displayed, no raw HTML, safe links), message card (prompt, answer with facts and actions, working with stop, queued without supervisor, failure, refusals), agent view (conversation and composer, untrusted directory, missing command, empty), policy panel, theory view (empty, paper with figure and sources, stale, in progress, failed), files view (listing by directory, opening a file and an image, filters, asking with instructions, untrusted directory), drop placement of a dragged card, selection to source and back on really rendered Markdown (plain text, across formatting, formulas, code, escapes, code points), the commentable text (a selection becoming a comment with code-point offsets, a formula commented whole, the list with answers and counts, a clarification after its paragraph, another version not placed, Resolve asking first, Clarify in one click) |
-| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page; agent: a conversation held and rendered (mathematics, cost, actions, persisted across a reload), a refusal of the read-only mode shown, a working turn stopped from the page, model and effort per task chosen and used; documents: the theory written, rendered with its figure and marked stale after the code changed, then written again; files described, one changed and updated; a plan put on the board and a card dragged to another column, persisted; comments: a passage of the theory selected and commented, a word picked with the pointer, Clarify answering next to the passage with the text untouched, Resolve editing the file and rewriting the text with comments kept or detached; an answer of a conversation commented, clarified without growing the conversation, a comment withdrawn |
+| Browser | Playwright against a real API, a real supervisor and the Vite dev server, on a throwaway data directory | first run and empty state, create/move/reorder/edit with reload, stale edit, keyboard use, disabled future views, backend loss and recovery, pushed updates, event strip, polling fallback, project switch, a real API process restarted under an open page, CLI and browser on the same state; experiments: allow execution, register a contract from the repository, queue a run and read it back, a run stopped by a guardrail, a run followed while it goes on and stopped from the page; agent: a conversation held and rendered (mathematics, cost, actions, persisted across a reload), a refusal of the read-only mode shown, a working turn stopped from the page, model and effort per task chosen and used; documents: the theory written, rendered with its figure and marked stale after the code changed, then written again; files described, one changed and updated; a plan put on the board and a card dragged to another column, persisted; comments: a passage of the theory selected and commented, a word picked with the pointer, Clarify answering next to the passage with the text untouched, Resolve editing the file and rewriting the text with comments kept or detached; an answer of a conversation commented, clarified without growing the conversation, a comment withdrawn; the NumericOS folder: a helper script kept out of the repository, a stray file named on the answer and moved out with `git status` clean afterwards, the folder named on the Files page and not listed |
 
 No fixtures or mocks live in application code; the GUI shows the real backend connection state.
 
@@ -782,6 +806,26 @@ file description compares the hash recorded when it was asked for (`subject_sha`
 file's hash now. Nothing is regenerated automatically: the pages mark what changed and offer
 one click to update it, because every update is a call on the owner's account.
 
+## The NumericOS folder of a project
+
+Design record: ADR-0010. Everything NumericOS and its agent generate about a project is kept
+in one folder (`agents/workspace.py`): `.numericos/` at the top of the project directory,
+which ignores itself for Git through its own `.gitignore`, or
+`<NUMERICOS_WORKSPACE_ROOT>/<project id>/` outside the project. It holds `scratch/` (what the
+agent creates that is not a change to the project), `docs/` (the documents as Markdown:
+`theory.md`, `plan.md`, `files/<path>.md`, written by the supervisor after the transaction
+that changed them), `moved/` and `cache/`.
+
+Every turn is told about the folder after its permission note (`workspace.note`): a turn that
+may write is told to keep the repository clean and where to put what it generates; a turn
+that writes a document from the project is told to leave the folder alone. The agent's
+process gets `NUMERICOS_WORKSPACE`, `NUMERICOS_SCRATCH_DIR` and cache directories for Python,
+mypy and ruff inside it. Before a turn that may write, the supervisor saves the untracked
+files of the repository in the turn directory (`untracked.json`); when the turn ends it lists
+them again, between the transactions, and what is new is recorded as `files_created`.
+`services/agents.move_created_files` moves such files to `moved/<message id>/`, never one
+that Git tracks since.
+
 ## Comments, Clarify and Resolve (M1-T02/T03)
 
 Design record: ADR-0009. Every answer of the agent and every document it wrote can be
@@ -846,6 +890,12 @@ re-anchoring runs when a document is written again from scratch.
   the last 300 lines and what follows; the whole output is a file of the run. Runs of an
   experiment are compared in a table of last values: plots across runs and verdicts belong to
   the validators ticket.
+- **The repository is kept clean by instruction, observation and a button, not by a wall.**
+  In `edit` and `full` mode the agent can write anywhere in the project: it is told to use
+  the NumericOS folder, what it leaves elsewhere is named on its answer, and one click moves
+  it out. A tool the agent starts in a way that ignores the environment can still write a
+  cache next to the sources. A file created by someone else during a turn is listed as left
+  by the turn. Programs run as experiments in `working_tree` mode write where they write.
 - **Comments.** A selection inside a code block or a formula comments the whole block. A
   detached comment cannot be attached to another passage by hand. The notes of the plan and
   the cards of the board cannot be commented. Every answer of a conversation reads its own
@@ -895,6 +945,9 @@ re-anchoring runs when a document is written again from scratch.
   process identity, stopping, status and failure classes, recovery, fenced transactions.
 - ADR-0007: metrics are samples with a declared source, collected and guarded by the run's
   monitor; strict records, typed non-finite values, explicit guardrails, coverage per level.
+- ADR-0010: everything NumericOS and its agent generate about a project goes to one folder
+  that Git does not see; the agent is told so on every turn, the repository is watched for
+  what a turn leaves in it, and one click moves that out.
 - ADR-0009: a comment is a range of the Markdown source with its quote and context; the page
   carries marks that map a selection to the source; a rewritten text has its comments looked
   for again and never attached by guessing; Clarify and Resolve are one turn each for all the

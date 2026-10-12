@@ -3795,6 +3795,22 @@
             ],
             "title": "Exit Code"
           },
+          "files_created": {
+            "description": "New files the turn left in the repository, outside the NumericOS folder: untracked after it and not there before it.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Created",
+            "type": "array"
+          },
+          "files_moved": {
+            "description": "Those of them moved to the NumericOS folder since.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Files Moved",
+            "type": "array"
+          },
           "files_read": {
             "items": {
               "type": "string"
@@ -4424,6 +4440,30 @@
           "label"
         ],
         "title": "ModelChoice",
+        "type": "object"
+      },
+      "MoveCreatedFiles": {
+        "additionalProperties": false,
+        "properties": {
+          "paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which of the files the turn created; absent moves all that are left.",
+            "title": "Paths"
+          }
+        },
+        "title": "MoveCreatedFiles",
         "type": "object"
       },
       "ObservabilitySpec": {
@@ -6109,6 +6149,42 @@
         ],
         "title": "WorkflowStatus",
         "type": "string"
+      },
+      "WorkspaceOut": {
+        "description": "The NumericOS folder of a project: where everything generated about it is kept.",
+        "properties": {
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "ignored_by_git": {
+            "description": "Nothing in it shows in `git status`.",
+            "title": "Ignored By Git",
+            "type": "boolean"
+          },
+          "inside_project": {
+            "title": "Inside Project",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "shown": {
+            "description": "As it is named to people: relative to the project if inside.",
+            "title": "Shown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "shown",
+          "inside_project",
+          "exists",
+          "ignored_by_git"
+        ],
+        "title": "WorkspaceOut",
+        "type": "object"
       }
     }
   },
@@ -7948,6 +8024,88 @@
         ]
       }
     },
+    "/v1/messages/{message_id}:move-created-files": {
+      "post": {
+        "operationId": "move_created_files",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Label of the calling surface, stored on every event it causes.",
+            "in": "header",
+            "name": "x-actor",
+            "required": false,
+            "schema": {
+              "default": "api:unknown",
+              "description": "Label of the calling surface, stored on every event it causes.",
+              "pattern": "^[a-z][a-z0-9_-]{0,19}:[A-Za-z0-9_.:-]{1,99}$",
+              "title": "X-Actor",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MoveCreatedFiles"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "Move files a turn left in the repository to the project's NumericOS folder",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/v1/projects": {
       "get": {
         "operationId": "list_projects",
@@ -9656,6 +9814,58 @@
         "summary": "Ask the agent to write, or write again, the theory of the project",
         "tags": [
           "documents"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/workspace": {
+      "get": {
+        "operationId": "get_workspace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "summary": "The NumericOS folder of a project: where everything generated about it is kept",
+        "tags": [
+          "agents"
         ]
       }
     },

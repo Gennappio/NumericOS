@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react"
 import ReactMarkdown, { type Options } from "react-markdown"
+import rehypeHighlight from "rehype-highlight"
 import rehypeKatex from "rehype-katex"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
@@ -18,7 +19,12 @@ const KATEX: NonNullable<Options["rehypePlugins"]>[number] = [
   rehypeKatex,
   { throwOnError: false, strict: "ignore" },
 ]
-const REHYPE_PLUGINS = [KATEX]
+// Code blocks that name their language are coloured; one that does not is left as it is.
+const HIGHLIGHT: NonNullable<Options["rehypePlugins"]>[number] = [
+  rehypeHighlight,
+  { detect: false },
+]
+const REHYPE_PLUGINS = [KATEX, HIGHLIGHT]
 
 interface MarkdownProps {
   source: string
@@ -60,7 +66,7 @@ export function Markdown({
     const plugins: NonNullable<Options["rehypePlugins"]> = []
     if (slots?.length) plugins.push([rehypeSlots, { slots }])
     if (positions) plugins.push(rehypeSourcePositions)
-    return [...plugins, KATEX]
+    return [...plugins, KATEX, HIGHLIGHT]
   }, [positions, slots])
   return (
     <div className={cn("markdown", className)}>

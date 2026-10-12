@@ -116,7 +116,15 @@ Open http://localhost:5173 with the API running.
       and every comment is looked for again in the new text; one whose passage is gone says so.
 
     A note is for you: the agent never sees it.
-13. **Agent** talks to Claude Code about the project. It needs the `claude`
+13. **Your repository stays as you left it.** Everything NumericOS and its agent generate
+    about a project is kept in one folder, `.numericos/` at the top of the project: helper
+    scripts and outputs of the agent (`scratch/`), the theory, the plan and the file
+    descriptions as Markdown (`docs/`), tool caches (`cache/`). The folder ignores itself
+    for Git, so `git status` never shows it; delete it whenever you like. When a turn of the
+    agent leaves a new file elsewhere in the repository, the answer names it and one click
+    moves it to the folder. To keep the folder outside the project altogether, set
+    `NUMERICOS_WORKSPACE_ROOT`.
+14. **Agent** talks to Claude Code about the project. It needs the `claude`
    command installed and logged in, the project directory allowed for execution (the agent
    reads, edits and runs the code as you) and `make worker`. Start a conversation, choose what
    the agent may do (read only; edit files; full autonomy, as with every permission skipped in a
@@ -266,6 +274,7 @@ make check-contracts    # regenerate contracts/openapi.v1.json + TS types, fail 
 | `NUMERICOS_AGENT_MAX_BUDGET_USD` | `5` per turn (bound on the list-price equivalent the provider computes) |
 | `NUMERICOS_AGENT_MAX_PARALLEL` | `2` turns at a time per supervisor |
 | `NUMERICOS_AGENT_FILES_PER_TURN` | `8` files described in one turn |
+| `NUMERICOS_WORKSPACE_ROOT` | unset: the NumericOS folder of a project is `.numericos/` inside it; set: `<this>/<project id>/`, outside it |
 
 ## Layout
 

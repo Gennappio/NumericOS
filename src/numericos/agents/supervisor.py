@@ -25,7 +25,7 @@ from typing import Any, Literal, TypeGuard
 
 import psutil
 
-from numericos.agents import claude_code, comments, documents, layout
+from numericos.agents import claude_code, comments, documents, layout, workspace
 from numericos.agents.records import choice_for, finished_payload
 from numericos.config import Settings
 from numericos.core.agents import ActivityItem, TurnResult
@@ -45,6 +45,8 @@ ACTIVE = (MessageStatus.QUEUED.value, MessageStatus.RUNNING.value)
 STARTUP_GRACE_SECONDS = 10.0
 #: After SIGTERM, how long the agent gets to leave before SIGKILL.
 STOP_GRACE_SECONDS = 5.0
+#: How long a process that has written its answer is waited for, to record its exit code.
+EXIT_WAIT_SECONDS = 2.0
 REASON_MAX = 300
 ENDED_WITHOUT_ANSWER = "the agent process ended without a final answer"
 
@@ -99,6 +101,7 @@ class Launch:
     native_session_id: str
     cwd: str
     mode: PermissionMode
+    task: str
     model: str | None
     effort: str | None
     json_schema: dict[str, Any] | None
@@ -261,6 +264,7 @@ class TurnSupervisor:
             mode = PermissionMode(session.permission_mode)
             policy = uow.agent_policies.get(message.project_id)
             model, effort = choice_for(session, policy.tasks if policy is not None else None)
+            folder = workspace.workspace_dir(self.settings, message.project_id, Path(session.cwd))
             launch = Launch(
                 message_id=message.id,
                 project_id=message.project_id,
@@ -268,13 +272,17 @@ class TurnSupervisor:
                 native_session_id=session.native_session_id,
                 cwd=session.cwd,
                 mode=mode,
+                task=session.task,
                 model=model,
                 effort=effort,
                 json_schema=message.json_schema,
                 system=session.system_prompt,
+                # What the turn may do, and where what it generates belongs, travel with
+                # every prompt: both can change between the turns of a session.
                 prompt=(
                     f"{(prompt.markdown if prompt else '').rstrip()}\n\n"
                     f"{claude_code.mode_note(mode)}\n"
+                    f"{workspace.note(folder, Path(session.cwd), mode, session.task)}\n"
                 ),
                 resume=bool(earlier),
                 cancelled=message.cancel_requested_at is not None,
@@ -314,6 +322,14 @@ class TurnSupervisor:
         turn_dir = self._turn_dir(launch.message_id)
         turn_dir.mkdir(parents=True, exist_ok=True)
         (turn_dir / layout.PROMPT).write_text(launch.prompt)
+        root = Path(launch.cwd)
+        folder = workspace.workspace_dir(self.settings, launch.project_id, root)
+        writes = launch.mode is not PermissionMode.READ_ONLY
+        if writes:
+            # The folder for what the turn generates exists before the turn can need it, and
+            # what is untracked now is noted: what is new afterwards is what the turn left.
+            workspace.ensure(folder)
+            write_json_atomic(turn_dir / layout.UNTRACKED, self._untracked(root))
         argv = claude_code.command(
             self.settings.claude_command,
             session_id=launch.native_session_id,
@@ -324,6 +340,7 @@ class TurnSupervisor:
             model=launch.model,
             effort=launch.effort,
             json_schema=launch.json_schema,
+            add_dirs=[str(folder)] if writes and not workspace.inside(folder, root) else None,
         )
         write_json_atomic(
             turn_dir / layout.SPEC,
@@ -342,6 +359,7 @@ class TurnSupervisor:
                 "NUMERICOS_AGENT_SESSION_ID": launch.session_id,
                 "NUMERICOS_MESSAGE_ID": launch.message_id,
                 "NUMERICOS_API_URL": self.settings.api_url,
+                **workspace.environment(folder),
             }
         )
         with (
@@ -452,12 +470,20 @@ class TurnSupervisor:
         verdict = self._verdict(message_id, reading, unchanged_for)
         handle = self._processes.get(message_id)
         exit_code = handle.poll() if handle is not None else None
+        if handle is not None and exit_code is None and verdict.kind == "finished":
+            # The answer is written just before the process leaves: its exit code is a
+            # moment away, and is part of the record of the turn.
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                exit_code = handle.wait(timeout=EXIT_WAIT_SECONDS)
         # Files and Git are read here, between the transactions: what the files the agent
         # read contain now is what a document written from them is later compared with.
         hashes = (
             self._hashes_of_touched_files(cwd, touched_so_far, reading.records)
             if verdict.kind == "finished"
             else {}
+        )
+        created = (
+            self._created_files(cwd, turn_dir) if verdict.kind in ("finished", "ended") else []
         )
 
         with self._uow() as uow:
@@ -478,10 +504,12 @@ class TurnSupervisor:
             if verdict.kind == "finished":
                 assert progress.result is not None
                 self._processes.pop(message_id, None)
+                message.files_created = created
                 self._finalize(uow, message, progress.result, exit_code)
                 self._complete_documents(uow, message, cwd, hashes)
             elif verdict.kind == "ended":
                 self._processes.pop(message_id, None)
+                message.files_created = created
                 self._close(uow, message, cancel_reason, verdict.reason, exit_code)
                 self._complete_documents(uow, message, cwd, {})
             elif verdict.kind == "requeue":
@@ -504,7 +532,40 @@ class TurnSupervisor:
                 message.ingest = {**signalled, "stream": reading.cursor}
                 message.heartbeat_at = utcnow()
                 message.updated_at = message.heartbeat_at
+                project_id = message.project_id
                 uow.commit()
+            else:
+                return
+        if verdict.kind == "finished":
+            self._mirror_documents(message_id, project_id, cwd)
+
+    @staticmethod
+    def _untracked(root: Path) -> list[str]:
+        """The files of the repository Git does not track and does not ignore."""
+        try:
+            return git.status(root).untracked
+        except git.GitError as error:
+            log.warning("could not list the untracked files of %s: %s", root, error)
+            return []
+
+    def _created_files(self, cwd: Path, turn_dir: Path) -> list[str]:
+        """The files a turn left in the repository: untracked now and not before it. What it
+        put in the NumericOS folder is ignored by Git and is not among them."""
+        before = read_json(turn_dir / layout.UNTRACKED)
+        if before is None:
+            return []  # a read-only turn: it could not create anything
+        return sorted(set(self._untracked(cwd)) - set(before))
+
+    def _mirror_documents(self, message_id: str, project_id: str, cwd: Path) -> None:
+        """Keep the documents a turn wrote as Markdown files in the NumericOS folder too."""
+        folder = workspace.workspace_dir(self.settings, project_id, cwd)
+        with self._uow() as uow:
+            written = uow.documents.written_by_message(message_id)
+        for document in written:
+            try:
+                workspace.mirror(folder, document)
+            except OSError as error:
+                log.warning("document %s not written to %s: %s", document.id, folder, error)
 
     @staticmethod
     def _hashes_of_touched_files(

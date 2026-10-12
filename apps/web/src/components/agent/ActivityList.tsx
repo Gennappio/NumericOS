@@ -1,5 +1,6 @@
 import { CheckIcon, CircleDashedIcon, XIcon } from "lucide-react"
 import type { ActivityItem } from "@/api/client"
+import { toolStyle } from "@/lib/agent"
 import { cn } from "@/lib/utils"
 
 /**
@@ -19,7 +20,14 @@ export function ActivityList({ items, dropped }: { items: ActivityItem[]; droppe
               <>
                 <ToolMark ok={item.tool.ok ?? null} />
                 <span className="min-w-0">
-                  <span className="font-medium">{item.tool.name}</span>{" "}
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-xs font-medium",
+                      toolStyle(item.tool.name),
+                    )}
+                  >
+                    {item.tool.name}
+                  </span>{" "}
                   <span className="font-mono text-xs break-all text-muted-foreground">
                     {item.tool.summary}
                   </span>

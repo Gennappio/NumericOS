@@ -87,6 +87,8 @@ export function userMessage(overrides: Partial<Message> = {}): Message {
     activity_dropped: 0,
     files_read: [],
     files_written: [],
+    files_created: [],
+    files_moved: [],
     permission_denials: [],
     cost_usd: null,
     usage: null,

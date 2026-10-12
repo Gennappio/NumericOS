@@ -1,3 +1,10 @@
+import {
+  BookOpenTextIcon,
+  BotIcon,
+  FlaskConicalIcon,
+  FolderTreeIcon,
+  SquareKanbanIcon,
+} from "lucide-react"
 import { Link, useLocation } from "react-router"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -19,12 +26,48 @@ export function ViewTabs({ projectId }: { projectId: string }) {
   const inTheory = pathname.startsWith(`${base}/theory`)
   const inFiles = pathname.startsWith(`${base}/files`)
   // What the project is (theory, files), what is to be done (plan), then the work itself.
+  // Each view has its colour: it marks the tab, and what belongs to the view elsewhere.
   const views = [
-    { name: "Plan", to: base, current: !inExperiments && !inAgent && !inTheory && !inFiles },
-    { name: "Theory", to: `${base}/theory`, current: inTheory },
-    { name: "Files", to: `${base}/files`, current: inFiles },
-    { name: "Agent", to: `${base}/agent`, current: inAgent },
-    { name: "Experiments", to: `${base}/experiments`, current: inExperiments },
+    {
+      name: "Plan",
+      to: base,
+      current: !inExperiments && !inAgent && !inTheory && !inFiles,
+      icon: SquareKanbanIcon,
+      tint: "text-indigo-500",
+      active: "border-indigo-600 text-indigo-700",
+    },
+    {
+      name: "Theory",
+      to: `${base}/theory`,
+      current: inTheory,
+      icon: BookOpenTextIcon,
+      tint: "text-violet-500",
+      active: "border-violet-600 text-violet-700",
+    },
+    {
+      name: "Files",
+      to: `${base}/files`,
+      current: inFiles,
+      icon: FolderTreeIcon,
+      tint: "text-sky-500",
+      active: "border-sky-600 text-sky-700",
+    },
+    {
+      name: "Agent",
+      to: `${base}/agent`,
+      current: inAgent,
+      icon: BotIcon,
+      tint: "text-fuchsia-500",
+      active: "border-fuchsia-600 text-fuchsia-700",
+    },
+    {
+      name: "Experiments",
+      to: `${base}/experiments`,
+      current: inExperiments,
+      icon: FlaskConicalIcon,
+      tint: "text-cyan-600",
+      active: "border-cyan-600 text-cyan-700",
+    },
   ]
   return (
     <nav aria-label="Project views" className="flex gap-1 overflow-x-auto border-b border-border">
@@ -34,12 +77,13 @@ export function ViewTabs({ projectId }: { projectId: string }) {
           to={view.to}
           aria-current={view.current ? "page" : undefined}
           className={cn(
-            "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm",
+            "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm",
             view.current
-              ? "border-foreground font-medium text-foreground"
+              ? cn("font-medium", view.active)
               : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
+          <view.icon aria-hidden="true" className={cn("size-4", view.tint)} />
           {view.name}
         </Link>
       ))}

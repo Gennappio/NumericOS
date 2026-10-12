@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from numericos.agents import claude_code
+from numericos.agents import claude_code, workspace
 from numericos.agents import comments as agent_comments
 from numericos.agents import documents as agent_documents
 from numericos.agents.records import finished_payload
@@ -44,7 +44,9 @@ from numericos.core.schemas import (
     MessageCreate,
     MessageList,
     MessageOut,
+    MoveCreatedFiles,
     TaskPolicy,
+    WorkspaceOut,
 )
 from numericos.events.ledger import EventContext, build_event
 from numericos.persistence.engine import utcnow
@@ -56,6 +58,7 @@ from numericos.persistence.models import (
     Project,
 )
 from numericos.persistence.unit_of_work import UnitOfWork
+from numericos.provenance import git
 from numericos.services.guards import (
     check_version,
     require_agent_session,
@@ -563,6 +566,82 @@ def cancel_message(
             # it was to answer are told here.
             agent_documents.complete(uow, message, cwd=Path("."), hashes={}, make_event=make_event)
             agent_comments.complete(uow, message, hashes={}, make_event=make_event)
+        out = MessageOut.model_validate(message)
+        uow.commit()
+    return out
+
+
+def get_workspace(uow: UnitOfWork, project_id: str, *, settings: Settings) -> WorkspaceOut:
+    """Where everything NumericOS generates about a project is kept."""
+    with uow:
+        project = require_project(uow, project_id)
+        root = require_trusted_root(project)
+    folder = workspace.workspace_dir(settings, project.id, root)
+    inside = workspace.inside(folder, root)
+    return WorkspaceOut(
+        path=str(folder),
+        shown=workspace.shown(folder, root),
+        inside_project=inside,
+        exists=folder.is_dir(),
+        # Outside the project Git never sees it; inside, its own .gitignore hides it.
+        ignored_by_git=not inside or (folder / ".gitignore").is_file() or not folder.exists(),
+    )
+
+
+def move_created_files(
+    uow: UnitOfWork,
+    message_id: str,
+    data: MoveCreatedFiles,
+    context: EventContext,
+    *,
+    settings: Settings,
+) -> MessageOut:
+    """Move files a turn left in the repository to the NumericOS folder of the project. Only
+    files the turn created, that are still there and that Git still does not track, are
+    moved: a file that was committed since, or changed hands, is the project's own."""
+    with uow:
+        message = require_message(uow, message_id)
+        project = require_project(uow, message.project_id)
+        root = require_trusted_root(project)
+        left = [path for path in message.files_created if path not in message.files_moved]
+        wanted = data.paths if data.paths is not None else left
+        unknown = sorted(set(wanted) - set(left))
+        if unknown:
+            raise InvalidRequestError(
+                f"not files this turn left in the repository: {', '.join(unknown[:5])}",
+                details={
+                    "errors": [
+                        {"loc": ["body", "paths"], "msg": "not created by this turn", "path": path}
+                        for path in unknown[:50]
+                    ]
+                },
+            )
+    # Files are moved with no transaction open.
+    folder = workspace.workspace_dir(settings, project.id, root)
+    tracked = git.index_hashes(root)
+    moved = workspace.move_out(
+        root, folder, message.id, [path for path in wanted if path not in tracked]
+    )
+    with uow:
+        message = require_message(uow, message_id)
+        if not moved:
+            return MessageOut.model_validate(message)
+        message.files_moved = sorted({*message.files_moved, *moved})
+        message.version += 1
+        message.updated_at = utcnow()
+        uow.record(
+            build_event(
+                event_type=EventType.AGENT_FILES_MOVED,
+                project_id=message.project_id,
+                subject_id=message.id,
+                payload={
+                    "paths": moved,
+                    "destination": str(folder / workspace.MOVED / message.id),
+                    "session_id": message.session_id,
+                },
+                context=context,
+            )
+        )
         out = MessageOut.model_validate(message)
         uow.commit()
     return out

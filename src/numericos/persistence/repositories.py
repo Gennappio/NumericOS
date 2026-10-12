@@ -366,6 +366,11 @@ class DocumentRepository:
         )
         return list(self._session.scalars(statement))
 
+    def written_by_message(self, message_id: str) -> list[Document]:
+        """The documents whose current content a turn wrote."""
+        statement = select(Document).where(Document.message_id == message_id).order_by(Document.key)
+        return list(self._session.scalars(statement))
+
     def pending_for_message(self, message_id: str) -> list[Document]:
         """The documents a turn is writing."""
         statement = (

@@ -334,6 +334,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/messages/{message_id}:move-created-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move files a turn left in the repository to the project's NumericOS folder */
+        post: operations["move_created_files"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -657,6 +674,23 @@ export interface paths {
         put?: never;
         /** Ask the agent to write, or write again, the theory of the project */
         post: operations["generate_theory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The NumericOS folder of a project: where everything generated about it is kept */
+        get: operations["get_workspace"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2540,6 +2574,16 @@ export interface components {
             effort?: string | null;
             /** Exit Code */
             exit_code?: number | null;
+            /**
+             * Files Created
+             * @description New files the turn left in the repository, outside the NumericOS folder: untracked after it and not there before it.
+             */
+            files_created?: string[];
+            /**
+             * Files Moved
+             * @description Those of them moved to the NumericOS folder since.
+             */
+            files_moved?: string[];
             /** Files Read */
             files_read: string[];
             /** Files Written */
@@ -2794,6 +2838,14 @@ export interface components {
              * @default
              */
             note?: string;
+        };
+        /** MoveCreatedFiles */
+        MoveCreatedFiles: {
+            /**
+             * Paths
+             * @description Which of the files the turn created; absent moves all that are left.
+             */
+            paths?: string[] | null;
         };
         /** ObservabilitySpec */
         ObservabilitySpec: {
@@ -3516,6 +3568,28 @@ export interface components {
          * @enum {string}
          */
         WorkflowStatus: "backlog" | "planned" | "active" | "review" | "completed" | "blocked";
+        /**
+         * WorkspaceOut
+         * @description The NumericOS folder of a project: where everything generated about it is kept.
+         */
+        WorkspaceOut: {
+            /** Exists */
+            exists: boolean;
+            /**
+             * Ignored By Git
+             * @description Nothing in it shows in `git status`.
+             */
+            ignored_by_git: boolean;
+            /** Inside Project */
+            inside_project: boolean;
+            /** Path */
+            path: string;
+            /**
+             * Shown
+             * @description As it is named to people: relative to the project if inside.
+             */
+            shown: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -4761,6 +4835,53 @@ export interface operations {
             };
         };
     };
+    move_created_files: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MoveCreatedFiles"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_projects: {
         parameters: {
             query?: never;
@@ -5929,6 +6050,46 @@ export interface operations {
             };
             /** @description The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_workspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

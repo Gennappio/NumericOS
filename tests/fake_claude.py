@@ -5,6 +5,8 @@ Directives in the prompt (one per line, anywhere in it) drive what it does:
 
     READ <path>            read the file (relative to the working directory) through a Read tool
     WRITE <path>::<text>   write the file through a Write tool; refused in read-only mode
+    SCRATCH <name>::<text> write the file in the scratch folder NumericOS names in the
+                           environment, as an agent that keeps the repository clean does
     OMIT <path or id>      leave that file, or that request, out of a structured answer
     DECLINE <id>::<why>    decline that change request instead of applying it
     REPLACE <old>=><new>   give the text with that replacement as the revised document
@@ -168,6 +170,7 @@ def main() -> int:
                 turns += 1
                 call = tool_use("Write", tool_input)
                 emit(assistant(session_id, [call]))
+                (cwd / path).parent.mkdir(parents=True, exist_ok=True)
                 (cwd / path).write_text(text)
                 emit(tool_result(session_id, call["id"], f"File written: {path}", True))
             else:
@@ -178,6 +181,14 @@ def main() -> int:
                         [{"type": "text", "text": f"I was not allowed to write {path}."}],
                     )
                 )
+        elif word == "SCRATCH" and may_write:
+            name, _, text = rest.partition("::")
+            target = Path(os.environ["NUMERICOS_SCRATCH_DIR"]) / name
+            turns += 1
+            call = tool_use("Write", {"file_path": str(target), "content": text})
+            emit(assistant(session_id, [call]))
+            target.write_text(text)
+            emit(tool_result(session_id, call["id"], f"File written: {target}", True))
         elif word == "SLEEP":
             time.sleep(float(rest))
         elif word == "FAIL":

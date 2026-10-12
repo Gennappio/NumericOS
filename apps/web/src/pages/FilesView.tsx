@@ -1,6 +1,7 @@
+import { FolderOpenIcon, FolderOutputIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 import type { DescribeRequest, FileCategory } from "@/api/client"
-import { useDescribeFiles, useFiles } from "@/api/queries"
+import { useDescribeFiles, useFiles, useWorkspace } from "@/api/queries"
 import { AgentPreconditions } from "@/components/agent/Preconditions"
 import { useAgentReadiness } from "@/components/agent/readiness"
 import { ErrorPanel } from "@/components/ErrorPanel"
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { describeError } from "@/lib/errors"
 import { CATEGORIES, CATEGORY_LABELS, groupByDirectory } from "@/lib/files"
+import { cn } from "@/lib/utils"
 import { useProjectContext } from "@/pages/projectContext"
 
 /**
@@ -24,6 +26,7 @@ export function FilesView() {
   const trusted = project.root_path !== null && Boolean(project.execution_trusted_at)
   const files = useFiles(project.id, live, trusted)
   const describe = useDescribeFiles(project.id)
+  const workspace = useWorkspace(project.id, trusted)
   const [notice, setNotice] = useState<string | null>(null)
   const [said, setSaid] = useState<string | null>(null)
   const [query, setQuery] = useState("")
@@ -88,8 +91,14 @@ export function FilesView() {
               <span className="font-medium">{counts!.total} files</span>
               <span className="text-muted-foreground">
                 {" "}
-                · {counts!.described} described · {counts!.stale} changed since ·{" "}
-                {counts!.generating} being described · {toDescribe} not described
+                · <span className="font-medium text-emerald-700">{counts!.described} described</span>{" "}
+                · <span className={cn(counts!.stale > 0 && "font-medium text-amber-700")}>
+                  {counts!.stale} changed since
+                </span>{" "}
+                · <span className={cn(counts!.generating > 0 && "font-medium text-sky-700")}>
+                  {counts!.generating} being described
+                </span>{" "}
+                · {toDescribe} not described
               </span>
               {files.data.truncated && (
                 <span className="text-amber-800"> · only the first {counts!.total} are listed</span>
@@ -134,6 +143,22 @@ export function FilesView() {
             </p>
           </section>
 
+          {workspace.data && (
+            <p
+              aria-label="NumericOS folder"
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-950"
+            >
+              <FolderOutputIcon aria-hidden="true" className="size-4 text-teal-600" />
+              <span>
+                Everything NumericOS and its agent generate about this project is kept in{" "}
+                <span className="font-mono text-xs font-medium break-all">{workspace.data.shown}</span>
+                {workspace.data.inside_project
+                  ? ", which Git ignores: the files below are the project's own."
+                  : ", outside the project."}
+              </span>
+            </p>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             <Input
               aria-label="Filter by path"
@@ -170,7 +195,8 @@ export function FilesView() {
                   aria-label={group.directory || "Top of the project"}
                   className="overflow-hidden rounded-lg border border-border bg-card"
                 >
-                  <h3 className="border-b border-border bg-muted/50 px-3 py-1.5 font-mono text-xs text-muted-foreground">
+                  <h3 className="flex items-center gap-1.5 border-b border-border bg-sky-50 px-3 py-1.5 font-mono text-xs text-sky-900">
+                    <FolderOpenIcon aria-hidden="true" className="size-3.5 text-sky-600" />
                     {group.directory ? `${group.directory}/` : "(top of the project)"}
                   </h3>
                   <ul>

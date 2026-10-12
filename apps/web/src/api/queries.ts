@@ -57,6 +57,7 @@ export const queryKeys = {
     ["projects", projectId, "agent-sessions", sessionId, "messages"] as const,
   message: (projectId: string, messageId: string) =>
     ["projects", projectId, "messages", messageId] as const,
+  workspace: (projectId: string) => ["projects", projectId, "workspace"] as const,
   theory: (projectId: string) => ["projects", projectId, "theory"] as const,
   plan: (projectId: string) => ["projects", projectId, "plan"] as const,
   files: (projectId: string) => ["projects", projectId, "files"] as const,
@@ -563,5 +564,24 @@ export function useSendAnnotations(projectId: string, target: CommentTarget) {
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations(projectId, target) }),
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The NumericOS folder of a project, and what a turn left outside it.
+
+export function useWorkspace(projectId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.workspace(projectId),
+    queryFn: () => api.getWorkspace(projectId),
+    enabled,
+  })
+}
+
+export function useMoveCreatedFiles(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (messageId: string) => api.moveCreatedFiles(messageId),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) }),
   })
 }

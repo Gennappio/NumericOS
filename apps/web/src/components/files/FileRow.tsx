@@ -1,11 +1,24 @@
-import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
-import { fileContentUrl, type FileEntry } from "@/api/client"
+import {
+  ArrowDownToLineIcon,
+  ArrowUpFromLineIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  DatabaseIcon,
+  FileCodeIcon,
+  FileIcon,
+  FileTextIcon,
+  ImageIcon,
+  SettingsIcon,
+  type LucideIcon,
+} from "lucide-react"
+import { fileContentUrl, type FileCategory, type FileEntry } from "@/api/client"
 import { useFileDescription } from "@/api/queries"
 import { Commentable } from "@/components/comments/Commentable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { describeError } from "@/lib/errors"
 import {
+  CATEGORY_ICON_TINTS,
   CATEGORY_LABELS,
   CATEGORY_STYLES,
   descriptionState,
@@ -16,6 +29,17 @@ import {
 import { formatBytes } from "@/lib/format"
 import { formatTimestamp } from "@/lib/time"
 import { cn } from "@/lib/utils"
+
+const CATEGORY_ICONS: Record<FileCategory, LucideIcon> = {
+  code: FileCodeIcon,
+  input: ArrowDownToLineIcon,
+  output: ArrowUpFromLineIcon,
+  data: DatabaseIcon,
+  image: ImageIcon,
+  config: SettingsIcon,
+  documentation: FileTextIcon,
+  other: FileIcon,
+}
 
 interface FileRowProps {
   projectId: string
@@ -48,6 +72,7 @@ export function FileRow({
 }: FileRowProps) {
   const state = descriptionState(file)
   const { name } = splitPath(file.path)
+  const Icon = CATEGORY_ICONS[file.category]
   return (
     <li data-path={file.path} data-state={state} className="border-t border-border first:border-t-0">
       <button
@@ -63,6 +88,10 @@ export function FileRow({
         )}
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Icon
+              aria-hidden="true"
+              className={cn("size-4 shrink-0", CATEGORY_ICON_TINTS[file.category])}
+            />
             <span className="font-mono text-[0.8125rem] break-all">{name}</span>
             <Badge variant="outline" className={CATEGORY_STYLES[file.category]}>
               {CATEGORY_LABELS[file.category]}

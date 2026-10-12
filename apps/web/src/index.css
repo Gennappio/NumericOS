@@ -55,7 +55,8 @@
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
+    /* Indigo: what can be pressed, what is selected, what is a link. */
+    --primary: oklch(0.511 0.262 276.966);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
@@ -66,7 +67,7 @@
     --destructive: oklch(0.577 0.245 27.325);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --ring: oklch(0.673 0.182 276.935);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -155,7 +156,8 @@
 .markdown code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.85em;
-    background: var(--muted);
+    background: oklch(0.962 0.018 272.314);
+    color: oklch(0.359 0.144 278.697);
     padding: 0.1em 0.35em;
     border-radius: 0.25rem;
 }
@@ -170,15 +172,19 @@
 }
 .markdown pre code { background: transparent; padding: 0; color: inherit; font-size: inherit; }
 .markdown blockquote {
-    border-left: 3px solid var(--border);
+    border-left: 3px solid oklch(0.785 0.115 274.713);
     padding-left: 0.75rem;
     color: var(--muted-foreground);
 }
 .markdown table { border-collapse: collapse; font-size: 0.875rem; }
 .markdown th,
 .markdown td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; text-align: left; }
-.markdown th { background: var(--muted); font-weight: 500; }
-.markdown a { text-decoration: underline; text-underline-offset: 4px; }
+.markdown th { background: oklch(0.962 0.018 272.314); font-weight: 600; }
+.markdown a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
 .markdown img { max-width: 100%; height: auto; }
 .markdown hr { border-color: var(--border); }
 .markdown .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.25rem 0; }
@@ -204,7 +210,8 @@
     font-size: 1.3rem;
     margin-top: 2rem;
     padding-bottom: 0.25rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid oklch(0.87 0.065 274.039);
+    color: oklch(0.359 0.144 278.697);
 }
 .paper h3 { font-size: 1.125rem; margin-top: 1.5rem; }
 .paper p { text-align: justify; hyphens: auto; }
@@ -237,3 +244,29 @@
     text-align: left;
 }
 .clarification + .clarification { margin-top: 0.5rem; }
+
+/* Code in colour (rehype-highlight): the classes of highlight.js on the dark block above. */
+.markdown pre .hljs-comment,
+.markdown pre .hljs-quote { color: oklch(0.704 0.04 256.788); font-style: italic; }
+.markdown pre .hljs-keyword,
+.markdown pre .hljs-selector-tag,
+.markdown pre .hljs-literal,
+.markdown pre .hljs-type { color: oklch(0.811 0.111 293.571); }
+.markdown pre .hljs-string,
+.markdown pre .hljs-regexp,
+.markdown pre .hljs-addition { color: oklch(0.845 0.143 164.978); }
+.markdown pre .hljs-number,
+.markdown pre .hljs-symbol,
+.markdown pre .hljs-bullet { color: oklch(0.879 0.169 91.605); }
+.markdown pre .hljs-title,
+.markdown pre .hljs-title.function_,
+.markdown pre .hljs-section { color: oklch(0.828 0.111 230.318); }
+.markdown pre .hljs-built_in,
+.markdown pre .hljs-attr,
+.markdown pre .hljs-attribute,
+.markdown pre .hljs-variable,
+.markdown pre .hljs-template-variable { color: oklch(0.865 0.127 207.078); }
+.markdown pre .hljs-meta,
+.markdown pre .hljs-deletion { color: oklch(0.81 0.117 11.638); }
+.markdown pre .hljs-emphasis { font-style: italic; }
+.markdown pre .hljs-strong { font-weight: 600; }

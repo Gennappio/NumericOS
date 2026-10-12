@@ -242,3 +242,28 @@ function describeRunEvent(event: EventOut): string | undefined {
 function formatMeasure(value: unknown): string {
   return typeof value === "number" ? formatNumber(value) : "?"
 }
+
+/** What an event is about, as a short tag with the colour of that part of the project. */
+export function eventFamily(event: Pick<EventOut, "type" | "payload">): {
+  label: string
+  className: string
+} {
+  const { type, payload } = event
+  const plan = { label: "plan", className: "bg-indigo-100 text-indigo-800" }
+  if (type.startsWith("CARD_")) return plan
+  if (type.startsWith("DOCUMENT_")) {
+    if (payload.kind === "plan") return plan
+    if (payload.kind === "file_description") {
+      return { label: "files", className: "bg-sky-100 text-sky-800" }
+    }
+    return { label: "theory", className: "bg-violet-100 text-violet-800" }
+  }
+  if (type.startsWith("ANNOTATION")) {
+    return { label: "comment", className: "bg-orange-100 text-orange-800" }
+  }
+  if (type.startsWith("AGENT_")) return { label: "agent", className: "bg-fuchsia-100 text-fuchsia-800" }
+  if (type.startsWith("RUN_") || type.startsWith("EXPERIMENT_") || type.startsWith("HYPOTHESIS_")) {
+    return { label: "experiment", className: "bg-cyan-100 text-cyan-800" }
+  }
+  return { label: "project", className: "bg-slate-100 text-slate-700" }
+}

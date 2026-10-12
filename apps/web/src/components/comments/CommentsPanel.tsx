@@ -15,7 +15,15 @@ import {
 } from "@/components/ui/dialog"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
-import { countOpen, excerpt, KIND_LABELS, KIND_STYLES, STATUS_LABELS } from "@/lib/comments"
+import {
+  countOpen,
+  excerpt,
+  KIND_ACCENTS,
+  KIND_LABELS,
+  KIND_STYLES,
+  STATUS_LABELS,
+  STATUS_STYLES,
+} from "@/lib/comments"
 import { cn } from "@/lib/utils"
 
 interface CommentsPanelProps {
@@ -173,15 +181,20 @@ function CommentCard({ item, attached, focused, onReveal, onDismiss }: CommentCa
       data-status={item.status}
       data-anchor={item.anchor_state}
       className={cn(
-        "space-y-1.5 rounded-lg border bg-card p-3",
-        focused ? "border-yellow-400 ring-2 ring-yellow-300/60" : "border-border",
+        "space-y-1.5 rounded-lg border border-l-4 bg-card p-3",
+        KIND_ACCENTS[item.kind],
+        focused
+          ? "border-y-yellow-400 border-r-yellow-400 ring-2 ring-yellow-300/60"
+          : "border-y-border border-r-border",
       )}
     >
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         <span className={cn("rounded-full border px-2 py-0.5 font-medium", KIND_STYLES[item.kind])}>
           {KIND_LABELS[item.kind]}
         </span>
-        <span className="text-muted-foreground">{STATUS_LABELS[item.status]}</span>
+        <span className={cn("rounded-full px-2 py-0.5 font-medium", STATUS_STYLES[item.status])}>
+          {STATUS_LABELS[item.status]}
+        </span>
         {!attached && (
           <span
             className="text-amber-800"
@@ -207,8 +220,18 @@ function CommentCard({ item, attached, focused, onReveal, onDismiss }: CommentCa
         </p>
       )}
       {item.response_markdown && (
-        <div className="rounded-md bg-muted/60 px-2.5 py-2">
-          <p className="mb-1 text-xs font-medium text-muted-foreground">
+        <div
+          className={cn(
+            "rounded-md px-2.5 py-2",
+            item.status === "declined" ? "bg-rose-50" : "bg-emerald-50",
+          )}
+        >
+          <p
+            className={cn(
+              "mb-1 text-xs font-medium",
+              item.status === "declined" ? "text-rose-800" : "text-emerald-800",
+            )}
+          >
             {item.status === "declined" ? "Why the agent declined" : "The agent"}
           </p>
           <Markdown source={item.response_markdown} />

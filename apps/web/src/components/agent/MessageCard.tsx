@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from "react"
 import type { Message } from "@/api/client"
-import { isTurnActive } from "@/api/queries"
+import { isTurnActive, useMoveCreatedFiles } from "@/api/queries"
 import { ActivityList } from "@/components/agent/ActivityList"
 import { TurnStatusBadge } from "@/components/agent/TurnStatusBadge"
 import { Commentable } from "@/components/comments/Commentable"
@@ -44,7 +44,7 @@ export function MessageCard({
       <article
         aria-label="Your message"
         data-role="user"
-        className="ml-auto max-w-[85%] rounded-lg bg-muted px-4 py-3 text-sm whitespace-pre-wrap"
+        className="ml-auto max-w-[85%] rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm whitespace-pre-wrap text-indigo-950"
       >
         {message.markdown}
       </article>
@@ -132,6 +132,8 @@ export function MessageCard({
         </section>
       )}
 
+      <CreatedFiles message={message} onError={onError} />
+
       {!active && actions > 0 && (
         <details className="text-sm">
           <summary className="cursor-pointer text-muted-foreground">
@@ -152,6 +154,63 @@ export function MessageCard({
         </details>
       )}
     </article>
+  )
+}
+
+/**
+ * New files a turn left in the repository, outside the NumericOS folder. They are named, and
+ * one click moves them to that folder: a file that belongs to the project is left by not
+ * pressing it.
+ */
+function CreatedFiles({ message, onError }: { message: Message; onError: (error: unknown) => void }) {
+  const move = useMoveCreatedFiles(message.project_id)
+  const created = message.files_created ?? []
+  const moved = new Set(message.files_moved ?? [])
+  const left = created.filter((path) => !moved.has(path))
+  if (created.length === 0) return null
+  return (
+    <section
+      aria-label="New files in the repository"
+      className={
+        left.length > 0
+          ? "space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          : "rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
+      }
+    >
+      {left.length > 0 ? (
+        <>
+          <p className="font-medium">
+            This turn left {left.length === 1 ? "a new file" : `${left.length} new files`} in the
+            repository:
+          </p>
+          <ul className="space-y-0.5 font-mono text-xs break-all">
+            {left.map((path) => (
+              <li key={path}>{path}</li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-amber-400 bg-white"
+              disabled={move.isPending}
+              onClick={() => move.mutate(message.id, { onError })}
+            >
+              Move {left.length === 1 ? "it" : "them"} to the NumericOS folder
+            </Button>
+            <span className="text-xs">
+              Leave {left.length === 1 ? "it" : "them"} if {left.length === 1 ? "it is" : "they are"}{" "}
+              part of the project.
+            </span>
+          </div>
+        </>
+      ) : (
+        <p>
+          {created.length === 1 ? "The file" : `The ${created.length} files`} this turn left in
+          the repository {created.length === 1 ? "was" : "were"} moved to the NumericOS folder.
+        </p>
+      )}
+    </section>
   )
 }
 

@@ -89,4 +89,6 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "resolve_annotations",
         "update_annotation",
         "dismiss_annotation",
+        "move_created_files",
+        "get_workspace",
     }

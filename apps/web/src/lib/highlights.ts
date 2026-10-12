@@ -13,12 +13,12 @@ const owners = new Map<string, Map<string, Range[]>>()
  * `::highlight()` pseudo-element yet and warns about every rule.
  */
 const STYLES = `
-::highlight(nos-clarification) { background-color: rgb(125 211 252 / 0.45); }
-::highlight(nos-change) { background-color: rgb(252 211 77 / 0.5); }
-::highlight(nos-note) { background-color: rgb(203 213 225 / 0.7); }
-::highlight(nos-settled) { background-color: rgb(226 232 240 / 0.55); }
-::highlight(nos-draft) { background-color: rgb(165 180 252 / 0.55); }
-::highlight(nos-focus) { background-color: rgb(250 204 21 / 0.75); }
+::highlight(nos-clarification) { background-color: rgb(56 189 248 / 0.45); }
+::highlight(nos-change) { background-color: rgb(251 146 60 / 0.5); }
+::highlight(nos-note) { background-color: rgb(167 139 250 / 0.45); }
+::highlight(nos-settled) { background-color: rgb(110 231 183 / 0.45); }
+::highlight(nos-draft) { background-color: rgb(129 140 248 / 0.45); }
+::highlight(nos-focus) { background-color: rgb(250 204 21 / 0.8); }
 `
 const STYLE_ID = "nos-highlight-styles"
 

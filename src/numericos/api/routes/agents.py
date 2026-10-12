@@ -22,6 +22,8 @@ from numericos.core.schemas import (
     MessageCreate,
     MessageList,
     MessageOut,
+    MoveCreatedFiles,
+    WorkspaceOut,
 )
 from numericos.services import agents
 
@@ -159,3 +161,29 @@ def cancel_message(
     message_id: str, uow: Uow, context: Context, body: MessageCancel | None = None
 ) -> MessageOut:
     return agents.cancel_message(uow, message_id, body or MessageCancel(), context)
+
+
+@router.post(
+    "/messages/{message_id}:move-created-files",
+    tags=["agents"],
+    summary="Move files a turn left in the repository to the project's NumericOS folder",
+)
+def move_created_files(
+    message_id: str,
+    uow: Uow,
+    context: Context,
+    request: Request,
+    body: MoveCreatedFiles | None = None,
+) -> MessageOut:
+    return agents.move_created_files(
+        uow, message_id, body or MoveCreatedFiles(), context, settings=request.app.state.settings
+    )
+
+
+@router.get(
+    "/projects/{project_id}/workspace",
+    tags=["agents"],
+    summary="The NumericOS folder of a project: where everything generated about it is kept",
+)
+def get_workspace(project_id: str, uow: Uow, request: Request) -> WorkspaceOut:
+    return agents.get_workspace(uow, project_id, settings=request.app.state.settings)

@@ -376,6 +376,10 @@ class AgentMessage(Base):
     activity_dropped: Mapped[int] = mapped_column(Integer, default=0)
     files_read: Mapped[list[str]] = mapped_column(JSON, default=list)
     files_written: Mapped[list[str]] = mapped_column(JSON, default=list)
+    #: Files that are in the repository after the turn, untracked, and were not before it:
+    #: what the turn left behind outside the NumericOS folder. And the ones moved out since.
+    files_created: Mapped[list[str]] = mapped_column(JSON, default=list)
+    files_moved: Mapped[list[str]] = mapped_column(JSON, default=list)
     permission_denials: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     cost_usd: Mapped[float | None] = mapped_column(Float)
     usage: Mapped[dict[str, Any] | None] = mapped_column(JSON)

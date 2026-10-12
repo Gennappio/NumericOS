@@ -6,7 +6,7 @@ import { TypeBadge } from "@/components/TypeBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { STATUS_LABELS } from "@/lib/labels"
+import { CARD_TYPE_ACCENTS, STATUS_LABELS } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 
 /** Where a card should go: another column (appended), or another index in its column. */
@@ -48,8 +48,10 @@ export function CardItem({
       style={{ transform: CSS.Translate.toString(transform), transition }}
       aria-label={card.title}
       data-origin={card.origin}
+      data-type={card.type}
       className={cn(
-        "space-y-2 rounded-md border border-border bg-card p-3 shadow-xs",
+        "space-y-2 rounded-md border border-l-4 border-border p-3 shadow-xs",
+        CARD_TYPE_ACCENTS[card.type],
         isDragging && "relative z-10 opacity-80 shadow-md",
       )}
     >
@@ -57,7 +59,11 @@ export function CardItem({
         <span className="flex flex-wrap items-center gap-1.5">
           <TypeBadge type={card.type} />
           {card.origin === "agent" && (
-            <Badge variant="outline" title="Put on the board by the agent when it was asked to plan">
+            <Badge
+              variant="outline"
+              className="border-fuchsia-300 bg-fuchsia-100 text-fuchsia-900"
+              title="Put on the board by the agent when it was asked to plan"
+            >
               agent
             </Badge>
           )}
@@ -88,7 +94,7 @@ export function CardItem({
       )}
       <div className="flex items-center gap-1">
         <NativeSelect
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 rounded-lg bg-white/70"
           aria-label={`Workflow status of ${card.title}`}
           value={card.workflow_status}
           disabled={disabled}

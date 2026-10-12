@@ -233,6 +233,12 @@ class Lab:
             "POST", f"/v1/annotations:{action}", 202, {**self._target(target), **body}
         )
 
+    def workspace(self) -> Json:
+        return self.get(f"/v1/projects/{self.project['id']}/workspace")
+
+    def move_created(self, message_id: str, **body: Any) -> Json:
+        return self._send("POST", f"/v1/messages/{message_id}:move-created-files", 200, body)
+
     def board(self) -> list[Json]:
         cards: list[Json] = self.get(f"/v1/projects/{self.project['id']}/board")["cards"]
         return cards

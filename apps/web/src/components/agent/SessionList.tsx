@@ -3,7 +3,7 @@ import { Link } from "react-router"
 import type { AgentSession, PermissionMode } from "@/api/client"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
-import { PERMISSION_MODE_LABELS, PERMISSION_MODES } from "@/lib/agent"
+import { PERMISSION_MODE_LABELS, PERMISSION_MODE_STYLES, PERMISSION_MODES } from "@/lib/agent"
 import { formatTimestamp } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
@@ -64,13 +64,21 @@ export function SessionList({
                   className={cn(
                     "block rounded-md border px-3 py-2 text-sm",
                     session.id === currentId
-                      ? "border-foreground bg-card"
+                      ? "border-fuchsia-300 bg-fuchsia-50"
                       : "border-transparent hover:bg-muted",
                   )}
                 >
                   <span className="line-clamp-2 break-words">{session.title}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {PERMISSION_MODE_LABELS[session.permission_mode]} ·{" "}
+                  <span className="mt-1 block text-xs leading-6 text-muted-foreground">
+                    <span
+                      className={cn(
+                        "rounded-full border px-1.5 py-0.5 font-medium",
+                        PERMISSION_MODE_STYLES[session.permission_mode],
+                      )}
+                    >
+                      {PERMISSION_MODE_LABELS[session.permission_mode]}
+                    </span>{" "}
+                    ·{" "}
                     {session.message_count === 1 ? "1 message" : `${session.message_count} messages`} ·{" "}
                     {formatTimestamp(session.updated_at)}
                   </span>

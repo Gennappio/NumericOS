@@ -58,6 +58,12 @@ interface Draft {
 }
 
 const KINDS: AnnotationKind[] = ["clarification", "change", "note"]
+/** The three choices of the bar, each in the colour of its kind of comment. */
+const KIND_BUTTONS: Record<AnnotationKind, string> = {
+  clarification: "border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100",
+  change: "border-orange-300 bg-orange-50 text-orange-900 hover:bg-orange-100",
+  note: "border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100",
+}
 
 /**
  * A text of the agent that can be commented. Select any passage: a small bar offers to ask
@@ -263,7 +269,8 @@ export function Commentable({
                   <Button
                     key={kind}
                     size="sm"
-                    variant={kind === "note" ? "ghost" : "outline"}
+                    variant="outline"
+                    className={KIND_BUTTONS[kind]}
                     onClick={() => setDraft({ ...draft, kind })}
                   >
                     {KIND_ACTIONS[kind]}

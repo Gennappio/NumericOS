@@ -21,7 +21,7 @@ import { CardDialog, type CardDialogTarget } from "@/components/board/CardDialog
 import { CardItem, type Placement } from "@/components/board/CardItem"
 import { Button } from "@/components/ui/button"
 import { COLUMN_PREFIX, placementOfDrop } from "@/lib/boardDrop"
-import { STATUS_LABELS } from "@/lib/labels"
+import { STATUS_LABELS, STATUS_STYLES } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 
 interface BoardProps {
@@ -84,9 +84,20 @@ export function Board({ projectId, board, disabled, onError }: BoardProps) {
           return (
             <Column key={status} status={status}>
               <header className="flex items-center justify-between gap-2 px-1 pb-2">
-                <h3 className="text-sm font-medium">
+                <h3 className="flex items-center gap-2 text-sm font-medium">
+                  <span
+                    aria-hidden="true"
+                    className={cn("inline-block size-2.5 rounded-full", STATUS_STYLES[status].dot)}
+                  />
                   {STATUS_LABELS[status]}{" "}
-                  <span className="font-normal text-muted-foreground">{cards.length}</span>
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-xs font-medium",
+                      STATUS_STYLES[status].count,
+                    )}
+                  >
+                    {cards.length}
+                  </span>
                 </h3>
                 <Button
                   variant="ghost"
@@ -146,9 +157,11 @@ function Column({ status, children }: { status: WorkflowStatus; children: ReactN
     <section
       ref={setNodeRef}
       aria-label={`${STATUS_LABELS[status]} column`}
+      data-status={status}
       className={cn(
-        "rounded-lg bg-muted/60 p-2 md:min-w-60 md:flex-1 md:basis-0",
-        isOver && "ring-2 ring-ring/40",
+        "rounded-lg border-t-4 p-2 md:min-w-60 md:flex-1 md:basis-0",
+        STATUS_STYLES[status].column,
+        isOver && "ring-2 ring-ring/60",
       )}
     >
       {children}

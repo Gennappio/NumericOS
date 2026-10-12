@@ -22,10 +22,27 @@ export const KIND_PROMPTS: Record<AnnotationKind, string> = {
   note: "A note for yourself (the agent does not see it)",
 }
 
+/** A colour per kind of comment: its tag, the edge of its card, its highlight in the text. */
 export const KIND_STYLES: Record<AnnotationKind, string> = {
-  clarification: "border-sky-300 bg-sky-100 text-sky-900",
-  change: "border-amber-300 bg-amber-100 text-amber-900",
-  note: "border-slate-300 bg-slate-100 text-slate-800",
+  clarification: "border-sky-600 bg-sky-600 text-white",
+  change: "border-orange-600 bg-orange-600 text-white",
+  note: "border-violet-600 bg-violet-600 text-white",
+}
+
+export const KIND_ACCENTS: Record<AnnotationKind, string> = {
+  clarification: "border-l-sky-500",
+  change: "border-l-orange-500",
+  note: "border-l-violet-500",
+}
+
+/** How a comment stands. "Clarified" and "Applied" say what the agent did, not that it is right. */
+export const STATUS_STYLES: Record<AnnotationStatus, string> = {
+  open: "bg-slate-100 text-slate-700",
+  pending: "bg-sky-100 text-sky-800",
+  answered: "bg-emerald-100 text-emerald-800",
+  resolved: "bg-emerald-100 text-emerald-800",
+  declined: "bg-rose-100 text-rose-800",
+  dismissed: "bg-slate-100 text-slate-500",
 }
 
 export const STATUS_LABELS: Record<AnnotationStatus, string> = {

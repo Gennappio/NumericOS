@@ -9,6 +9,7 @@ SPEC = "spec.json"  # supervisor: the argument vector and working directory
 STREAM = "stream.jsonl"  # the agent's standard output: one JSON record per line
 STDERR = "stderr.log"  # the agent's standard error
 PROCESS = "process.json"  # supervisor: identity of the agent process, written right after start
+UNTRACKED = "untracked.json"  # supervisor: untracked files of the repository before the turn
 
 
 def turns_root(data_dir: Path) -> Path:

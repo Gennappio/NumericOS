@@ -119,6 +119,7 @@ def command(
     effort: str | None = None,
     fork: bool = False,
     json_schema: dict[str, Any] | None = None,
+    add_dirs: list[str] | None = None,
 ) -> list[str]:
     """The argument vector of one turn. The prompt itself goes to standard input."""
     argv = [
@@ -145,6 +146,10 @@ def command(
         argv += ["--effort", effort]
     if json_schema is not None:
         argv += ["--json-schema", json.dumps(json_schema, separators=(",", ":"))]
+    # Directories outside the working directory the agent may use. Last: the flag takes any
+    # number of values, and nothing that follows it must be taken for one.
+    if add_dirs:
+        argv += ["--add-dir", *add_dirs]
     return argv
 
 

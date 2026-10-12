@@ -9,15 +9,16 @@ afterEach(() => vi.unstubAllGlobals())
 
 /** A final answer reads its comments: the card is rendered with the application's providers. */
 function render(ui: ReactElement) {
-  stubApi({
+  const fetchMock = stubApi({
     "/v1/annotations": {
       annotations: [],
       target_version: 1,
       pending_message_id: null,
       pending_session_id: null,
     },
+    "/v1/messages/msg_answer:move-created-files": {},
   })
-  return renderApp(ui)
+  return Object.assign(renderApp(ui), { mock: fetchMock.mock })
 }
 
 describe("MessageCard", () => {
@@ -98,7 +99,7 @@ describe("MessageCard", () => {
   })
 
   it("shows an error, a stop or an interruption with its reason", () => {
-    const { rerender } = render(
+    const { unmount } = render(
       <MessageCard
         message={answerRecord({ status: "failed", status_reason: "error_max_budget: too costly" })}
         supervisorAlive
@@ -107,8 +108,9 @@ describe("MessageCard", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The agent ended with an error: error_max_budget: too costly",
     )
+    unmount()
 
-    rerender(
+    render(
       <MessageCard
         message={answerRecord({ status: "interrupted", status_reason: "the agent process ended" })}
         supervisorAlive
@@ -129,5 +131,49 @@ describe("MessageCard", () => {
 
     const refused = screen.getByRole("region", { name: "Refused by the permission mode" })
     expect(within(refused).getByText("pytest -q")).toBeVisible()
+  })
+})
+
+describe("MessageCard: what a turn left in the repository", () => {
+  it("names the new files and offers to move them to the NumericOS folder", async () => {
+    const fetchMock = render(
+      <MessageCard
+        message={answerRecord({ files_created: ["notes.md", "tmp/out.csv"], files_moved: [] })}
+        supervisorAlive
+      />,
+    )
+
+    const box = screen.getByRole("region", { name: "New files in the repository" })
+    expect(within(box).getByText(/left 2 new files in the\s+repository/)).toBeVisible()
+    expect(within(box).getByText("tmp/out.csv")).toBeVisible()
+    expect(within(box).getByText(/Leave them if they are\s+part of the project/)).toBeVisible()
+    fireEvent.click(within(box).getByRole("button", { name: "Move them to the NumericOS folder" }))
+
+    await vi.waitFor(() => {
+      const calls = fetchMock.mock.calls as unknown as [RequestInfo | URL, RequestInit?][]
+      expect(
+        calls.some(
+          ([url, init]) =>
+            String(url).endsWith("/v1/messages/msg_answer:move-created-files") &&
+            init?.method === "POST",
+        ),
+      ).toBe(true)
+    })
+  })
+
+  it("says when they were moved, and says nothing when the turn left none", () => {
+    const { unmount } = render(
+      <MessageCard
+        message={answerRecord({ files_created: ["notes.md"], files_moved: ["notes.md"] })}
+        supervisorAlive
+      />,
+    )
+    expect(screen.getByRole("region", { name: "New files in the repository" })).toHaveTextContent(
+      "The file this turn left in the repository was moved to the NumericOS folder.",
+    )
+    unmount()
+
+    render(<MessageCard message={answerRecord()} supervisorAlive />)
+    expect(screen.queryByRole("region", { name: "New files in the repository" })).toBeNull()
   })
 })

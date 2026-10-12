@@ -4,7 +4,8 @@ import { useUpdateAgentSession } from "@/api/queries"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
-import { PERMISSION_MODES, modelLabel } from "@/lib/agent"
+import { PERMISSION_MODE_STYLES, PERMISSION_MODES, modelLabel } from "@/lib/agent"
+import { cn } from "@/lib/utils"
 
 interface ComposerProps {
   projectId: string
@@ -139,7 +140,19 @@ export function Composer({
           Send
         </Button>
       </div>
-      {mode && <p className="text-xs text-muted-foreground">{mode.description}</p>}
+      {mode && (
+        <p className="text-xs text-muted-foreground">
+          <span
+            className={cn(
+              "mr-1.5 rounded-full border px-1.5 py-0.5 font-medium",
+              PERMISSION_MODE_STYLES[mode.value],
+            )}
+          >
+            {mode.label}
+          </span>
+          {mode.description}
+        </p>
+      )}
       {blocked && (
         <p role="status" className="text-sm text-amber-800">
           {blocked}
