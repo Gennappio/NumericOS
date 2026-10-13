@@ -95,7 +95,9 @@ def test_the_policy_is_shown_and_set_per_task(
 
     assert shown.exit_code == 0, shown.output
     assert "conversation           model provider default, effort provider default" in shown.stdout
-    assert "clarify" in shown.stdout and "(not available yet)" in shown.stdout
+    assert "pipeline               model claude-sonnet-5-5, effort medium" in shown.stdout
+    # Every task has a feature that uses it: none is announced ahead of its own.
+    assert "clarify" in shown.stdout and "(not available yet)" not in shown.stdout
     assert set_one["tasks"]["conversation"] == {"model": "claude-haiku-5-5", "effort": "low"}
     assert set_one["version"] == 1
     record = json.loads(answered.stdout)
@@ -136,6 +138,35 @@ def test_the_theory_and_the_files_are_asked_for_and_read_from_the_command_line(
     assert planned["summary"] == "2 card(s) added, 0 changed"
     listed = cli(live_server, "doc", "files", "-p", project_id)
     assert f"{solver}  [code," in listed.stdout
+
+
+def test_the_pipeline_is_asked_for_and_read_from_the_command_line(
+    live_server: LiveServer, live_worker: LiveWorker, live_lab: Lab
+) -> None:
+    project_id = live_lab.project["id"]
+
+    nothing = cli(live_server, "doc", "pipeline", "-p", project_id)
+    written = cli(live_server, "doc", "pipeline", "-p", project_id, "--write")
+    record = cli_json(live_server, "doc", "pipeline", "-p", project_id)
+
+    assert "not written yet" in nothing.stdout
+    assert written.exit_code == 0, written.output
+    # The boxes are the sections of the text; the arrows are said after it, by the titles.
+    assert written.stdout.startswith("# Pipeline of the 2D heat solver\n\nOne run reads")
+    assert "\n\n## Advance in time\n\nThe explicit scheme" in written.stdout
+    assert written.stdout.rstrip().endswith(
+        "Arrows:\n"
+        "- Read the parameters -> Build the grid: n, alpha, dt\n"
+        "- Build the grid -> Advance in time: initial field\n"
+        "- Advance in time -> Write the results: final field\n"
+        "- Advance in time repeats: every time step, until the final time"
+    )
+    assert [node["id"] for node in record["pipeline"]["nodes"]] == [
+        "parameters",
+        "grid",
+        "time-loop",
+        "results",
+    ]
 
 
 def test_comments_are_added_clarified_and_resolved_from_the_command_line(

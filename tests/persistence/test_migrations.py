@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -25,7 +26,7 @@ TABLES = {
     "documents",
     "annotations",
 }
-HEAD = "0010"
+HEAD = "0011"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:
@@ -154,6 +155,109 @@ def test_upgrading_existing_data_keeps_it_and_leaves_a_backup(tmp_path: Path) ->
         assert copy.execute("SELECT count(*) FROM events").fetchone() == (2,)
         tables = {row[0] for row in copy.execute("SELECT name FROM sqlite_master")}
     assert "runs" not in tables
+
+
+def test_the_task_of_the_pipeline_takes_over_what_was_saved_for_its_old_name(
+    tmp_path: Path,
+) -> None:
+    """Revision 0011 renames a task: a saved policy and the sessions follow it, both ways."""
+    engine = make_engine(tmp_path / "numericos.db")
+    migrate.upgrade(engine, "0010")
+    now = "2026-10-13T08:00:00.000000Z"
+    tasks = {"conversation": {"model": None, "effort": None}}
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO projects (id, name, research_question, description, is_demo,"
+                " version, created_at, updated_at) VALUES ('prj_1', 'P', '', '', 0, 1, :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO agent_policies VALUES ('prj_1', 'claude_code', :tasks, 1, :now, :now)"
+            ),
+            {
+                "now": now,
+                "tasks": json.dumps(
+                    {
+                        **tasks,
+                        "execution_description": {"model": "claude-haiku-5-5", "effort": "low"},
+                    }
+                ),
+            },
+        )
+
+    with engine.begin() as connection:
+        # A session of the old task and a document that is in place: both tables are rebuilt
+        # by this revision, with what they hold.
+        connection.execute(
+            text(
+                "INSERT INTO agent_sessions (id, project_id, title, provider, permission_mode,"
+                " native_session_id, cwd, system_prompt, version, created_at, updated_at, task)"
+                " VALUES ('ases_1', 'prj_1', 'T', 'claude_code', 'read_only', 'n-1', '/work', '',"
+                " 1, :now, :now, 'execution_description')"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO documents (id, project_id, kind, doc_key, title, summary, markdown,"
+                " status, instructions, sources, session_id, version, created_at, updated_at)"
+                " VALUES ('doc_t', 'prj_1', 'theory', 'theory', 'Theory', '', '# Theory',"
+                " 'ready', '', '[]', 'ases_1', 3, :now, :now)"
+            ),
+            {"now": now},
+        )
+
+    def kept() -> list[tuple[object, ...]]:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT s.task, d.kind, d.markdown, d.version, d.session_id"
+                    " FROM documents d JOIN agent_sessions s ON s.id = d.session_id"
+                    " WHERE d.id = 'doc_t'"
+                )
+            ).all()
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
+        return [tuple(row) for row in rows]
+
+    def saved() -> dict[str, object]:
+        with engine.connect() as connection:
+            stored = connection.execute(text("SELECT tasks FROM agent_policies")).scalar_one()
+        return dict(json.loads(stored))
+
+    migrate.upgrade(engine)
+    renamed, moved = saved(), kept()
+    with engine.connect() as connection:
+        empty = connection.execute(text("SELECT pipeline FROM documents")).scalar_one()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO documents (id, project_id, kind, doc_key, title, summary, markdown,"
+                " status, instructions, sources, pipeline, version, created_at, updated_at) VALUES"
+                " ('doc_1', 'prj_1', 'pipeline', 'pipeline', 'T', '', '# T', 'ready', '', '[]',"
+                ' \'{"nodes": [], "edges": []}\', 1, :now, :now)'
+            ),
+            {"now": now},
+        )
+    migrate.downgrade(engine, "0010")
+    restored, back = saved(), kept()
+    with engine.connect() as connection:
+        documents = connection.execute(text("SELECT count(*) FROM documents")).scalar_one()
+
+    assert renamed == {**tasks, "pipeline": {"model": "claude-haiku-5-5", "effort": "low"}}
+    assert restored == {
+        **tasks,
+        "execution_description": {"model": "claude-haiku-5-5", "effort": "low"},
+    }
+    # What the rebuilt tables held is there as it was, under the name of the task in force.
+    assert moved == [("pipeline", "theory", "# Theory", 3, "ases_1")] and empty is None
+    assert back == [("execution_description", "theory", "# Theory", 3, "ases_1")]
+    assert documents == 1  # the theory stays; a pipeline has no place in the schema before
+    migrate.upgrade(engine)
+    migrate.check(engine)
+    engine.dispose()
 
 
 def test_no_backup_for_a_fresh_or_current_database(tmp_path: Path) -> None:

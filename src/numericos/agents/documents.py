@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from numericos.agents import pipeline
 from numericos.agents.anchoring import reanchor
 from numericos.core.enums import (
     CardOrigin,
@@ -26,6 +27,7 @@ from numericos.core.enums import (
     TargetType,
     WorkflowStatus,
 )
+from numericos.core.formulas import repair_formulas
 from numericos.core.ids import new_id
 from numericos.core.schemas import CardOut
 from numericos.persistence.engine import utcnow
@@ -38,7 +40,7 @@ MakeEvent = Callable[[EventType, str, dict[str, Any], Severity], Event]
 REASON_MAX = 300
 SUMMARY_MAX = 400
 TITLE_MAX = 300
-NO_STRUCTURE = "the agent's answer did not have the requested structure"
+NO_STRUCTURE = pipeline.NO_STRUCTURE
 
 
 def _clip(text: str, limit: int) -> str:
@@ -116,6 +118,8 @@ def complete(
         failed = _complete_theory(documents[0], message, hashes, now)
     elif kind is DocumentKind.FILE_DESCRIPTION:
         failed = _complete_files(documents, message, cwd, now)
+    elif kind is DocumentKind.PIPELINE:
+        failed, details = _complete_pipeline(documents[0], message, cwd, hashes, now)
     else:
         failed, details = _complete_plan(uow, documents[0], message, make_event, now)
 
@@ -151,13 +155,56 @@ def _complete_theory(
         return {document.key: "the agent returned an empty document"}
     document.markdown = text
     document.title = first_heading(text) or document.title
-    document.sources = [
-        {"path": path, "sha": hashes[path]}
-        for path in message.files_read or []
-        if hashes.get(path) is not None
-    ]
+    document.sources = sources_of(message.files_read or [], hashes)
     _fill(document, message, now)
     return {}
+
+
+def sources_of(paths: list[str], hashes: dict[str, str | None]) -> list[dict[str, Any]]:
+    """The files a text was written from, with what they contained when it was written. A
+    file that could not be hashed (it is gone, or outside the project) is no source."""
+    return [
+        {"path": path, "sha": hashes[path]}
+        for path in dict.fromkeys(paths)
+        if hashes.get(path) is not None
+    ]
+
+
+def build_pipeline(answer: Any, cwd: Path) -> pipeline.Built | str:
+    """What a structured answer makes as a pipeline, or the reason why it makes none."""
+    return pipeline.build(answer, lambda raw: relative_path(raw, cwd))
+
+
+def put_pipeline(
+    document: Document, built: pipeline.Built, read: list[str], hashes: dict[str, str | None]
+) -> None:
+    """Make a built pipeline the content of its document. Its sources are the files given as
+    read and the files its boxes name."""
+    document.markdown = built.markdown
+    document.pipeline = built.structure
+    document.title = built.title
+    document.summary = built.summary
+    named = [path for node in built.structure["nodes"] for path in node["files"]]
+    document.sources = sources_of([*read, *named], hashes)
+
+
+def _complete_pipeline(
+    document: Document,
+    message: AgentMessage,
+    cwd: Path,
+    hashes: dict[str, str | None],
+    now: datetime,
+) -> tuple[dict[str, str], dict[str, Any]]:
+    built = build_pipeline(message.structured_output, cwd)
+    if isinstance(built, str):
+        return {document.key: built}, {}
+    put_pipeline(document, built, message.files_read or [], hashes)
+    _fill(document, message, now)
+    return {}, {
+        "boxes": len(built.structure["nodes"]),
+        "arrows": len(built.structure["edges"]),
+        "entries_skipped": built.skipped,
+    }
 
 
 def _complete_files(
@@ -180,7 +227,7 @@ def _complete_files(
         if not text:
             failed[document.key] = "the agent returned no description of this file"
             continue
-        document.markdown = text
+        document.markdown = repair_formulas(text)
         document.summary = _clip(str(entry.get("summary", "")), SUMMARY_MAX)  # type: ignore[union-attr]
         category = entry.get("category")  # type: ignore[union-attr]
         if category in categories:
@@ -203,7 +250,7 @@ def _complete_plan(
     if not isinstance(answer, dict) or not isinstance(cards, list):
         return {document.key: NO_STRUCTURE}, {}
     created, changed, skipped = apply_plan(uow, message.project_id, cards, make_event, now)
-    document.markdown = str(answer.get("rationale", "")).strip()
+    document.markdown = repair_formulas(str(answer.get("rationale", "")).strip())
     document.title = "Plan"
     document.summary = f"{created} card(s) added, {changed} changed" + (
         f", {skipped} entry(ies) of the answer could not be used" if skipped else ""
@@ -234,7 +281,7 @@ def apply_plan(
         if not title or card_type not in types or status not in statuses:
             skipped += 1
             continue
-        description = str(entry.get("description", "")).strip()[:20000]
+        description = repair_formulas(str(entry.get("description", "")).strip()[:20000])
         existing = uow.cards.get(entry["id"]) if isinstance(entry.get("id"), str) else None
         if existing is not None and existing.project_id != project_id:
             existing = None

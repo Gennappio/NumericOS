@@ -25,7 +25,7 @@ from typing import Any, Literal, TypeGuard
 
 import psutil
 
-from numericos.agents import claude_code, comments, documents, layout, workspace
+from numericos.agents import claude_code, comments, documents, layout, pipeline, workspace
 from numericos.agents.records import choice_for, finished_payload
 from numericos.config import Settings
 from numericos.core.agents import ActivityItem, TurnResult
@@ -174,7 +174,7 @@ class TurnSupervisor:
             return self._event(message, event_type, payload, severity, subject_id=subject)
 
         documents.complete(uow, message, cwd=cwd, hashes=hashes, make_event=make_event)
-        comments.complete(uow, message, hashes=hashes, make_event=make_event)
+        comments.complete(uow, message, cwd=cwd, hashes=hashes, make_event=make_event)
 
     # ------------------------------------------------------------------ one round
 
@@ -571,13 +571,27 @@ class TurnSupervisor:
     def _hashes_of_touched_files(
         cwd: Path, touched_so_far: list[str], records: list[dict[str, Any]]
     ) -> dict[str, str | None]:
-        """What the files a turn read or wrote, and the files its text was written from,
-        contain when the turn ends."""
+        """What the files a turn read, wrote or named on the boxes of a pipeline, and the
+        files its text was written from, contain when the turn ends."""
         preview = claude_code.Progress()
+        named: list[str] = []
         for record in records:
             preview.fold(record, cwd)
-        touched = dict.fromkeys([*touched_so_far, *preview.files_read, *preview.files_written])
-        inside = [path for path in touched if not Path(path).is_absolute()]
+            if record.get("type") == "result":
+                named += [
+                    documents.relative_path(raw, cwd)
+                    for raw in pipeline.named_files(record.get("structured_output"))
+                ]
+        touched = dict.fromkeys(
+            [*touched_so_far, *preview.files_read, *preview.files_written, *named]
+        )
+        # A path the agent only named may point anywhere: one that leaves the project is no
+        # file of it.
+        inside = [
+            path
+            for path in touched
+            if not Path(path).is_absolute() and ".." not in Path(path).parts
+        ]
         if not inside:
             return {}
         try:

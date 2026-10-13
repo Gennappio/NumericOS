@@ -68,7 +68,7 @@ worker = typer.Typer(
 )
 agent = typer.Typer(help="Conversations with the coding agent.", no_args_is_help=True)
 doc = typer.Typer(
-    help="Documents the agent writes about a project: theory, files, plan.",
+    help="Documents the agent writes about a project: theory, pipeline, files, plan.",
     no_args_is_help=True,
 )
 comment = typer.Typer(
@@ -2028,6 +2028,20 @@ def _document_text(document: Record | None) -> str:
         lines.append(f"(out of date: {', '.join(document['changed_sources'])} changed since)")
     if document["markdown"]:
         lines.append(document["markdown"])
+    if document.get("pipeline"):
+        # The boxes are the sections above; the arrows are said here, by the titles.
+        titles = {node["id"]: node["title"] for node in document["pipeline"]["nodes"]}
+        arrows = [
+            f"- {titles[edge['source']]} -> {titles[edge['target']]}"
+            + (f": {edge['label']}" if edge["label"] else "")
+            for edge in document["pipeline"]["edges"]
+        ]
+        repeats = [
+            f"- {node['title']} repeats: {node['repeats']}"
+            for node in document["pipeline"]["nodes"]
+            if node["repeats"]
+        ]
+        lines.append("\n".join(["Arrows:", *(arrows or ["(none)"]), *repeats]))
     return "\n\n".join(lines) or "(empty)"
 
 
@@ -2040,7 +2054,8 @@ def _single_document(
     as_json: bool,
     api_url: str | None,
 ) -> None:
-    """Show the theory or the plan notes of a project, after asking for them with --write."""
+    """Show a document that exists once per project (the theory, the pipeline, the plan
+    notes), after asking for it with --write."""
     path = f"/v1/projects/{project_id}/{what}"
 
     def run(client: ApiClient) -> Record | None:
@@ -2078,6 +2093,19 @@ def doc_theory(
 ) -> None:
     """The theory of the project as the agent wrote it, as Markdown."""
     _single_document("theory", project_id, write, instructions, timeout, json_, api_url)
+
+
+@doc.command("pipeline")
+def doc_pipeline(
+    project_id: ProjectOption,
+    write: WriteFlag = False,
+    instructions: InstructionsOption = None,
+    timeout: TimeoutOption = None,
+    json_: JsonFlag = False,
+    api_url: ApiUrlOption = None,
+) -> None:
+    """What happens when the program runs, part by part, with the arrows between the parts."""
+    _single_document("pipeline", project_id, write, instructions, timeout, json_, api_url)
 
 
 @doc.command("plan")

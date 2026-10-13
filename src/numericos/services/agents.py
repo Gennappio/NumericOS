@@ -565,7 +565,7 @@ def cancel_message(
             # No supervisor will end this turn: the documents it was to write and the comments
             # it was to answer are told here.
             agent_documents.complete(uow, message, cwd=Path("."), hashes={}, make_event=make_event)
-            agent_comments.complete(uow, message, hashes={}, make_event=make_event)
+            agent_comments.complete(uow, message, cwd=Path("."), hashes={}, make_event=make_event)
         out = MessageOut.model_validate(message)
         uow.commit()
     return out

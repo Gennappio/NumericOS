@@ -1,6 +1,7 @@
-"""Documents the agent writes about a project: its theory, the description of its files, its
-plan. The API queues a turn of the agent for each request and marks the documents it will
-write; the supervisor fills them when the turn ends (``numericos.agents.documents``).
+"""Documents the agent writes about a project: its theory, its pipeline, the description of
+its files, its plan. The API queues a turn of the agent for each request and marks the
+documents it will write; the supervisor fills them when the turn ends
+(``numericos.agents.documents``).
 
 Whether a document is still current is never stored. It is computed on every read from the
 content hashes of the files it was written from: a file that changed, or is gone, makes it
@@ -52,7 +53,11 @@ from numericos.services.guards import require_project, require_trusted_root
 #: Files listed for one project, and files one request may ask the agent to describe.
 MAX_LISTED = 5000
 MAX_PER_REQUEST = 400
-SINGLE_KEY = {DocumentKind.THEORY: "theory", DocumentKind.PLAN: "plan"}
+SINGLE_KEY = {
+    DocumentKind.THEORY: "theory",
+    DocumentKind.PLAN: "plan",
+    DocumentKind.PIPELINE: "pipeline",
+}
 
 
 def _trusted_root_or_none(project: Project) -> Path | None:
@@ -88,7 +93,8 @@ def get_document(uow: UnitOfWork, document_id: str) -> DocumentOut:
 
 
 def get_single(uow: UnitOfWork, project_id: str, kind: DocumentKind) -> DocumentSlot:
-    """The theory or the plan notes of a project, if the agent was ever asked for them."""
+    """The theory, the pipeline or the plan notes of a project, if the agent was ever asked
+    for them."""
     with uow:
         project = require_project(uow, project_id)
         document = uow.documents.by_key(project.id, kind.value, SINGLE_KEY[kind])
@@ -197,6 +203,44 @@ def generate_theory(
         )
         _mark(document, session, turn)
         _queued_event(uow, project, DocumentKind.THEORY, ["theory"], session, turn, context)
+        out = DocumentOut.model_validate(document)
+        uow.commit()
+    return out
+
+
+def generate_pipeline(
+    uow: UnitOfWork,
+    project_id: str,
+    data: GenerateRequest,
+    context: EventContext,
+    *,
+    settings: Settings,
+) -> DocumentOut:
+    """Ask the agent to describe, or describe again, what happens when the program runs, as
+    boxes and arrows. It reads the code; nothing is run and nothing is changed."""
+    agents.require_available(settings)
+    with uow:
+        project = require_project(uow, project_id)
+        root = require_trusted_root(project)
+        document = _pending(uow, project, DocumentKind.PIPELINE, "pipeline", data.instructions)
+        session = agents.open_session(
+            uow,
+            project,
+            root,
+            task=AgentTask.PIPELINE,
+            mode=PermissionMode.READ_ONLY,
+            title=f"Pipeline of {project.name}",
+            context=context,
+        )
+        turn = agents.queue_turn(
+            uow,
+            session,
+            prompts.pipeline(project.name, project.research_question, document.instructions),
+            context,
+            json_schema=prompts.PIPELINE_SCHEMA,
+        )
+        _mark(document, session, turn)
+        _queued_event(uow, project, DocumentKind.PIPELINE, ["pipeline"], session, turn, context)
         out = DocumentOut.model_validate(document)
         uow.commit()
     return out

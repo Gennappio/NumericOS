@@ -65,6 +65,10 @@ export type AgentPolicyPut = Schemas["AgentPolicyPut"]
 export type DocumentOut = Schemas["DocumentOut"]
 export type DocumentSlot = Schemas["DocumentSlot"]
 export type DocumentStatus = Schemas["DocumentStatus"]
+export type Pipeline = Schemas["PipelineOut"]
+export type PipelineNode = Schemas["PipelineNode"]
+export type PipelineEdge = Schemas["PipelineEdge"]
+export type PipelineNodeKind = Schemas["PipelineNodeKind"]
 export type FileList = Schemas["FileList"]
 export type FileEntry = Schemas["FileEntry"]
 export type FileCategory = Schemas["FileCategory"]
@@ -263,6 +267,13 @@ export const api = {
   generateTheory: (projectId: string, instructions?: string) =>
     apiFetch<DocumentOut>(
       `/v1/projects/${seg(projectId)}/theory:generate`,
+      send("POST", instructions === undefined ? {} : { instructions }),
+    ),
+  getPipeline: (projectId: string) =>
+    apiFetch<DocumentSlot>(`/v1/projects/${seg(projectId)}/pipeline`),
+  generatePipeline: (projectId: string, instructions?: string) =>
+    apiFetch<DocumentOut>(
+      `/v1/projects/${seg(projectId)}/pipeline:generate`,
       send("POST", instructions === undefined ? {} : { instructions }),
     ),
   getPlan: (projectId: string) => apiFetch<DocumentSlot>(`/v1/projects/${seg(projectId)}/plan`),

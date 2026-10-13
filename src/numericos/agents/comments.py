@@ -11,18 +11,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from numericos.agents.anchoring import reanchor
-from numericos.agents.documents import first_heading
+from numericos.agents.documents import build_pipeline, first_heading, put_pipeline, sources_of
 from numericos.core.enums import (
     AgentTask,
     AnnotationStatus,
+    DocumentKind,
     EventType,
     MessageStatus,
     Severity,
     TargetType,
 )
+from numericos.core.formulas import repair_formulas
 from numericos.persistence.engine import utcnow
 from numericos.persistence.models import AgentMessage, Annotation, Event
 from numericos.persistence.unit_of_work import UnitOfWork
@@ -73,7 +76,8 @@ def _answer(
 ) -> None:
     annotation.status = status.value
     annotation.status_reason = None
-    annotation.response_markdown = markdown
+    # The answer came inside JSON: a formula escaped once too often is as it was meant.
+    annotation.response_markdown = repair_formulas(markdown)
     annotation.message_id = message.id
     annotation.pending_message_id = None
     annotation.responded_at = now
@@ -92,12 +96,13 @@ def complete(
     uow: UnitOfWork,
     message: AgentMessage,
     *,
+    cwd: Path,
     hashes: dict[str, str | None],
     make_event: MakeEvent,
 ) -> None:
     """Give the comments this turn was answering what it answered. ``hashes`` are the content
-    hashes, taken when the turn ended, of the files it read or wrote and of the files the
-    text was written from."""
+    hashes, taken when the turn ended, of the files it read, wrote or named and of the files
+    the text was written from."""
     pending = uow.annotations.pending_for_message(message.id)
     if not pending:
         return
@@ -131,7 +136,7 @@ def complete(
             else:
                 summary = str(result.get("summary", "")).strip()
                 _answer(annotation, status, summary, message, now)
-        details = _rewrite(uow, pending[0], message, hashes, now)
+        details = _rewrite(uow, pending[0], message, cwd, hashes, now)
 
     for annotation in pending:
         if annotation.id in reopened:
@@ -162,30 +167,45 @@ def _rewrite(
     uow: UnitOfWork,
     annotation: Annotation,
     message: AgentMessage,
+    cwd: Path,
     hashes: dict[str, str | None],
     now: datetime,
 ) -> dict[str, Any]:
     """If the agent gave a revised text for a document, make it the document's new version
-    and look for every comment of the document again in it."""
-    answer = message.structured_output
-    revised = answer.get("document") if isinstance(answer, dict) else None
-    if annotation.target_type != TargetType.DOCUMENT.value or not isinstance(revised, str):
+    and look for every comment of the document again in it. A pipeline is revised as boxes
+    and arrows, from which its text is put together again."""
+    answer = message.structured_output if isinstance(message.structured_output, dict) else {}
+    document = (
+        uow.documents.get(annotation.target_id)
+        if annotation.target_type == TargetType.DOCUMENT.value
+        else None
+    )
+    if document is None:
         return {}
-    document = uow.documents.get(annotation.target_id)
-    text = revised.strip()
-    if document is None or not text or text == document.markdown.strip():
-        return {}
-    document.markdown = text
-    document.title = first_heading(text) or document.title
     # What the new text is current with: the files it was written from before, and the files
     # this turn read or changed, as they are now. A file that is gone is no source any more.
-    paths = [source["path"] for source in document.sources]
-    for path in [*(message.files_read or []), *(message.files_written or [])]:
-        if path not in paths:
-            paths.append(path)
-    document.sources = [
-        {"path": path, "sha": hashes[path]} for path in paths if hashes.get(path) is not None
+    paths = [
+        *(source["path"] for source in document.sources),
+        *(message.files_read or []),
+        *(message.files_written or []),
     ]
+    if document.kind == DocumentKind.PIPELINE.value:
+        if not isinstance(answer.get("pipeline"), dict):
+            return {}
+        built = build_pipeline(answer["pipeline"], cwd)
+        if isinstance(built, str):
+            return {"revision_not_used": built}
+        if built.markdown == document.markdown and built.structure == document.pipeline:
+            return {}
+        put_pipeline(document, built, paths, hashes)
+    else:
+        revised = answer.get("document")
+        text = revised.strip() if isinstance(revised, str) else ""
+        if not text or text == document.markdown.strip():
+            return {}
+        document.markdown = text
+        document.title = first_heading(text) or document.title
+        document.sources = sources_of(paths, hashes)
     document.message_id = message.id
     document.model = message.model
     document.generated_at = now

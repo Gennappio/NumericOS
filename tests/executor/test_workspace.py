@@ -127,15 +127,22 @@ def test_documents_are_kept_as_markdown_files_in_the_folder(lab: Lab, supervisor
     drive(supervisor, lambda: lab.files()["counts"]["generating"] == 0)
     lab.generate("plan")
     drive(supervisor, lambda: settled(lab.single("plan")))
+    lab.generate("pipeline")
+    drive(supervisor, lambda: settled(lab.single("pipeline")))
 
     docs = lab.repo.root / ".numericos" / "docs"
     theory = (docs / "theory.md").read_text()
+    pipeline = (docs / "pipeline.md").read_text()
 
     assert theory.startswith("<!-- Written by NumericOS (theory, version 1, ")
     assert "This file is overwritten when the document changes" in theory
     assert "\n\n# Explicit scheme for the 2D heat equation\n" in theory
     assert f"`{SOLVER}` holds" in (docs / "files" / f"{SOLVER}.md").read_text()
     assert "Check stability **first**" in (docs / "plan.md").read_text()
+    # The file of a pipeline also says in words what the page draws: which box leads to which.
+    assert "\n\n## Advance in time\n\nThe explicit scheme" in pipeline
+    assert "\n\n---\n\nThe text is drawn as a diagram" in pipeline
+    assert pipeline.endswith("- time-loop -> results: final field\n")
     assert status(lab) == ""  # none of it is seen by Git
     # The folder is not a file of the project: it is neither listed nor described.
     assert all(not entry["path"].startswith(".numericos") for entry in lab.files()["files"])

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { ledgerEvent } from "@/test/events"
-import { describeEvent } from "./events"
+import { describeEvent, eventFamily } from "./events"
 
 describe("describeEvent for conversations with the agent", () => {
   it("names the turn events from their own payload", () => {
@@ -92,6 +92,26 @@ describe("describeEvent for the documents of the agent", () => {
         }),
       ),
     ).toBe("Agent did not write the theory: the turn was cancelled")
+  })
+
+  it("says when the pipeline was asked for, drawn or not drawn", () => {
+    const asked = ledgerEvent(1, {
+      type: "DOCUMENT_GENERATION_QUEUED",
+      payload: { kind: "pipeline", keys: ["pipeline"] },
+    })
+    const drawn = ledgerEvent(2, {
+      type: "DOCUMENT_GENERATION_FINISHED",
+      payload: { kind: "pipeline", written: ["pipeline"], failed: {}, boxes: 7, arrows: 8 },
+    })
+    const failed = ledgerEvent(3, {
+      type: "DOCUMENT_GENERATION_FINISHED",
+      payload: { kind: "pipeline", written: [], failed: { pipeline: "no box" } },
+    })
+
+    expect(describeEvent(asked)).toBe("Agent asked for the pipeline")
+    expect(describeEvent(drawn)).toBe("Agent drew the pipeline: 7 box(es), 8 arrow(s)")
+    expect(describeEvent(failed)).toBe("Agent did not write the pipeline: no box")
+    expect(eventFamily(drawn).label).toBe("pipeline")
   })
 })
 

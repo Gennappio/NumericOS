@@ -35,28 +35,35 @@ function leaf(tagName: "span" | "div", kind: "t" | "a", range: Range, child: Ele
   }
 }
 
-function mark(children: ElementContent[]): ElementContent[] {
+function mark(children: ElementContent[], offset: number): ElementContent[] {
+  const shifted = (range: Range): Range => ({ start: range.start + offset, end: range.end + offset })
   return children.map((child) => {
     if (child.type === "text") {
       const range = rangeOf(child)
       if (!range || child.value.trim() === "") return child
       const exact = child.value.length === range.end - range.start
-      return leaf("span", exact ? "t" : "a", range, child)
+      return leaf("span", exact ? "t" : "a", shifted(range), child)
     }
     if (child.type !== "element") return child
     if (ATOMIC.has(child.tagName)) {
       const range = rangeOf(child)
-      return range ? leaf(BLOCK_ATOMS.has(child.tagName) ? "div" : "span", "a", range, child) : child
+      const tagName = BLOCK_ATOMS.has(child.tagName) ? "div" : "span"
+      return range ? leaf(tagName, "a", shifted(range), child) : child
     }
-    child.children = mark(child.children)
+    child.children = mark(child.children, offset)
     return child
   })
 }
 
-/** Wrap every leaf of the tree with where it comes from in the source. */
-export function rehypeSourcePositions() {
+/**
+ * Wrap every leaf of the tree with where it comes from in the source. When the source is a
+ * part of a longer text (one box of a pipeline), `offset` is where the part starts in it: the
+ * marks then count from the start of the whole text, and the parts of one text can share a
+ * page.
+ */
+export function rehypeSourcePositions({ offset = 0 }: { offset?: number } = {}) {
   return (tree: Root) => {
-    tree.children = mark(tree.children as ElementContent[]) as RootContent[]
+    tree.children = mark(tree.children as ElementContent[], offset) as RootContent[]
   }
 }
 

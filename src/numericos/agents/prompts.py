@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from numericos.core.enums import CardType, FileCategory, WorkflowStatus
+from numericos.core.enums import CardType, FileCategory, PipelineNodeKind, WorkflowStatus
 
 THEORY = """[NumericOS task: theory]
 Write the theory of this computational project as a short scientific paper, for a researcher \
@@ -81,6 +81,37 @@ means.
 Do not modify any file.
 """
 
+PIPELINE = """[NumericOS task: pipeline]
+Describe what happens when this program runs, as a pipeline: the parts the software is made \
+of and what passes from one to the next, from what it reads to what it writes. It is drawn \
+as a board of boxes connected by arrows, for a researcher who has not read the code.
+
+Read the repository first: the entry points, how a run is started, the solvers, the input \
+and output files. Follow one run from start to end. Base every statement on what the code \
+actually does. Do not run anything and do not modify any file.
+
+Give:
+- title: at most 10 words, naming the program.
+- summary: Markdown, 2 to 4 sentences: what one run computes and how it proceeds.
+- nodes: the boxes, between 4 and 14, in the order in which a run reaches them. Each has
+  - id: a short name in lower case with dashes, unique (`read-config`, `time-loop`);
+  - title: at most 6 words, a verb first where it is an action (`Assemble the system`);
+  - kind: input (something the program reads: parameters, data, a mesh), process (a stage \
+of the computation), output (something the program writes: results, figures, logs) or \
+external (work done outside the project's own code: a library solver, another program);
+  - description: Markdown, 40 to 120 words: what this part does and how (the method, the \
+quantities involved, with formulas in LaTeX between $...$ where they say it best), and \
+where it is in the code (functions and classes in backticks). No headings;
+  - files: the files of the project that implement or hold this part, as paths relative to \
+the repository root; an empty list when there is none;
+  - repeats: when this part runs many times in one run (a time loop, an iteration to \
+convergence, a sweep), what repeats and until when, in at most 8 words; otherwise null.
+- edges: the arrows. Each has from and to (ids of boxes) and label: what passes along it, in \
+at most 5 words (`grid and time step`, `residual`). A loop over several boxes is an arrow \
+back to an earlier box, labelled with what makes it go round again.
+
+One box per part that a reader must tell apart; do not make a box for every function.
+"""
 
 CLARIFY = """[NumericOS task: clarify]
 A researcher is reading {what} and asks for clarifications of specific passages. Answer every \
@@ -121,21 +152,34 @@ NOT_REWRITABLE = """The text is an answer that was already given: it is a record
 rewritten. Leave `document` null and say in the summaries what is different now.
 """
 
+PIPELINE_REWRITABLE = """The text is the pipeline of the project: every `##` section is a \
+box of a diagram. When the pipeline must change, because a request asks for it or because \
+your changes to the code make a statement of it false, give the complete revised pipeline in \
+`pipeline`: its title, its summary, every node (id, title, kind, description in Markdown \
+without headings, files as paths of the project, repeats: what repeats in a loop or null) \
+and every edge (from, to, label: what passes). Keep the boxes and arrows as they are, changed \
+only where needed, each box you keep under the id it has. Otherwise leave `pipeline` null.
+"""
+
 DOCUMENT_START = "--- document start ---"
 DOCUMENT_END = "--- document end ---"
 REQUESTS = "Requests:"
 
 
-def _text_block(what: str, title: str, markdown: str, question: str | None) -> str:
+def _text_block(
+    what: str, title: str, markdown: str, question: str | None, outline: str | None
+) -> str:
     asked = (
         f"The question it answered:\n--- question start ---\n{question.rstrip()}\n"
         "--- question end ---\n\n"
         if question
         else ""
     )
+    # What a text that is drawn as a diagram does not say by itself: its boxes and arrows.
+    drawn = f"\n{outline}" if outline else ""
     return (
         f"{asked}The text ({what}; {title}):\n{DOCUMENT_START}\n{markdown.rstrip()}\n"
-        f"{DOCUMENT_END}\n"
+        f"{DOCUMENT_END}\n{drawn}"
     )
 
 
@@ -162,10 +206,12 @@ def clarify(
     items: list[dict[str, str]],
     first: bool,
     instructions: str,
+    outline: str | None = None,
 ) -> str:
     """The first turn of a session shows the text; later turns only add requests about it."""
     if first:
-        head = f"{CLARIFY.format(what=what)}\n{_text_block(what, title, markdown, question)}"
+        text = _text_block(what, title, markdown, question, outline)
+        head = f"{CLARIFY.format(what=what)}\n{text}"
     else:
         head = "[NumericOS task: clarify]\nMore requests about the same text, on the same terms.\n"
     return _with_instructions(f"{head}\n{_requests(items)}", instructions)
@@ -181,10 +227,14 @@ def resolve(
     first: bool,
     rewritable: bool,
     instructions: str,
+    outline: str | None = None,
 ) -> str:
+    """``outline`` is given for a text that is drawn as a diagram (a pipeline): the revised
+    text is then asked for as boxes and arrows, not as Markdown."""
     if first:
-        rules = RESOLVE.format(what=what, rewriting=REWRITABLE if rewritable else NOT_REWRITABLE)
-        head = f"{rules}\n{_text_block(what, title, markdown, question)}"
+        rewriting = PIPELINE_REWRITABLE if outline else REWRITABLE if rewritable else NOT_REWRITABLE
+        rules = RESOLVE.format(what=what, rewriting=rewriting)
+        head = f"{rules}\n{_text_block(what, title, markdown, question, outline)}"
     else:
         head = (
             "[NumericOS task: resolve]\n"
@@ -208,6 +258,12 @@ def _with_instructions(text: str, instructions: str) -> str:
 def theory(project_name: str, research_question: str, instructions: str) -> str:
     return _with_instructions(
         f"{THEORY}\n{_project_lines(project_name, research_question)}", instructions
+    )
+
+
+def pipeline(project_name: str, research_question: str, instructions: str) -> str:
+    return _with_instructions(
+        f"{PIPELINE}\n{_project_lines(project_name, research_question)}", instructions
     )
 
 
@@ -288,6 +344,42 @@ PLAN_SCHEMA: dict[str, Any] = {
     "required": ["rationale", "cards"],
 }
 
+PIPELINE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "summary": {"type": "string"},
+        "nodes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "kind": {"type": "string", "enum": [kind.value for kind in PipelineNodeKind]},
+                    "description": {"type": "string"},
+                    "files": {"type": "array", "items": {"type": "string"}},
+                    "repeats": {"type": ["string", "null"]},
+                },
+                "required": ["id", "title", "kind", "description", "files", "repeats"],
+            },
+        },
+        "edges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "from": {"type": "string"},
+                    "to": {"type": "string"},
+                    "label": {"type": "string"},
+                },
+                "required": ["from", "to", "label"],
+            },
+        },
+    },
+    "required": ["title", "summary", "nodes", "edges"],
+}
+
 CLARIFY_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -321,4 +413,14 @@ RESOLVE_SCHEMA: dict[str, Any] = {
         "document": {"type": ["string", "null"]},
     },
     "required": ["results", "document"],
+}
+
+#: Resolve on a pipeline: the revised text is given as boxes and arrows, or not at all.
+RESOLVE_PIPELINE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "results": RESOLVE_SCHEMA["properties"]["results"],
+        "pipeline": {"anyOf": [PIPELINE_SCHEMA, {"type": "null"}]},
+    },
+    "required": ["results", "pipeline"],
 }

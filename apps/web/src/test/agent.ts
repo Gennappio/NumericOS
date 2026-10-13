@@ -39,7 +39,7 @@ export function policyRecord(overrides: Partial<AgentPolicy> = {}): AgentPolicy 
       resolve: none,
       theory: none,
       file_description: { model: "claude-haiku-5-5", effort: "low" },
-      execution_description: none,
+      pipeline: none,
       plan: none,
     },
     available: ["conversation"],
@@ -187,6 +187,74 @@ export function documentRecord(overrides: Partial<DocumentOut> = {}): DocumentOu
     changed_sources: [],
     ...overrides,
   }
+}
+
+/**
+ * A pipeline of three boxes. Its text is put together as the API does: the title, the
+ * summary, then a section per box, each box naming its range in code points (the emoji of
+ * the title counts once there, and twice where JavaScript indexes the string).
+ */
+export function pipelineRecord(overrides: Partial<DocumentOut> = {}): DocumentOut {
+  const boxes = [
+    {
+      id: "parameters",
+      kind: "input" as const,
+      title: "Read the parameters",
+      body: "The run starts from `experiment.yaml`: the grid size and $\\alpha$.",
+      files: ["examples/experiment.yaml"],
+      repeats: null,
+    },
+    {
+      id: "time-loop",
+      kind: "process" as const,
+      title: "Advance in time",
+      body:
+        "The explicit scheme updates every point from its four neighbours.\n\n" +
+        "- stable when $r \\le 1/4$\n- first order in time",
+      files: ["heat2d.py", "src/stencil.py"],
+      repeats: "every time step",
+    },
+    {
+      id: "results",
+      kind: "output" as const,
+      title: "Write the results",
+      body: "The final field goes to the run directory.",
+      files: [],
+      repeats: null,
+    },
+  ]
+  let markdown =
+    "# Pipeline of the 2D heat solver 😀\n\n" +
+    "One run reads its parameters, advances the scheme and writes the final field."
+  const nodes = boxes.map(({ body, ...box }) => {
+    const start = [...markdown].length + 2
+    markdown += `\n\n## ${box.title}\n\n${body}`
+    return { ...box, start, end: [...markdown].length }
+  })
+  return documentRecord({
+    id: "doc_p",
+    kind: "pipeline",
+    key: "pipeline",
+    title: "Pipeline of the 2D heat solver 😀",
+    summary: "One run reads its parameters, advances the scheme and writes the final field.",
+    markdown,
+    pipeline: {
+      nodes,
+      edges: [
+        { source: "parameters", target: "time-loop", label: "n, alpha, dt" },
+        { source: "time-loop", target: "results", label: "" },
+      ],
+    },
+    sources: [
+      { path: "heat2d.py", sha: "aaa" },
+      { path: "examples/experiment.yaml", sha: "bbb" },
+    ],
+    instructions: "",
+    session_id: "ases_pipeline",
+    message_id: "msg_pipeline",
+    model: "claude-sonnet-5-5",
+    ...overrides,
+  })
 }
 
 export function fileRecord(overrides: Partial<FileEntry> = {}): FileEntry {

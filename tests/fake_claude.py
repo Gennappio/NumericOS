@@ -19,9 +19,10 @@ Directives in the prompt (one per line, anywhere in it) drive what it does:
 ``--version`` prints a version line, as the real command does.
 
 A prompt that starts with a NumericOS task line is answered in the shape of that task: the
-theory as a short paper, files with one entry per listed path (the first with an absolute
-path, as the real agent gives them), a plan with two cards, one answer per clarification
-request, one decision per change request.
+theory as a short paper, the pipeline as four boxes and their arrows, files with one entry per
+listed path (the first with an absolute path, as the real agent gives them), a plan with two
+cards, one answer per clarification request, one decision per change request. A change
+request on a pipeline with a REPLACE directive gives the pipeline again, revised.
 """
 
 from __future__ import annotations
@@ -60,6 +61,84 @@ is stable when $\\alpha\\,\\Delta t / \\Delta x^2 \\le 1/4$.
 | --- | --- |
 | update of (1) | `examples/heat2d-python/heat2d.py` |
 """
+
+SOLVER = "examples/heat2d-python/heat2d.py"
+
+
+def pipeline(cwd: Path) -> dict[str, Any]:
+    """Four boxes in the order of a run. The first file is given as an absolute path and one
+    arrow leads nowhere, as a real answer may."""
+    return {
+        "title": "Pipeline of the 2D heat solver",
+        "summary": (
+            "One run reads its parameters, builds the grid, advances the explicit scheme in "
+            "time and writes the final field."
+        ),
+        "nodes": [
+            {
+                "id": "parameters",
+                "title": "Read the parameters",
+                "kind": "input",
+                "description": (
+                    "The run starts from `experiment.yaml`: the grid size, the diffusivity "
+                    "$\\alpha$ and the time step $\\Delta t$."
+                ),
+                "files": [str(cwd / "examples/heat2d-python/experiment.yaml")],
+                "repeats": None,
+            },
+            {
+                "id": "grid",
+                "title": "Build the grid",
+                "kind": "process",
+                "description": (
+                    "A uniform grid on the unit square, with the initial temperature on it.\n\n"
+                    "- spacing $\\Delta x = 1/(n-1)$\n- zero on the boundary"
+                ),
+                "files": [SOLVER],
+                "repeats": None,
+            },
+            {
+                "id": "time-loop",
+                "title": "Advance in time",
+                "kind": "process",
+                "description": (
+                    "The explicit scheme updates every interior point from its four "
+                    "neighbours. It is stable when\n\n"
+                    "$$\\frac{\\alpha\\,\\Delta t}{\\Delta x^2} \\le \\frac{1}{4}.$$"
+                ),
+                "files": [SOLVER],
+                "repeats": "every time step, until the final time",
+            },
+            {
+                "id": "results",
+                "title": "Write the results",
+                "kind": "output",
+                "description": "The final field and the residual history go to the run directory.",
+                "files": [],
+                "repeats": None,
+            },
+        ],
+        "edges": [
+            {"from": "parameters", "to": "grid", "label": "n, alpha, dt"},
+            {"from": "grid", "to": "time-loop", "label": "initial field"},
+            {"from": "time-loop", "to": "results", "label": "final field"},
+            {"from": "time-loop", "to": "nowhere", "label": "a box that is not there"},
+        ],
+    }
+
+
+def replaced(value: Any, replacements: list[tuple[str, str]]) -> Any:
+    """``value`` with every replacement made in every string of it."""
+    if isinstance(value, str):
+        for old, new in replacements:
+            value = value.replace(old, new)
+        return value
+    if isinstance(value, list):
+        return [replaced(item, replacements) for item in value]
+    if isinstance(value, dict):
+        return {key: replaced(item, replacements) for key, item in value.items()}
+    return value
+
 
 VERSION = "9.9.9 (fake claude)"
 MODEL = "fake-model"
@@ -280,13 +359,6 @@ def main() -> int:
                     ]
                 }
             else:
-                document = None
-                if replacements and "--- document start ---\n" in prompt:
-                    document = prompt.split("--- document start ---\n", 1)[1].split(
-                        "\n--- document end ---", 1
-                    )[0]
-                    for old, new in replacements:
-                        document = document.replace(old, new)
                 structured = {
                     "results": [
                         {
@@ -297,8 +369,29 @@ def main() -> int:
                         }
                         for request_id, passage in kept
                     ],
-                    "document": document,
                 }
+                if "pipeline" in json.loads(options["--json-schema"])["properties"]:
+                    # The text is a pipeline: it is revised as boxes and arrows.
+                    structured["pipeline"] = (
+                        replaced(pipeline(cwd), replacements) if replacements else None
+                    )
+                else:
+                    document = None
+                    if replacements and "--- document start ---\n" in prompt:
+                        document = prompt.split("--- document start ---\n", 1)[1].split(
+                            "\n--- document end ---", 1
+                        )[0]
+                        for old, new in replacements:
+                            document = document.replace(old, new)
+                    structured["document"] = document
+        elif task == "pipeline":
+            structured = pipeline(cwd)
+            for path in sorted({SOLVER, "examples/heat2d-python/experiment.yaml"}):
+                if (cwd / path).is_file():
+                    turns += 1
+                    call = tool_use("Read", {"file_path": str(cwd / path)})
+                    emit(assistant(session_id, [call]))
+                    emit(tool_result(session_id, call["id"], "...", True))
         elif task == "plan":
             structured = {
                 "rationale": "Check stability **first**, then accuracy.",

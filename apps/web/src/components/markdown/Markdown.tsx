@@ -39,6 +39,12 @@ interface MarkdownProps {
    * can be turned into a range of the source (see `lib/sourceMap.ts`).
    */
   positions?: boolean
+  /**
+   * For a source that is a part of a longer text: where the part starts in it (UTF-16). The
+   * marks of `positions` then count from the start of the whole text. Slots stay relative to
+   * the part.
+   */
+  offset?: number
   /** Places after blocks of the text where the page shows something of its own. */
   slots?: Slot[]
   renderSlot?: (ids: string[]) => ReactNode
@@ -56,6 +62,7 @@ export function Markdown({
   className,
   resolveImage,
   positions = false,
+  offset = 0,
   slots,
   renderSlot,
 }: MarkdownProps) {
@@ -65,9 +72,9 @@ export function Markdown({
     if (!positions && !slots?.length) return REHYPE_PLUGINS
     const plugins: NonNullable<Options["rehypePlugins"]> = []
     if (slots?.length) plugins.push([rehypeSlots, { slots }])
-    if (positions) plugins.push(rehypeSourcePositions)
+    if (positions) plugins.push([rehypeSourcePositions, { offset }])
     return [...plugins, KATEX, HIGHLIGHT]
-  }, [positions, slots])
+  }, [positions, offset, slots])
   return (
     <div className={cn("markdown", className)}>
       <ReactMarkdown

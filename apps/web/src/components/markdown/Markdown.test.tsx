@@ -37,6 +37,25 @@ describe("Markdown", () => {
     expect(container.textContent).toContain("Text")
   })
 
+  it("marks a part of a longer text with offsets that count from the start of the whole", () => {
+    const whole = "# Title 😀\n\n## Box\n\nIts *own* words and `code`."
+    const start = whole.indexOf("## Box")
+    const { container } = render(<Markdown source={whole.slice(start)} positions offset={start} />)
+
+    const leaves = [...container.querySelectorAll<HTMLElement>("[data-leaf]")].map((leaf) => ({
+      kind: leaf.dataset.leaf,
+      text: whole.slice(Number(leaf.dataset.s), Number(leaf.dataset.e)),
+    }))
+    expect(leaves).toEqual([
+      { kind: "t", text: "Box" },
+      { kind: "t", text: "Its " },
+      { kind: "t", text: "own" },
+      { kind: "t", text: " words and " },
+      { kind: "a", text: "`code`" },
+      { kind: "t", text: "." },
+    ])
+  })
+
   it("keeps only safe link protocols", () => {
     const { container } = render(
       <Markdown source={"[docs](https://example.org) [bad](javascript:alert(1))"} />,

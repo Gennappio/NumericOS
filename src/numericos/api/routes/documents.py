@@ -1,4 +1,5 @@
-"""Documents the agent writes about a project: its theory, its files, its plan."""
+"""Documents the agent writes about a project: its theory, its pipeline, its files, its
+plan."""
 
 from __future__ import annotations
 
@@ -60,6 +61,34 @@ def generate_theory(
     body: GenerateRequest | None = None,
 ) -> DocumentOut:
     return documents.generate_theory(
+        uow, project_id, body or GenerateRequest(), context, settings=request.app.state.settings
+    )
+
+
+@router.get(
+    "/projects/{project_id}/pipeline",
+    tags=["documents"],
+    summary="The pipeline of the project: what happens when the program runs, as boxes and arrows",
+)
+def get_pipeline(project_id: str, uow: Uow) -> DocumentSlot:
+    return documents.get_single(uow, project_id, DocumentKind.PIPELINE)
+
+
+@router.post(
+    "/projects/{project_id}/pipeline:generate",
+    status_code=202,
+    tags=["documents"],
+    summary="Ask the agent to describe, or describe again, the pipeline of the project",
+    responses=GENERATION_RESPONSES,
+)
+def generate_pipeline(
+    project_id: str,
+    uow: Uow,
+    context: Context,
+    request: Request,
+    body: GenerateRequest | None = None,
+) -> DocumentOut:
+    return documents.generate_pipeline(
         uow, project_id, body or GenerateRequest(), context, settings=request.app.state.settings
     )
 

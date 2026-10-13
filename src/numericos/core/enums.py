@@ -88,22 +88,14 @@ class AgentTask(StrEnum):
     RESOLVE = "resolve"
     THEORY = "theory"
     FILE_DESCRIPTION = "file_description"
-    EXECUTION_DESCRIPTION = "execution_description"
+    #: What happens when the program runs, as boxes and arrows (ADR-0011).
+    PIPELINE = "pipeline"
     PLAN = "plan"
 
 
-#: Tasks that a built feature uses today. The policy keeps a choice for the others ahead of
-#: their ticket; the GUI says they are not available yet.
-AVAILABLE_TASKS: frozenset[AgentTask] = frozenset(
-    {
-        AgentTask.CONVERSATION,
-        AgentTask.CLARIFY,
-        AgentTask.RESOLVE,
-        AgentTask.THEORY,
-        AgentTask.FILE_DESCRIPTION,
-        AgentTask.PLAN,
-    }
-)
+#: Tasks that a built feature uses today. A task added ahead of its feature is left out: the
+#: policy keeps a choice for it and the GUI says it is not available yet.
+AVAILABLE_TASKS: frozenset[AgentTask] = frozenset(AgentTask)
 
 
 class TargetType(StrEnum):
@@ -150,6 +142,20 @@ class DocumentKind(StrEnum):
     THEORY = "theory"
     FILE_DESCRIPTION = "file_description"
     PLAN = "plan"
+    PIPELINE = "pipeline"
+
+
+class PipelineNodeKind(StrEnum):
+    """What a box of the pipeline is in one run of the program."""
+
+    #: What the program reads: parameters, data, a mesh.
+    INPUT = "input"
+    #: A stage of the computation.
+    PROCESS = "process"
+    #: What the program writes: results, figures, logs.
+    OUTPUT = "output"
+    #: Work done outside the project's own code: a library solver, another program.
+    EXTERNAL = "external"
 
 
 class DocumentStatus(StrEnum):

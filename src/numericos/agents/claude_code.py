@@ -54,6 +54,7 @@ EFFORTS: list[str] = ["low", "medium", "high", "xhigh", "max"]
 #: user's own Claude Code settings.
 SUGGESTED_POLICY: dict[str, dict[str, str | None]] = {
     "file_description": {"model": "claude-sonnet-5-5", "effort": "low"},
+    "pipeline": {"model": "claude-sonnet-5-5", "effort": "medium"},
     "plan": {"model": "claude-sonnet-5-5", "effort": "medium"},
 }
 

@@ -595,6 +595,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The pipeline of the project: what happens when the program runs, as boxes and arrows */
+        get: operations["get_pipeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/pipeline:generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the agent to describe, or describe again, the pipeline of the project */
+        post: operations["generate_pipeline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/plan": {
         parameters: {
             query?: never;
@@ -1146,7 +1180,7 @@ export interface components {
          *     for each task; a session may override them.
          * @enum {string}
          */
-        AgentTask: "conversation" | "clarify" | "resolve" | "theory" | "file_description" | "execution_description" | "plan";
+        AgentTask: "conversation" | "clarify" | "resolve" | "theory" | "file_description" | "pipeline" | "plan";
         /**
          * AnchorState
          * @description Whether the passage of a comment is found in the current text of its target.
@@ -1700,7 +1734,7 @@ export interface components {
          * @description What a document written by the agent is about.
          * @enum {string}
          */
-        DocumentKind: "theory" | "file_description" | "plan";
+        DocumentKind: "theory" | "file_description" | "plan" | "pipeline";
         /**
          * DocumentOut
          * @description A document the agent wrote about the project.
@@ -1746,6 +1780,8 @@ export interface components {
              * @description The turn that is writing the next content, while there is one.
              */
             pending_message_id: string | null;
+            /** @description For a pipeline: its boxes and arrows. The text of every box is a section of `markdown`, which is what comments are attached to. */
+            pipeline?: components["schemas"]["PipelineOut"] | null;
             /** Project Id */
             project_id: string;
             /**
@@ -1784,7 +1820,8 @@ export interface components {
         };
         /**
          * DocumentSlot
-         * @description A document that exists once per project (the theory, the plan notes), or nothing yet.
+         * @description A document that exists once per project (the theory, the pipeline, the plan notes), or
+         *     nothing yet.
          */
         DocumentSlot: {
             document: components["schemas"]["DocumentOut"] | null;
@@ -2916,6 +2953,65 @@ export interface components {
          * @enum {string}
          */
         PermissionMode: "read_only" | "edit" | "full";
+        /**
+         * PipelineEdge
+         * @description An arrow of the pipeline: what passes from one box to another.
+         */
+        PipelineEdge: {
+            /** Label */
+            label: string;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+        };
+        /**
+         * PipelineNode
+         * @description A box of the pipeline: a part of the program.
+         */
+        PipelineNode: {
+            /**
+             * End
+             * @description Where it ends (exclusive).
+             */
+            end: number;
+            /**
+             * Files
+             * @description Files of the project that implement or hold the part.
+             */
+            files: string[];
+            /**
+             * Id
+             * @description Unique in the pipeline; arrows name boxes by it.
+             */
+            id: string;
+            kind: components["schemas"]["PipelineNodeKind"];
+            /**
+             * Repeats
+             * @description What repeats, and until when, if the part runs many times in one run.
+             */
+            repeats: string | null;
+            /**
+             * Start
+             * @description Where the section of the box starts in the document's `markdown`, heading included, in Unicode code points.
+             */
+            start: number;
+            /** Title */
+            title: string;
+        };
+        /**
+         * PipelineNodeKind
+         * @description What a box of the pipeline is in one run of the program.
+         * @enum {string}
+         */
+        PipelineNodeKind: "input" | "process" | "output" | "external";
+        /** PipelineOut */
+        PipelineOut: {
+            /** Edges */
+            edges: components["schemas"]["PipelineEdge"][];
+            /** Nodes */
+            nodes: components["schemas"]["PipelineNode"][];
+        };
         /**
          * PlanUsage
          * @description Use of the account's plan as the provider last reported it during a turn. With a
@@ -5816,6 +5912,102 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_pipeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSlot"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    generate_pipeline: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Label of the calling surface, stored on every event it causes. */
+                "x-actor"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GenerateRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentOut"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The agent command is not installed, the project is not trusted for execution, or the agent is already writing this document */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

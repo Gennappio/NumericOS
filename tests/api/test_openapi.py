@@ -76,6 +76,8 @@ def test_operations_have_stable_readable_ids(settings: Settings) -> None:
         "put_agent_policy",
         "get_theory",
         "generate_theory",
+        "get_pipeline",
+        "generate_pipeline",
         "get_plan",
         "generate_plan",
         "list_files",

@@ -403,8 +403,9 @@ class AgentMessage(Base):
 
 
 class Document(Base):
-    """A document the agent wrote about the project: its theory, the description of one file,
-    the notes of its plan. One row per project, kind and key; regenerating replaces the content."""
+    """A document the agent wrote about the project: its theory, its pipeline, the description
+    of one file, the notes of its plan. One row per project, kind and key; regenerating replaces
+    the content."""
 
     __tablename__ = "documents"
     __table_args__ = (
@@ -435,6 +436,9 @@ class Document(Base):
     #: ``[{"path": ..., "sha": ...}]``: the files the content was written from. A file whose
     #: content hash differs today makes the document stale.
     sources: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    #: A pipeline: ``{"nodes": [...], "edges": [...]}``, its boxes and arrows. Each box names
+    #: the range of ``markdown`` that is its own (``numericos.agents.pipeline``).
+    pipeline: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     session_id: Mapped[str | None] = mapped_column(String(40))
     #: The turn that wrote the current content, and the turn that is writing the next one.
     message_id: Mapped[str | None] = mapped_column(String(40))

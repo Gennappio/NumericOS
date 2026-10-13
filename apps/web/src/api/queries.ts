@@ -59,6 +59,7 @@ export const queryKeys = {
     ["projects", projectId, "messages", messageId] as const,
   workspace: (projectId: string) => ["projects", projectId, "workspace"] as const,
   theory: (projectId: string) => ["projects", projectId, "theory"] as const,
+  pipeline: (projectId: string) => ["projects", projectId, "pipeline"] as const,
   plan: (projectId: string) => ["projects", projectId, "plan"] as const,
   files: (projectId: string) => ["projects", projectId, "files"] as const,
   fileDescription: (projectId: string, path: string) =>
@@ -477,6 +478,24 @@ export function useGenerateTheory(projectId: string) {
   return useMutation({
     mutationFn: (instructions: string | undefined) => api.generateTheory(projectId, instructions),
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.theory(projectId) }),
+  })
+}
+
+export function usePipeline(projectId: string, live: boolean) {
+  return useQuery({
+    queryKey: queryKeys.pipeline(projectId),
+    queryFn: () => api.getPipeline(projectId),
+    refetchInterval: (query) =>
+      query.state.data?.document?.pending_message_id ? RUN_POLL_MS : live ? false : POLL_MS,
+  })
+}
+
+export function useGeneratePipeline(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (instructions: string | undefined) =>
+      api.generatePipeline(projectId, instructions),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.pipeline(projectId) }),
   })
 }
 

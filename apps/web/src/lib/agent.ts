@@ -74,14 +74,14 @@ export const TASKS: { value: AgentTask; label: string; description: string }[] =
   { value: "resolve", label: "Resolve", description: "Change requests sent together." },
   { value: "theory", label: "Theory page", description: "The theory of the project as a paper." },
   {
+    value: "pipeline",
+    label: "Pipeline",
+    description: "What happens when the program runs, as boxes and arrows.",
+  },
+  {
     value: "file_description",
     label: "File descriptions",
     description: "One description per file of the project; many small turns.",
-  },
-  {
-    value: "execution_description",
-    label: "Execution description",
-    description: "What happens when the program runs.",
   },
   { value: "plan", label: "Plan", description: "The plan of the agent as a board." },
 ]

@@ -4,6 +4,7 @@ import {
   FlaskConicalIcon,
   FolderTreeIcon,
   SquareKanbanIcon,
+  WorkflowIcon,
 } from "lucide-react"
 import { Link, useLocation } from "react-router"
 import { Badge } from "@/components/ui/badge"
@@ -24,16 +25,18 @@ export function ViewTabs({ projectId }: { projectId: string }) {
     pathname.startsWith(`${base}/experiments`) || pathname.startsWith(`${base}/runs/`)
   const inAgent = pathname.startsWith(`${base}/agent`)
   const inTheory = pathname.startsWith(`${base}/theory`)
+  const inPipeline = pathname.startsWith(`${base}/pipeline`)
   const inFiles = pathname.startsWith(`${base}/files`)
   // A conversation is opened from the sidebar and is none of the views: no tab is current.
   const inConversation = pathname.startsWith(`${base}/conversations/`)
-  // What the project is (theory, files), what is to be done (plan), then the work itself.
+  // What is to be done (plan), what the project is (theory, pipeline, files), then the work.
   // Each view has its colour: it marks the tab, and what belongs to the view elsewhere.
   const views = [
     {
       name: "Plan",
       to: base,
-      current: !inExperiments && !inAgent && !inTheory && !inFiles && !inConversation,
+      current:
+        !inExperiments && !inAgent && !inTheory && !inPipeline && !inFiles && !inConversation,
       icon: SquareKanbanIcon,
       tint: "text-indigo-500",
       active: "border-indigo-600 text-indigo-700",
@@ -45,6 +48,14 @@ export function ViewTabs({ projectId }: { projectId: string }) {
       icon: BookOpenTextIcon,
       tint: "text-violet-500",
       active: "border-violet-600 text-violet-700",
+    },
+    {
+      name: "Pipeline",
+      to: `${base}/pipeline`,
+      current: inPipeline,
+      icon: WorkflowIcon,
+      tint: "text-amber-500",
+      active: "border-amber-500 text-amber-700",
     },
     {
       name: "Files",

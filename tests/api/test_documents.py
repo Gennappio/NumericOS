@@ -170,6 +170,45 @@ def test_only_files_of_the_project_can_be_described_or_shown(
     assert undescribed.status_code == 404
 
 
+def test_the_pipeline_is_asked_in_a_session_of_its_own_task(client: TestClient, repo: Repo) -> None:
+    untrusted = create_project(client, root_path=str(repo.root))
+    project = trusted_project(client, repo.root, research_question="Is the scheme stable?")
+    base = f"/v1/projects/{project['id']}"
+
+    nothing = client.get(f"{base}/pipeline").json()
+    refused = client.post(f"/v1/projects/{untrusted['id']}/pipeline:generate")
+    asked = client.post(f"{base}/pipeline:generate", json={"instructions": "In italiano."})
+    document = asked.json()
+    again = client.post(f"{base}/pipeline:generate")
+    every = client.get(f"{base}/agent-sessions", params={"task": "pipeline"}).json()["sessions"]
+    prompt, turn = messages_of(client, document["session_id"])
+    slot = client.get(f"{base}/pipeline").json()["document"]
+
+    assert nothing == {"document": None}
+    assert refused.status_code == 409 and error_of(refused)["code"] == "EXECUTION_NOT_TRUSTED"
+    assert asked.status_code == 202
+    assert (document["kind"], document["key"], document["status"]) == (
+        "pipeline",
+        "pipeline",
+        "generating",
+    )
+    # Nothing is drawn before the agent answered.
+    assert (document["version"], document["markdown"], document["pipeline"]) == (0, "", None)
+    assert again.status_code == 409 and error_of(again)["code"] == "GENERATION_PENDING"
+    assert [(s["task"], s["permission_mode"], s["title"]) for s in every] == [
+        ("pipeline", "read_only", f"Pipeline of {project['name']}")
+    ]
+    assert str(prompt["markdown"]).startswith("[NumericOS task: pipeline]")
+    assert "Research question: Is the scheme stable?" in str(prompt["markdown"])
+    assert str(prompt["markdown"]).rstrip().endswith("In italiano.")
+    assert slot["pending_message_id"] == turn["id"] and turn["status"] == "queued"
+    queued = [e for e in events(client, project["id"]) if e["type"] == "DOCUMENT_GENERATION_QUEUED"]
+    assert (queued[0]["payload"]["kind"], queued[0]["payload"]["keys"]) == (
+        "pipeline",
+        ["pipeline"],
+    )
+
+
 def test_a_plan_is_asked_with_the_board_as_it_is(client: TestClient, repo: Repo) -> None:
     project = trusted_project(client, repo.root)
     card = add_card(client, project["id"], "Port the solver", status="active")

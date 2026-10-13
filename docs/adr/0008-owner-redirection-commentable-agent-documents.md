@@ -105,7 +105,9 @@ board con la spiegazione dei file, la teoria, i trello del piano"). The pages we
 delivered before the comments: the theory (T04), the file descriptions with staleness (T05, and
 requirement 4 as "marked and updated with one click", not yet by itself) and the plan on the
 board with drag and drop (T07). Comments with Clarify and Resolve (T02, T03) followed on
-2026-10-13 (ADR-0009); the execution description (T06) is next.
+2026-10-13 (ADR-0009). The execution description (T06) was delivered the same day in the form
+the owner then asked for: the Pipeline page, a board of boxes and arrows written from the code
+(ADR-0011). It describes what a run does; what one observed run did stays on its run page.
 
 ## Consequences
 

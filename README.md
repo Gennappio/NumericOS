@@ -22,11 +22,15 @@ its files and of its execution, the plan as a board. Done so far: **conversation
 Code** inside a project (listed under the project's name in the sidebar), held from the GUI or
 the command line and executed by the supervisor, with every action of the agent on record; a model and an effort **per kind of task**; the
 **Theory** page (the project as a paper, written by the agent from the code, marked when the
-code changes); the **Files** page (a description per file, kept with the content it was written
-from); the **plan on the board** (cards proposed by the agent, dragged and edited by you); and
-**comments** on anything the agent wrote, sent to it together with **Clarify** (explanations
-next to the passages, the text untouched) and **Resolve** (the agent edits the files and
-rewrites the text). Not done yet: the description of an execution.
+code changes); the **Pipeline** page (what happens when the program runs, drawn as a board: a
+box with its description for every part of the software, arrows for what passes between them,
+the boxes of changed code marked); the **Files** page (a description per file, kept with the
+content it was written from); the **plan on the board** (cards proposed by the agent, dragged
+and edited by you); and **comments** on anything the agent wrote, the boxes of the pipeline
+included, sent to it together with **Clarify** (explanations next to the passages, the text
+untouched) and **Resolve** (the agent edits the files and rewrites the text). The pipeline is
+written from the code: what one particular run did is on its run page, not there. Nothing is
+written again by itself when the code changes: the pages say what changed and offer the button.
 
 ## Requirements
 
@@ -231,6 +235,7 @@ numericos agent show MESSAGE_ID                     # one answer with every acti
 numericos agent cancel MESSAGE_ID                   # stop a turn
 numericos doc theory -p PROJECT_ID --write          # ask for the theory, wait, print it
 numericos doc theory -p PROJECT_ID                  # print it again; says if it is out of date
+numericos doc pipeline -p PROJECT_ID --write        # ask for the pipeline; prints its boxes and arrows
 numericos doc files -p PROJECT_ID                   # files with the state of their description
 numericos doc describe -p PROJECT_ID --scope undescribed   # or --scope stale, or paths
 numericos doc plan -p PROJECT_ID --write            # ask for a plan; its cards go to the board

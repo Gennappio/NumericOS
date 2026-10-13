@@ -310,12 +310,14 @@ def send(
             "items": items,
             "first": first,
             "instructions": data.instructions or "",
+            "outline": target.outline,
         }
         if task is AgentTask.CLARIFY:
             prompt, schema = prompts.clarify(**shared), prompts.CLARIFY_SCHEMA  # type: ignore[arg-type]
         else:
             prompt = prompts.resolve(**shared, rewritable=target.rewritable)  # type: ignore[arg-type]
-            schema = prompts.RESOLVE_SCHEMA
+            # A text drawn as a diagram is revised as boxes and arrows, not as Markdown.
+            schema = prompts.RESOLVE_PIPELINE_SCHEMA if target.outline else prompts.RESOLVE_SCHEMA
         turn = agents.queue_turn(uow, session, prompt, context_, json_schema=schema)
         now = utcnow()
         for annotation in chosen:

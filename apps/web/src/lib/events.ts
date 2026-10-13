@@ -114,6 +114,9 @@ function describeAgentEvent(event: EventOut): string | undefined {
       if (payload.kind === "plan" && written.length > 0) {
         return `Plan of the agent put on the board: ${text(payload.cards_created)} card(s) added, ${text(payload.cards_changed)} changed`
       }
+      if (payload.kind === "pipeline" && written.length > 0) {
+        return `Agent drew the pipeline: ${text(payload.boxes)} box(es), ${text(payload.arrows)} arrow(s)`
+      }
       if (written.length === 0) {
         return `Agent did not write ${documentWords(payload.kind, Object.keys(failed))}: ${String(Object.values(failed)[0] ?? "no reason recorded")}`
       }
@@ -152,9 +155,11 @@ function describeAgentEvent(event: EventOut): string | undefined {
   }
 }
 
-/** "the theory", "the plan", "the description of solver.py", "the descriptions of 8 files". */
+/** "the theory", "the pipeline", "a plan", "the description of solver.py", "the descriptions
+ * of 8 files". */
 function documentWords(kind: unknown, keys: unknown): string {
   if (kind === "theory") return "the theory"
+  if (kind === "pipeline") return "the pipeline"
   if (kind === "plan") return "a plan"
   const paths = Array.isArray(keys) ? keys : []
   return paths.length === 1
@@ -255,6 +260,9 @@ export function eventFamily(event: Pick<EventOut, "type" | "payload">): {
     if (payload.kind === "plan") return plan
     if (payload.kind === "file_description") {
       return { label: "files", className: "bg-sky-100 text-sky-800" }
+    }
+    if (payload.kind === "pipeline") {
+      return { label: "pipeline", className: "bg-amber-100 text-amber-800" }
     }
     return { label: "theory", className: "bg-violet-100 text-violet-800" }
   }

@@ -200,7 +200,7 @@ def test_the_policy_names_a_model_and_effort_per_task(client: TestClient, repo: 
         "resolve",
         "theory",
         "file_description",
-        "execution_description",
+        "pipeline",
         "plan",
     }
     # Before anything is saved the provider's suggestions apply: light models where a task is
@@ -208,13 +208,16 @@ def test_the_policy_names_a_model_and_effort_per_task(client: TestClient, repo: 
     assert before["tasks"]["conversation"] == {"model": None, "effort": None}
     assert before["tasks"]["theory"] == {"model": None, "effort": None}
     assert before["tasks"]["file_description"] == {"model": "claude-sonnet-5-5", "effort": "low"}
+    assert before["tasks"]["pipeline"] == {"model": "claude-sonnet-5-5", "effort": "medium"}
     assert before["tasks"]["plan"] == {"model": "claude-sonnet-5-5", "effort": "medium"}
+    # Every task has a feature that uses it.
     assert before["available"] == [
         "conversation",
         "clarify",
         "resolve",
         "theory",
         "file_description",
+        "pipeline",
         "plan",
     ]
     assert saved.status_code == 200, saved.text

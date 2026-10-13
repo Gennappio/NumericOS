@@ -19,6 +19,12 @@ def theory(lab: Lab, supervisor: Worker, instructions: str = f"READ {SOLVER}") -
     return written
 
 
+def pipeline(lab: Lab, supervisor: Worker) -> Json:
+    lab.generate("pipeline")
+    written: Json = drive(supervisor, lambda: _settled(lab.single("pipeline")))
+    return written
+
+
 def _settled(document: Json | None) -> Json | None:
     return document if document and document["pending_message_id"] is None else None
 
@@ -379,3 +385,159 @@ def test_a_text_written_again_keeps_the_comments_whose_passage_is_still_in_it(
     )
     assert (other["version"], lost["anchor_state"], lost["target_version"]) == (3, "detached", 3)
     assert lost["quote"] == "Forward Euler"  # what it was about is kept
+
+
+def test_a_box_of_the_pipeline_is_commented_and_clarified_like_any_text(
+    lab: Lab, supervisor: Worker
+) -> None:
+    document = pipeline(lab, supervisor)
+    box = next(node for node in document["pipeline"]["nodes"] if node["id"] == "time-loop")
+    comment = lab.comment(document, "clarification", "four neighbours", "Which stencil?")
+
+    sent = lab.send_comments("clarify", document)
+    listed = drive(supervisor, lambda: answered(lab, document))
+    after = lab.single("pipeline")
+    prompt = prompt_of(lab, sent["session_id"])
+
+    # The passage lies in the section of its box: that is how the page knows where it is.
+    assert box["start"] <= comment["start_offset"] < comment["end_offset"] <= box["end"]
+    assert listed["annotations"][0]["status"] == "answered"
+    assert listed["annotations"][0]["response_markdown"].startswith("About ")
+    assert after is not None
+    assert (after["version"], after["pipeline"]) == (1, document["pipeline"])  # untouched
+    # The agent is shown the text and, in words, what the drawing adds to it.
+    assert "A researcher is reading the pipeline of this project" in prompt
+    assert "--- document start ---\n# Pipeline of the 2D heat solver" in prompt
+    assert "## Advance in time\n\nThe explicit scheme" in prompt
+    assert (
+        "--- document end ---\n\nThe text is drawn as a diagram: every `##` section is a box"
+        in prompt
+    )
+    assert f"- grid · process · Build the grid · {SOLVER}\n" in prompt
+    assert (
+        f"- time-loop · process · Advance in time · {SOLVER} · "
+        "repeats: every time step, until the final time\n" in prompt
+    )
+    assert "- time-loop -> results: final field\n" in prompt
+
+
+def test_resolve_revises_a_pipeline_as_boxes_and_arrows(
+    lab: Lab, supervisor: Worker, settings: Settings
+) -> None:
+    document = pipeline(lab, supervisor)
+    change = lab.comment(document, "change", "Advance in time", "Call it time stepping.")
+    kept = lab.comment(document, "note", "uniform grid", "check the spacing")
+
+    sent = lab.send_comments(
+        "resolve",
+        document,
+        instructions=(
+            f"WRITE {SOLVER}::print('renamed')\n"
+            "REPLACE Advance in time=>Step in time\nREPLACE final field=>last field"
+        ),
+    )
+    listed = drive(supervisor, lambda: answered(lab, document))
+    by_id = {item["id"]: item for item in listed["annotations"]}
+    after = lab.single("pipeline")
+
+    assert after is not None and after["version"] == 2
+    text, nodes = after["markdown"], {node["id"]: node for node in after["pipeline"]["nodes"]}
+    # The revision came as boxes and arrows; the text was put together again from them.
+    assert nodes["time-loop"]["title"] == "Step in time"
+    assert text[nodes["time-loop"]["start"] : nodes["time-loop"]["end"]].startswith(
+        "## Step in time\n\nThe explicit scheme"
+    )
+    assert "Advance in time" not in text
+    assert {"source": "time-loop", "target": "results", "label": "last field"} in (
+        after["pipeline"]["edges"]
+    )
+    assert [node["id"] for node in after["pipeline"]["nodes"]] == [
+        node["id"] for node in document["pipeline"]["nodes"]
+    ]
+    # Current with the file the turn changed, as it is now.
+    assert after["sources"] == [{"path": SOLVER, "sha": lab.repo.git("hash-object", SOLVER)}]
+    assert after["stale"] is False and after["message_id"] == sent["message_id"]
+    # Every comment was looked for again in the new text.
+    assert by_id[change["id"]]["status"] == "resolved"
+    assert by_id[change["id"]]["anchor_state"] == "detached"  # its passage was rewritten
+    moved = by_id[kept["id"]]
+    assert (moved["anchor_state"], moved["target_version"]) == ("attached", 2)
+    assert text[moved["start_offset"] : moved["end_offset"]] == "uniform grid"
+    assert nodes["grid"]["start"] <= moved["start_offset"] < nodes["grid"]["end"]
+
+    prompt = prompt_of(lab, sent["session_id"])
+    assert prompt.startswith("[NumericOS task: resolve]")
+    assert "give the complete revised pipeline in `pipeline`" in prompt
+    assert "`document`" not in prompt
+    assert "Boxes (id · kind · title · files):" in prompt
+    argv = json.loads(
+        (layout.turn_dir(settings.data_dir, sent["message_id"]) / layout.SPEC).read_text()
+    )["argv"]
+    schema = json.loads(argv[argv.index("--json-schema") + 1])
+    assert sorted(schema["properties"]) == ["pipeline", "results"]
+    finished = [
+        e for e in lab.turn_events(sent["message_id"]) if e["type"] == "ANNOTATIONS_ANSWERED"
+    ]
+    assert finished[0]["payload"]["document_version"] == 2
+    assert finished[0]["payload"]["comments_detached"] == 1
+
+    # A turn that changes nothing of the pipeline leaves its version as it is.
+    lab.comment(after, "change", "uniform grid", "Say how fine it is.")
+    lab.send_comments("resolve", after)
+    drive(supervisor, lambda: answered(lab, after))
+    unchanged = lab.single("pipeline")
+    assert unchanged is not None
+    assert (unchanged["version"], unchanged["markdown"]) == (2, text)
+
+
+def test_a_formula_the_agent_escaped_once_too_often_is_kept_as_it_was_meant(
+    lab: Lab, supervisor: Worker
+) -> None:
+    document = theory(lab, supervisor)
+    comment = lab.comment(document, "clarification", "stable when", "Derive the bound.")
+    answer = {
+        "answers": [
+            {
+                "id": comment["id"],
+                "markdown": "Because $|1 - 4\\\\alpha\\\\,\\\\Delta t| \\\\le 1$.",
+            }
+        ]
+    }
+
+    lab.send_comments("clarify", document, instructions=f"JSON {json.dumps(answer)}")
+    listed = drive(supervisor, lambda: answered(lab, document))
+
+    # A structured answer is JSON, in which a model sometimes doubles the backslashes of
+    # LaTeX: the answer is kept with the formula as it reads in a paper.
+    assert listed["annotations"][0]["response_markdown"] == (
+        "Because $|1 - 4\\alpha\\,\\Delta t| \\le 1$."
+    )
+
+
+def test_a_revision_that_is_no_pipeline_leaves_the_pipeline_as_it_is(
+    lab: Lab, supervisor: Worker
+) -> None:
+    document = pipeline(lab, supervisor)
+    change = lab.comment(document, "change", "uniform grid", "Say how fine it is.")
+    answer = {
+        "results": [{"id": change["id"], "decision": "applied", "summary": "Said so."}],
+        "pipeline": {"title": "Emptied", "summary": "", "nodes": [], "edges": []},
+    }
+
+    sent = lab.send_comments("resolve", document, instructions=f"JSON {json.dumps(answer)}")
+    listed = drive(supervisor, lambda: answered(lab, document))
+    after = lab.single("pipeline")
+
+    # The decision of the agent is on the comment; what it gave as the pipeline could not be
+    # one, so the board is the one before, and the ledger says why.
+    assert listed["annotations"][0]["status"] == "resolved"
+    assert after is not None
+    assert (after["version"], after["markdown"]) == (1, document["markdown"])
+    assert after["pipeline"] == document["pipeline"]
+    finished = [
+        e for e in lab.turn_events(sent["message_id"]) if e["type"] == "ANNOTATIONS_ANSWERED"
+    ]
+    assert finished[0]["payload"]["revision_not_used"] == (
+        "the agent's answer had no box that could be used"
+    )
+    assert "document_version" not in finished[0]["payload"]

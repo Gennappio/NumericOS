@@ -119,8 +119,8 @@ test("the model and effort of each task are chosen per project and used by the n
   await expect(page.getByLabel("Message to the agent")).toHaveCount(0)
   await expect(table.getByRole("row")).toHaveCount(8)
   await expect(page.getByLabel("Model for Clarify")).toBeEnabled()
-  // A task whose feature is not built yet is shown, and says so.
-  await expect(page.getByLabel("Model for Execution description")).toBeDisabled()
+  // Every task has a feature that uses it: a lighter model is suggested where it is enough.
+  await expect(page.getByLabel("Model for Pipeline")).toHaveValue("claude-sonnet-5-5")
   await page.getByLabel("Model for Conversation").selectOption("claude-haiku-5-5")
   await page.getByLabel("Effort for Conversation").selectOption("low")
   await page.getByRole("button", { name: "Save" }).click()

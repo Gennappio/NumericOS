@@ -1,16 +1,16 @@
 import { useState } from "react"
-import { Link } from "react-router"
 import { fileContentUrl, type DocumentOut } from "@/api/client"
 import { useGenerateTheory, useTheory } from "@/api/queries"
 import { AgentPreconditions } from "@/components/agent/Preconditions"
 import { Commentable } from "@/components/comments/Commentable"
 import { useAgentReadiness } from "@/components/agent/readiness"
+import { DocumentFooter } from "@/components/documents/DocumentFooter"
 import { GenerateForm } from "@/components/documents/GenerateForm"
 import { GenerationProgress } from "@/components/documents/GenerationProgress"
+import { StaleNotice } from "@/components/documents/StaleNotice"
 import { ErrorPanel } from "@/components/ErrorPanel"
 import { Notice } from "@/components/Notice"
 import { describeError } from "@/lib/errors"
-import { formatTimestamp } from "@/lib/time"
 import { useProjectContext } from "@/pages/projectContext"
 
 /**
@@ -122,24 +122,11 @@ function Paper({
   onGenerate,
   onError,
 }: PaperProps) {
-  const changedSources = document.changed_sources ?? []
-  const changed = new Set(changedSources)
   return (
     <div className="space-y-4">
-      {document.stale && (
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-        >
-          <p className="font-medium">
-            {changed.size === 1
-              ? "A file this was written from has changed since."
-              : `${changed.size} files this was written from have changed since.`}
-          </p>
-          <p className="mt-1 font-mono text-xs break-all">{changedSources.join(", ")}</p>
-          <p className="mt-1">What follows describes the project as it was. Write it again below.</p>
-        </div>
-      )}
+      <StaleNotice document={document}>
+        What follows describes the project as it was. Write it again below.
+      </StaleNotice>
       {document.status_reason && (
         <p role="alert" className="rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm">
           The last request to write it again did not succeed: {document.status_reason}. What
@@ -164,58 +151,16 @@ function Paper({
         onError={onError}
       />
 
-      <footer className="space-y-3 rounded-lg border border-border bg-muted/30 p-4 text-sm">
-        <p className="text-muted-foreground">
-          Version {document.version}
-          {document.model && <> · written by {document.model}</>}
-          {document.generated_at && <> · {formatTimestamp(document.generated_at)}</>}
-          {document.session_id && (
-            <>
-              {" · "}
-              <Link
-                to={`/projects/${projectId}/conversations/${document.session_id}`}
-                className="underline underline-offset-4"
-              >
-                the agent&apos;s work
-              </Link>
-            </>
-          )}
-        </p>
-        <details>
-          <summary className="cursor-pointer text-muted-foreground">
-            Written from {document.sources.length}{" "}
-            {document.sources.length === 1 ? "file" : "files"} of the project
-          </summary>
-          {document.sources.length === 0 ? (
-            <p className="mt-2 text-muted-foreground">
-              The agent recorded no file it read: nothing can tell when this goes out of date.
-            </p>
-          ) : (
-            <ul aria-label="Files the theory was written from" className="mt-2 space-y-0.5">
-              {document.sources.map((source) => (
-                <li key={source.path} className="font-mono text-xs break-all">
-                  {source.path}
-                  {changed.has(source.path) && (
-                    <span className="ml-2 font-sans font-medium text-amber-800">changed since</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </details>
-        <details open={document.stale}>
-          <summary className="cursor-pointer text-muted-foreground">Write it again</summary>
-          <div className="mt-3">
-            <GenerateForm
-              action="Write the theory again"
-              instructions={document.instructions}
-              blocked={blocked}
-              pending={pending}
-              onGenerate={onGenerate}
-            />
-          </div>
-        </details>
-      </footer>
+      <DocumentFooter
+        projectId={projectId}
+        document={document}
+        name="theory"
+        again="Write it again"
+        action="Write the theory again"
+        blocked={blocked}
+        pending={pending}
+        onGenerate={onGenerate}
+      />
     </div>
   )
 }

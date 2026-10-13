@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from numericos.agents import pipeline
 from numericos.core.enums import (
     DocumentKind,
     MessageRole,
@@ -15,6 +16,9 @@ from numericos.persistence.unit_of_work import UnitOfWork
 WHAT = {
     DocumentKind.THEORY.value: "the theory of this project",
     DocumentKind.PLAN.value: "the notes of the plan of this project",
+    DocumentKind.PIPELINE.value: (
+        "the pipeline of this project: what happens when the program runs, part by part"
+    ),
 }
 
 
@@ -35,6 +39,8 @@ class Target:
     ready: bool
     #: The text can be rewritten in place (a document), or is a record (an answer).
     rewritable: bool
+    #: For a text that is drawn as a diagram (a pipeline): its boxes and arrows, in words.
+    outline: str | None = None
 
 
 def load(uow: UnitOfWork, target_type: TargetType, target_id: str) -> Target | None:
@@ -74,4 +80,9 @@ def load(uow: UnitOfWork, target_type: TargetType, target_id: str) -> Target | N
         question=None,
         ready=document.version > 0,
         rewritable=True,
+        outline=(
+            pipeline.outline(document.pipeline)
+            if document.kind == DocumentKind.PIPELINE.value
+            else None
+        ),
     )

@@ -36,7 +36,11 @@ interface CommentsPanelProps {
   pendingMessageId: string | null
   pendingSessionId: string | null
   focused: string | null
-  layout: "side" | "below"
+  /**
+   * Beside the text and kept in view while it scrolls (a document), under it and only once
+   * there is a comment (an answer), or in a panel of its own that the page places (a board).
+   */
+  layout: "side" | "below" | "panel"
   blocked: string | null
   supervisorAlive: boolean
   onReveal: (annotation: Annotation) => void
@@ -82,6 +86,7 @@ export function CommentsPanel({
         layout === "side" && "xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto",
         layout === "below" && "rounded-lg border border-border bg-muted/30 p-3",
       )}
+      data-layout={layout}
     >
       <header className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">

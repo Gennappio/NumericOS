@@ -32,6 +32,7 @@ from numericos.core.enums import (
     MessageRole,
     MessageStatus,
     PermissionMode,
+    PipelineNodeKind,
     RunStatus,
     TargetType,
     WorkflowStatus,
@@ -657,6 +658,38 @@ class SourceRef(BaseModel):
     sha: str | None = Field(description="Content hash of the file when the document was written.")
 
 
+class PipelineNode(BaseModel):
+    """A box of the pipeline: a part of the program."""
+
+    id: str = Field(description="Unique in the pipeline; arrows name boxes by it.")
+    kind: PipelineNodeKind
+    title: str
+    files: list[str] = Field(description="Files of the project that implement or hold the part.")
+    repeats: str | None = Field(
+        description="What repeats, and until when, if the part runs many times in one run."
+    )
+    start: int = Field(
+        description=(
+            "Where the section of the box starts in the document's `markdown`, heading "
+            "included, in Unicode code points."
+        )
+    )
+    end: int = Field(description="Where it ends (exclusive).")
+
+
+class PipelineEdge(BaseModel):
+    """An arrow of the pipeline: what passes from one box to another."""
+
+    source: str
+    target: str
+    label: str
+
+
+class PipelineOut(BaseModel):
+    nodes: list[PipelineNode]
+    edges: list[PipelineEdge]
+
+
 class DocumentOut(BaseModel):
     """A document the agent wrote about the project."""
 
@@ -674,6 +707,13 @@ class DocumentOut(BaseModel):
     status_reason: str | None
     instructions: str = Field(description="What the researcher added to the request.")
     sources: list[SourceRef] = Field(description="The files the content was written from.")
+    pipeline: PipelineOut | None = Field(
+        default=None,
+        description=(
+            "For a pipeline: its boxes and arrows. The text of every box is a section of "
+            "`markdown`, which is what comments are attached to."
+        ),
+    )
     session_id: str | None = Field(description="The conversation in which it was written.")
     message_id: str | None = Field(description="The turn that wrote the current content.")
     pending_message_id: str | None = Field(
@@ -693,7 +733,8 @@ class DocumentOut(BaseModel):
 
 
 class DocumentSlot(BaseModel):
-    """A document that exists once per project (the theory, the plan notes), or nothing yet."""
+    """A document that exists once per project (the theory, the pipeline, the plan notes), or
+    nothing yet."""
 
     document: DocumentOut | None
 
