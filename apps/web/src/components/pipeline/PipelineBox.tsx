@@ -36,6 +36,11 @@ interface PipelineBoxProps {
   /** The files of the box that changed since the pipeline was written. */
   changed: string[]
   resolveImage?: (path: string) => string
+  /**
+   * On a page where nothing moves and nothing is commented (a shared copy): the bar is not a
+   * handle, and the text carries no marks of where it comes from.
+   */
+  still?: boolean
 }
 
 /**
@@ -51,6 +56,7 @@ export function PipelineBox({
   renderSlot,
   changed,
   resolveImage,
+  still = false,
 }: PipelineBoxProps) {
   const styles = KIND_STYLES[node.kind]
   const Icon = KIND_ICONS[node.kind]
@@ -69,11 +75,11 @@ export function PipelineBox({
     >
       <header
         className={cn(
-          DRAG_HANDLE,
-          "flex cursor-grab items-center gap-2 rounded-t-[0.45rem] px-3 py-1.5 text-xs active:cursor-grabbing",
+          "flex items-center gap-2 rounded-t-[0.45rem] px-3 py-1.5 text-xs",
+          !still && [DRAG_HANDLE, "cursor-grab active:cursor-grabbing"],
           styles.bar,
         )}
-        title="Drag to move this box"
+        title={still ? undefined : "Drag to move this box"}
       >
         <span
           className={cn(
@@ -91,16 +97,18 @@ export function PipelineBox({
             <span className="truncate">{node.repeats}</span>
           </span>
         )}
-        <GripHorizontalIcon aria-hidden="true" className="ml-auto size-4 shrink-0 opacity-60" />
+        {!still && (
+          <GripHorizontalIcon aria-hidden="true" className="ml-auto size-4 shrink-0 opacity-60" />
+        )}
       </header>
 
       {/* Not a handle: a press here starts a selection of the text, not a move of the box. */}
-      <div className="pipeline-text nodrag px-3 pt-2 pb-3">
+      <div className={cn("px-3 pt-2 pb-3", !still && "pipeline-text nodrag")}>
         <Markdown
           source={source}
           className="pipeline-note"
           resolveImage={resolveImage}
-          positions
+          positions={!still}
           offset={offset}
           slots={slots}
           renderSlot={renderSlot}

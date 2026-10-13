@@ -7,6 +7,8 @@ import { GenerateForm } from "@/components/documents/GenerateForm"
 import { GenerationProgress } from "@/components/documents/GenerationProgress"
 import { StaleNotice } from "@/components/documents/StaleNotice"
 import { ErrorPanel } from "@/components/ErrorPanel"
+import { sharePipeline } from "@/components/export/exportDocument"
+import { ShareButton } from "@/components/export/ShareButton"
 import { Notice } from "@/components/Notice"
 import { PipelineBoard } from "@/components/pipeline/PipelineBoard"
 import { describeError } from "@/lib/errors"
@@ -83,6 +85,14 @@ export function PipelineView() {
                 pipeline={drawn}
                 blocked={readiness.blocked}
                 supervisorAlive={readiness.supervisorAlive}
+                actions={
+                  <ShareButton
+                    className="shadow-sm"
+                    build={() => sharePipeline(project, document, drawn)}
+                    onNotice={setNotice}
+                    onError={onError}
+                  />
+                }
                 onError={onError}
               />
               <DocumentFooter

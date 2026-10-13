@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { fileContentUrl, type DocumentOut } from "@/api/client"
 import { useGenerateTheory, useTheory } from "@/api/queries"
 import { AgentPreconditions } from "@/components/agent/Preconditions"
@@ -9,6 +9,8 @@ import { GenerateForm } from "@/components/documents/GenerateForm"
 import { GenerationProgress } from "@/components/documents/GenerationProgress"
 import { StaleNotice } from "@/components/documents/StaleNotice"
 import { ErrorPanel } from "@/components/ErrorPanel"
+import { shareTheory } from "@/components/export/exportDocument"
+import { ShareButton } from "@/components/export/ShareButton"
 import { Notice } from "@/components/Notice"
 import { describeError } from "@/lib/errors"
 import { useProjectContext } from "@/pages/projectContext"
@@ -92,6 +94,13 @@ export function TheoryView() {
                 blocked={readiness.blocked}
                 supervisorAlive={readiness.supervisorAlive}
                 pending={generate.isPending || Boolean(document.pending_message_id)}
+                actions={
+                  <ShareButton
+                    build={() => shareTheory(project, document)}
+                    onNotice={setNotice}
+                    onError={onError}
+                  />
+                }
                 onGenerate={ask}
                 onError={onError}
               />
@@ -109,6 +118,8 @@ interface PaperProps {
   blocked: string | null
   supervisorAlive: boolean
   pending: boolean
+  /** What can be done with the whole text: shown above it. */
+  actions: ReactNode
   onGenerate: (instructions: string) => void
   onError: (error: unknown) => void
 }
@@ -119,11 +130,13 @@ function Paper({
   blocked,
   supervisorAlive,
   pending,
+  actions,
   onGenerate,
   onError,
 }: PaperProps) {
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">{actions}</div>
       <StaleNotice document={document}>
         What follows describes the project as it was. Write it again below.
       </StaleNotice>

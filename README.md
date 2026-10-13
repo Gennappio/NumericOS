@@ -31,6 +31,8 @@ included, sent to it together with **Clarify** (explanations next to the passage
 untouched) and **Resolve** (the agent edits the files and rewrites the text). The pipeline is
 written from the code: what one particular run did is on its run page, not there. Nothing is
 written again by itself when the code changes: the pages say what changed and offer the button.
+The theory and the pipeline are **shared** with "Download as HTML": one file that opens in any
+browser without NumericOS, with its formulas, figures and fonts inside, and prints to a PDF.
 
 ## Requirements
 

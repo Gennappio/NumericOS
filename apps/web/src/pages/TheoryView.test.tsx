@@ -28,6 +28,7 @@ describe("TheoryView", () => {
     expect(screen.getByText(/It only reads: no file is changed/)).toBeVisible()
     expect(screen.getByRole("button", { name: "Write the theory" })).toBeEnabled()
     expect(screen.getByLabelText(/Instructions for the agent/)).toHaveValue("")
+    expect(screen.queryByRole("button", { name: "Download as HTML" })).toBeNull() // nothing to share
   })
 
   it("renders the theory as a paper with its formulas, figures and sources", async () => {
@@ -50,6 +51,8 @@ describe("TheoryView", () => {
       "/projects/prj_1/conversations/ases_theory",
     )
     expect(screen.queryByRole("alert")).toBeNull()
+    // The paper can be handed over as a file.
+    expect(screen.getByRole("button", { name: "Download as HTML" })).toBeEnabled()
     // The request to write it again starts from the instructions of the last one.
     expect(screen.getByLabelText(/Instructions for the agent/)).toHaveValue("Scrivi in italiano.")
   })

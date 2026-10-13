@@ -7,7 +7,7 @@ import { PipelineBox } from "./PipelineBox"
 const document = pipelineRecord()
 const parts = sections(document.markdown, document.pipeline!)
 
-function open(id: string, changed: string[] = []) {
+function open(id: string, changed: string[] = [], still = false) {
   const node = document.pipeline!.nodes.find((item) => item.id === id)!
   const part = parts.boxes.get(id)!
   return render(
@@ -18,6 +18,7 @@ function open(id: string, changed: string[] = []) {
       slots={[]}
       renderSlot={() => null}
       changed={changed}
+      still={still}
     />,
   )
 }
@@ -68,6 +69,25 @@ describe("PipelineBox", () => {
     )
     expect(within(box).getByText("heat2d.py")).toHaveAttribute("title", "heat2d.py (changed since)")
     expect(within(box).getByText("stencil.py")).toHaveAttribute("title", "src/stencil.py")
+  })
+
+  it("is moved by its bar and selected in its text on the board, and neither on a still page", () => {
+    const live = open("time-loop")
+    const bar = live.container.querySelector("header")!
+    expect(bar).toHaveClass("pipeline-drag")
+    expect(bar).toHaveAttribute("title", "Drag to move this box")
+    expect(live.container.querySelector(".pipeline-text.nodrag")).not.toBeNull()
+    live.unmount()
+
+    const copy = open("time-loop", [], true)
+    const still = copy.container.querySelector("header")!
+    expect(still).not.toHaveClass("pipeline-drag")
+    expect(still).not.toHaveAttribute("title")
+    expect(copy.container.querySelector(".pipeline-text")).toBeNull()
+    expect(copy.container.querySelector("[data-leaf]")).toBeNull() // nothing to comment there
+    // What it says is the same.
+    expect(screen.getByRole("heading", { level: 2, name: "Advance in time" })).toBeVisible()
+    expect(screen.getByText("every time step")).toBeVisible()
   })
 
   it("has no list of files and no loop mark when the part has neither", () => {

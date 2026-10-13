@@ -22,6 +22,8 @@ interface PipelineBoardProps {
   /** Why the agent cannot be asked now, if so; comments can still be written. */
   blocked: string | null
   supervisorAlive: boolean
+  /** What can be done with the whole board, beside tidying it: shown with its buttons. */
+  actions?: ReactNode
   onError: (error: unknown) => void
 }
 
@@ -38,6 +40,7 @@ export function PipelineBoard({
   pipeline,
   blocked,
   supervisorAlive,
+  actions,
   onError,
 }: PipelineBoardProps) {
   const source = document.markdown
@@ -149,7 +152,8 @@ export function PipelineBoard({
                 renderBox={renderBox}
               />
             </div>
-            <div className="absolute top-2 right-2 z-10 flex gap-1.5">
+            <div className="absolute top-2 right-2 z-10 flex flex-wrap justify-end gap-1.5">
+              {actions}
               <Button
                 size="sm"
                 variant="outline"

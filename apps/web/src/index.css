@@ -277,6 +277,19 @@
     overflow-wrap: anywhere;
 }
 
+/* A document shared as a file (components/export). On a screen the pipeline is its board; a
+   board is as wide as its boxes make it and would be cut on paper, so a printed copy shows
+   the parts one under the other instead. */
+.export-print-only { display: none; }
+@media print {
+    .export-screen-only { display: none !important; }
+    .export-print-only { display: block; }
+    .export-page { max-width: none; padding: 0; }
+    .export-sheet { border: 0; padding: 0; }
+    .export-part { break-inside: avoid; }
+    .export-part + .export-part { border-top: 1px solid var(--border); padding-top: 0.75rem; }
+}
+
 /* Code in colour (rehype-highlight): the classes of highlight.js on the dark block above. */
 .markdown pre .hljs-comment,
 .markdown pre .hljs-quote { color: oklch(0.704 0.04 256.788); font-style: italic; }

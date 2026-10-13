@@ -83,6 +83,7 @@ describe("PipelineView", () => {
     expect(await screen.findByRole("heading", { name: "The pipeline of this project" })).toBeVisible()
     expect(screen.getByText(/nothing is\s+run and no file is changed/)).toBeVisible()
     expect(screen.queryByRole("application")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Download as HTML" })).toBeNull() // nothing to share
     fireEvent.change(screen.getByLabelText(/Instructions for the agent/), {
       target: { value: "Scrivi in italiano." },
     })
@@ -162,6 +163,8 @@ describe("PipelineView", () => {
     expect(screen.getByText("Written from 2 files of the project")).toBeVisible()
     expect(screen.getByRole("button", { name: "Draw the pipeline again" })).toBeInTheDocument()
     expect(screen.queryByRole("alert")).toBeNull()
+    // The board can be handed over as a file.
+    expect(screen.getByRole("button", { name: "Download as HTML" })).toBeEnabled()
     // Nothing was commented: the list is folded away, and the board has the room.
     expect(screen.queryByRole("complementary", { name: "Comments" })).toBeNull()
     expect(screen.getByRole("button", { name: /Comments 0/ })).toHaveAttribute("aria-expanded", "false")
