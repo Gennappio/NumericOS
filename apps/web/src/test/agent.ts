@@ -33,6 +33,8 @@ export function policyRecord(overrides: Partial<AgentPolicy> = {}): AgentPolicy 
   return {
     project_id: "prj_1",
     provider: "claude_code",
+    defaults: none,
+    provider_default: null,
     tasks: {
       conversation: { model: "claude-sonnet-5-5", effort: "medium" },
       clarify: none,

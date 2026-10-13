@@ -4,7 +4,13 @@ import { useUpdateAgentSession } from "@/api/queries"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
-import { PERMISSION_MODE_STYLES, PERMISSION_MODES, modelLabel } from "@/lib/agent"
+import {
+  PERMISSION_MODE_STYLES,
+  PERMISSION_MODES,
+  modelLabel,
+  ownSetting,
+  resolveChoice,
+} from "@/lib/agent"
 import { cn } from "@/lib/utils"
 
 interface ComposerProps {
@@ -42,7 +48,10 @@ export function Composer({
   const disabled = busy || blocked !== null
   const models = capabilities?.models ?? []
   const efforts = capabilities?.efforts ?? []
-  const fromPolicy = policy?.tasks[session.task]
+  // What the policy gives this conversation: its task's row, else the project's default,
+  // else the coding agent's own setting.
+  const fromPolicy = resolveChoice(policy, session.task)
+  const own = ownSetting(capabilities?.provider ?? policy?.provider)
   const settingsBusy = busy || update.isPending
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -109,7 +118,7 @@ export function Composer({
             disabled={settingsBusy || models.length === 0}
           >
             <NativeSelectOption value="">
-              Policy: {modelLabel(fromPolicy?.model, models)}
+              Policy: {fromPolicy.model ? modelLabel(fromPolicy.model, models) : own}
             </NativeSelectOption>
             {models.map((model) => (
               <NativeSelectOption key={model.id} value={model.id}>
@@ -127,7 +136,7 @@ export function Composer({
             disabled={settingsBusy || efforts.length === 0}
           >
             <NativeSelectOption value="">
-              Policy: {fromPolicy?.effort ?? "provider default"}
+              Policy: {fromPolicy.effort ?? own}
             </NativeSelectOption>
             {efforts.map((effort) => (
               <NativeSelectOption key={effort} value={effort}>

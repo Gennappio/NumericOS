@@ -1,4 +1,5 @@
 import type {
+  AgentPolicy,
   AgentTask,
   Message,
   MessageStatus,
@@ -111,9 +112,36 @@ export function formatPlanUsage(usage: PlanUsage): string {
 }
 
 /** The label of a model the provider offers, or its name as given. */
-export function modelLabel(id: string | null | undefined, models: ModelChoice[]): string {
-  if (!id) return "provider default"
+export function modelLabel(id: string, models: ModelChoice[]): string {
   return models.find((choice) => choice.id === id)?.label ?? id
+}
+
+/** How the coding agent is called in a sentence. */
+export function providerName(provider: string | undefined): string {
+  return provider === "claude_code" ? "Claude Code" : "the coding agent"
+}
+
+/**
+ * What is said where neither a task nor the project's default chooses: the choice is the
+ * provider's, as when it is started by hand without being told.
+ */
+export function ownSetting(provider: string | undefined): string {
+  return `${providerName(provider)}'s own setting`
+}
+
+/**
+ * What a turn of a task is started with, each half on its own: the choice of the task, else
+ * the default of the project, else null (the provider's own setting).
+ */
+export function resolveChoice(
+  policy: Pick<AgentPolicy, "defaults" | "tasks"> | undefined,
+  task: AgentTask,
+): { model: string | null; effort: string | null } {
+  const own = policy?.tasks[task]
+  return {
+    model: own?.model ?? policy?.defaults.model ?? null,
+    effort: own?.effort ?? policy?.defaults.effort ?? null,
+  }
 }
 
 /** How long the agent worked on a turn, once it has both ends. */

@@ -1036,12 +1036,16 @@ export interface components {
              * @description Tasks a built feature uses today; the others wait for theirs.
              */
             available: components["schemas"]["AgentTask"][];
+            /** @description The model and effort of the tasks that do not choose; null leaves the choice to the provider, which then uses what it uses when started without one. */
+            defaults: components["schemas"]["TaskPolicy"];
             /** Project Id */
             project_id: string;
             provider: components["schemas"]["AgentProvider"];
+            /** @description What the provider was last seen to use by itself; null if never seen. */
+            provider_default: components["schemas"]["ProviderDefault"] | null;
             /**
              * Tasks
-             * @description One entry per task, always.
+             * @description One entry per task, always; null takes `defaults`.
              */
             tasks: {
                 [key: string]: components["schemas"]["TaskPolicy"];
@@ -1056,9 +1060,11 @@ export interface components {
         };
         /** AgentPolicyPut */
         AgentPolicyPut: {
+            /** @description The default of the tasks that do not choose. Absent keeps the saved one. */
+            defaults?: components["schemas"]["TaskPolicy"] | null;
             /**
              * Tasks
-             * @description Tasks to set; a task left out keeps the provider's default.
+             * @description Tasks to set; a task left out takes the default.
              */
             tasks: {
                 [key: string]: components["schemas"]["TaskPolicy"];
@@ -3153,6 +3159,26 @@ export interface components {
              */
             version: number;
         };
+        /**
+         * ProviderDefault
+         * @description What the provider used by itself, as it was last observed: the model it reported for
+         *     the newest turn that was started without naming one. The provider does not report the
+         *     effort it uses.
+         */
+        ProviderDefault: {
+            /**
+             * In Project
+             * @description False when no turn of this project ran that way yet: seen in another.
+             */
+            in_project: boolean;
+            /** Model */
+            model: string;
+            /**
+             * Seen At
+             * Format: date-time
+             */
+            seen_at: string;
+        };
         /** ResourcePage */
         ResourcePage: {
             /** Complete */
@@ -3541,7 +3567,8 @@ export interface components {
         TargetType: "message" | "document";
         /**
          * TaskPolicy
-         * @description The model and effort for one kind of task; null takes the provider's default.
+         * @description A model and an effort. For a task, null takes the project's default; for the default,
+         *     null leaves the choice to the provider.
          */
         TaskPolicy: {
             /** Effort */

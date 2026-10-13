@@ -263,7 +263,7 @@ class TurnSupervisor:
             ]
             mode = PermissionMode(session.permission_mode)
             policy = uow.agent_policies.get(message.project_id)
-            model, effort = choice_for(session, policy.tasks if policy is not None else None)
+            model, effort = choice_for(session, policy)
             folder = workspace.workspace_dir(self.settings, message.project_id, Path(session.cwd))
             launch = Launch(
                 message_id=message.id,

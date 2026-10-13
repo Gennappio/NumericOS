@@ -25,7 +25,9 @@ describe("AgentView", () => {
     // The table is on the page as it opens, not folded away.
     const table = await screen.findByRole("table", { name: "Models and effort per task" })
     expect(table).toBeVisible()
-    expect(within(table).getAllByRole("row")).toHaveLength(8) // the header and seven tasks
+    expect(within(table).getAllByRole("row")).toHaveLength(9) // the header, the default, 7 tasks
+    expect(screen.getByLabelText("Default model")).toHaveValue("")
+    expect(screen.getByTestId("coding-agent")).toHaveTextContent("Coding agent: Claude Code")
     expect(screen.getByLabelText("Model for Conversation")).toHaveValue("claude-sonnet-5-5")
     expect(screen.getByLabelText("Effort for File descriptions")).toHaveValue("low")
     expect(screen.getByRole("heading", { name: "Models and effort per task" })).toBeVisible()

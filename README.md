@@ -243,7 +243,8 @@ numericos comment add DOC_OR_MSG_ID "Why?" --quote "exact passage"   # --kind ch
 numericos comment clarify DOC_OR_MSG_ID             # all open clarifications, wait, print
 numericos comment resolve DOC_OR_MSG_ID --mode edit # all open change requests; edits files
 numericos comment list DOC_OR_MSG_ID
-numericos agent policy -p PROJECT_ID                # model and effort per task
+numericos agent policy -p PROJECT_ID                # the default model and effort, and those per task
+numericos agent policy -p PROJECT_ID --task default --model claude-sonnet-5-5 --effort low
 numericos agent policy -p PROJECT_ID --task file_description --model claude-haiku-5-5 --effort low
 ```
 

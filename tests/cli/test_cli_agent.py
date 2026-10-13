@@ -92,10 +92,39 @@ def test_the_policy_is_shown_and_set_per_task(
     )
     answered = cli(live_server, "agent", "ask", "-p", project_id, "ECHO light", "--json")
     incomplete = cli(live_server, "agent", "policy", "-p", project_id, "--model", "x")
+    set_default = cli_json(
+        live_server,
+        "agent",
+        "policy",
+        "-p",
+        project_id,
+        "--task",
+        "default",
+        "--model",
+        "claude-sonnet-5-5",
+    )
+    cleared = cli(
+        live_server, "agent", "policy", "-p", project_id, "--task", "conversation",
+        "--model", "default", "--effort", "default",
+    )  # fmt: skip
+    unknown = cli(live_server, "agent", "policy", "-p", project_id, "--task", "x", "--model", "y")
 
     assert shown.exit_code == 0, shown.output
-    assert "conversation           model provider default, effort provider default" in shown.stdout
+    # The default row first: nothing chosen there leaves the choice to the provider, and a
+    # task that chooses nothing takes the default.
+    assert "default                model the provider's own, effort the provider's own" in (
+        shown.stdout
+    )
+    assert "conversation           model default, effort default" in shown.stdout
+    assert "the provider's own setting was not seen yet" in shown.stdout
     assert "pipeline               model claude-sonnet-5-5, effort medium" in shown.stdout
+    assert set_default["defaults"] == {"model": "claude-sonnet-5-5", "effort": None}
+    assert set_default["tasks"]["conversation"] == {"model": "claude-haiku-5-5", "effort": "low"}
+    assert "default                model claude-sonnet-5-5, effort the provider's own" in (
+        cleared.stdout
+    )
+    assert "conversation           model default, effort default" in cleared.stdout
+    assert unknown.exit_code == 2 and "one of default, conversation" in unknown.output
     # Every task has a feature that uses it: none is announced ahead of its own.
     assert "clarify" in shown.stdout and "(not available yet)" not in shown.stdout
     assert set_one["tasks"]["conversation"] == {"model": "claude-haiku-5-5", "effort": "low"}

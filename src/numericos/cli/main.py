@@ -1904,14 +1904,32 @@ def agent_ask(
         raise typer.Exit(code)
 
 
+#: The row of a policy that is not a task: what the tasks that do not choose run with.
+POLICY_DEFAULT = "default"
+
+
 def _policy_text(policy: Record) -> str:
     available = set(policy["available"])
-    lines = [f"policy of project {policy['project_id']} (version {policy['version']})"]
+    defaults = policy["defaults"]
+    own = "the provider's own"
+    lines = [
+        f"policy of project {policy['project_id']} (version {policy['version']})",
+        f"  {POLICY_DEFAULT:<22} model {defaults.get('model') or own}, "
+        f"effort {defaults.get('effort') or own}",
+    ]
     for task, choice in policy["tasks"].items():
-        model = choice.get("model") or "provider default"
-        effort = choice.get("effort") or "provider default"
+        model = choice.get("model") or POLICY_DEFAULT
+        effort = choice.get("effort") or POLICY_DEFAULT
         note = "" if task in available else "  (not available yet)"
         lines.append(f"  {task:<22} model {model}, effort {effort}{note}")
+    seen = policy.get("provider_default")
+    if seen:
+        where = "" if seen["in_project"] else ", in another project"
+        lines.append(
+            f"{own} setting was last seen to be {seen['model']} ({seen['seen_at'][:10]}{where})"
+        )
+    else:
+        lines.append(f"{own} setting was not seen yet: no turn ran without a model being named")
     return "\n".join(lines)
 
 
@@ -1919,18 +1937,25 @@ def _policy_text(policy: Record) -> str:
 def agent_policy(
     project_id: ProjectOption,
     task: Annotated[
-        str | None, typer.Option("--task", help="Task to set (conversation, clarify, ...).")
+        str | None,
+        typer.Option(
+            "--task",
+            help="Row to set: a task (conversation, clarify, ...), or 'default' for the "
+            "tasks that do not choose.",
+        ),
     ] = None,
     model: Annotated[
-        str | None, typer.Option("--model", help="Model for the task; 'default' clears it.")
+        str | None, typer.Option("--model", help="Model for the row; 'default' clears it.")
     ] = None,
     effort: Annotated[
-        str | None, typer.Option("--effort", help="Effort for the task; 'default' clears it.")
+        str | None, typer.Option("--effort", help="Effort for the row; 'default' clears it.")
     ] = None,
     json_: JsonFlag = False,
     api_url: ApiUrlOption = None,
 ) -> None:
-    """Show, or set for one task, which model and effort the agent uses in a project."""
+    """Show, or set for one row, which model and effort the agent uses in a project. A task
+    that is cleared takes the default; the default, cleared, leaves the choice to the
+    provider."""
     path = f"/v1/projects/{project_id}/agent-policy"
     if task is None and model is None and effort is None:
         _emit(_api(json_, api_url, lambda client: client.get(path)), json_, _policy_text)
@@ -1941,13 +1966,18 @@ def agent_policy(
     def put(client: ApiClient) -> Record:
         current: Record = client.get(path)
         tasks = {name: dict(choice) for name, choice in current["tasks"].items()}
-        if task not in tasks:
-            raise typer.BadParameter(f"unknown task {task!r}; one of {', '.join(tasks)}")
+        defaults = dict(current["defaults"])
+        if task != POLICY_DEFAULT and task not in tasks:
+            rows = ", ".join([POLICY_DEFAULT, *tasks])
+            raise typer.BadParameter(f"unknown task {task!r}; one of {rows}")
+        row = defaults if task == POLICY_DEFAULT else tasks[task]
         if model is not None:
-            tasks[task]["model"] = None if model == "default" else model
+            row["model"] = None if model == "default" else model
         if effort is not None:
-            tasks[task]["effort"] = None if effort == "default" else effort
-        saved: Record = client.put(path, {"version": current["version"], "tasks": tasks})
+            row["effort"] = None if effort == "default" else effort
+        saved: Record = client.put(
+            path, {"version": current["version"], "tasks": tasks, "defaults": defaults}
+        )
         return saved
 
     _emit(_api(json_, api_url, put), json_, _policy_text)

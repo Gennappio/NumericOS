@@ -26,7 +26,7 @@ TABLES = {
     "documents",
     "annotations",
 }
-HEAD = "0011"
+HEAD = "0012"
 
 
 def test_fresh_upgrade_reaches_head(engine: Engine) -> None:
@@ -231,6 +231,7 @@ def test_the_task_of_the_pipeline_takes_over_what_was_saved_for_its_old_name(
     renamed, moved = saved(), kept()
     with engine.connect() as connection:
         empty = connection.execute(text("SELECT pipeline FROM documents")).scalar_one()
+        defaults = connection.execute(text("SELECT defaults FROM agent_policies")).scalar_one()
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -255,6 +256,8 @@ def test_the_task_of_the_pipeline_takes_over_what_was_saved_for_its_old_name(
     assert moved == [("pipeline", "theory", "# Theory", 3, "ases_1")] and empty is None
     assert back == [("execution_description", "theory", "# Theory", 3, "ases_1")]
     assert documents == 1  # the theory stays; a pipeline has no place in the schema before
+    # Revision 0012: a policy saved before it had no default of its own.
+    assert json.loads(defaults) == {}
     migrate.upgrade(engine)
     migrate.check(engine)
     engine.dispose()

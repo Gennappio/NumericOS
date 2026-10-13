@@ -410,6 +410,18 @@ class MessageRepository:
             statement = statement.limit(limit)
         return list(self._session.scalars(statement))
 
+    def latest_on_providers_choice(self, project_id: str | None = None) -> AgentMessage | None:
+        """The newest turn (of a project, or of all) that was started without naming a model
+        and that the provider answered: the model it reports is what the provider uses by
+        itself."""
+        statement = select(AgentMessage).where(
+            AgentMessage.model_requested.is_(None), AgentMessage.model.is_not(None)
+        )
+        if project_id is not None:
+            statement = statement.where(AgentMessage.project_id == project_id)
+        statement = statement.order_by(AgentMessage.created_at.desc(), AgentMessage.id.desc())
+        return self._session.scalars(statement.limit(1)).first()
+
     def active_in_session(self, session_id: str, statuses: Sequence[str]) -> AgentMessage | None:
         statement = select(AgentMessage).where(
             AgentMessage.session_id == session_id, AgentMessage.status.in_(statuses)

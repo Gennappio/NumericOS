@@ -106,30 +106,68 @@ test("what the permission mode refuses is shown, and a working turn can be stopp
   await page.screenshot({ path: "test-results/screens/agent-stopped.png", fullPage: true })
 })
 
-test("the model and effort of each task are chosen per project and used by the next turn", async ({
+test("a default for every task and a choice per task say which model the next turn uses", async ({
   page,
   request,
 }) => {
   const project = await trustedExampleProject(request)
+  const views = page.getByRole("navigation", { name: "Project views" })
   await page.goto(`/projects/${project.id}`)
-  await page.getByRole("navigation", { name: "Project views" }).getByText("Agent").click()
+  await views.getByText("Agent").click()
 
   // The Agent view is this table and nothing else: the conversations are in the sidebar.
   const table = page.getByRole("table", { name: "Models and effort per task" })
   await expect(page.getByLabel("Message to the agent")).toHaveCount(0)
-  await expect(table.getByRole("row")).toHaveCount(8)
-  await expect(page.getByLabel("Model for Clarify")).toBeEnabled()
-  // Every task has a feature that uses it: a lighter model is suggested where it is enough.
+  await expect(table.getByRole("row")).toHaveCount(9) // the header, the default, seven tasks
+  // It says which coding agent is at work, and what "its own setting" means.
+  await expect(page.getByTestId("coding-agent")).toContainText("Coding agent: Claude Code 9.9.9")
+  const explained = page.getByTestId("policy-explained")
+  await expect(explained).toContainText("leaves the choice to Claude Code")
+  await expect(page.getByLabel("Default model")).toHaveValue("")
+  await expect(page.getByLabel("Default model").locator("option").first()).toHaveText(
+    /^Claude Code's own setting( \(last seen: fake-model\))?$/,
+  )
+  // A lighter model is suggested where it is enough; the others follow the default.
   await expect(page.getByLabel("Model for Pipeline")).toHaveValue("claude-sonnet-5-5")
-  await page.getByLabel("Model for Conversation").selectOption("claude-haiku-5-5")
-  await page.getByLabel("Effort for Conversation").selectOption("low")
+  await expect(page.getByLabel("Model for Conversation")).toHaveValue("")
+  await expect(page.getByLabel("Model for Conversation").locator("option").first()).toHaveText(
+    "Default (Claude Code's own setting)",
+  )
+
+  // Nothing chosen: the turn is Claude Code's to decide, and the answer says what it used.
+  await startConversation(page, project)
+  await expect(page.getByRole("option", { name: "Policy: Claude Code's own setting" })).toHaveCount(2)
+  await page.getByLabel("Message to the agent").fill("ECHO whatever you use")
+  await page.getByRole("button", { name: "Send" }).click()
+  const first = page.getByRole("article", { name: "Agent answer" })
+  await expect(first.locator("[data-status=final]")).toBeVisible()
+  await expect(first.getByText("model fake-model")).toBeVisible()
+  // From then on the table says what the agent's own setting was seen to be.
+  await views.getByText("Agent").click()
+  await expect(explained).toContainText("The last turn that ran on it here was answered by fake-model")
+  await expect(page.getByLabel("Default model").locator("option").first()).toHaveText(
+    "Claude Code's own setting (last seen: fake-model)",
+  )
+
+  // One default for every task: set once, and the rows that do not choose show what it is.
+  await page.getByLabel("Default model").selectOption("claude-haiku-5-5")
+  await page.getByLabel("Default effort").selectOption("low")
+  await expect(page.getByLabel("Model for Conversation").locator("option").first()).toHaveText(
+    "Default (Haiku 5.5)",
+  )
+  await expect(page.getByLabel("Effort for Theory page").locator("option").first()).toHaveText(
+    "Default (low)",
+  )
+  await page.getByRole("button", { name: "Leave every task on Default" }).click()
+  await expect(page.getByLabel("Model for Pipeline")).toHaveValue("") // no row chooses any more
   await page.getByRole("button", { name: "Save" }).click()
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled() // saved: no change left
-
+  await expect(page.getByRole("button", { name: "Leave every task on Default" })).toBeDisabled()
   await page.screenshot({ path: "test-results/screens/agent-policy.png", fullPage: true })
 
   await startConversation(page, project)
   await expect(page.getByRole("option", { name: "Policy: Haiku 5.5" })).toBeAttached()
+  await expect(page.getByRole("option", { name: "Policy: low" })).toBeAttached()
   await page.getByLabel("Message to the agent").fill("ECHO light and quick")
   await page.getByRole("button", { name: "Send" }).click()
   const answer = page.getByRole("article", { name: "Agent answer" })
@@ -139,11 +177,20 @@ test("the model and effort of each task are chosen per project and used by the n
   await expect(answer.getByText("12 in / 34 out tokens")).toBeVisible()
   await expect(answer.getByText("plan: 21% of the 5-hour window, 4% of the week")).toBeVisible()
 
-  // A conversation can override its row of the policy.
+  // A task that chooses for itself is not touched by the default.
+  await views.getByText("Agent").click()
+  await page.getByLabel("Model for Conversation").selectOption("claude-sonnet-5-5")
+  await page.getByRole("button", { name: "Save" }).click()
+  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled()
+  await startConversation(page, project)
+  await expect(page.getByRole("option", { name: "Policy: Sonnet 5.5" })).toBeAttached()
+
+  // And a conversation can override its row of the policy.
   await page.getByLabel("Effort", { exact: true }).selectOption("max")
   await page.getByLabel("Message to the agent").fill("ECHO harder")
   await page.getByRole("button", { name: "Send" }).click()
-  const second = page.getByRole("article", { name: "Agent answer" }).nth(1)
+  const second = page.getByRole("article", { name: "Agent answer" })
   await expect(second.locator("[data-status=final]")).toBeVisible()
+  await expect(second.getByText("model claude-sonnet-5-5")).toBeVisible()
   await expect(second.getByText("effort max")).toBeVisible()
 })

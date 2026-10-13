@@ -5,20 +5,19 @@ from __future__ import annotations
 from typing import Any
 
 from numericos.agents.claude_code import SUGGESTED_POLICY
-from numericos.persistence.models import AgentMessage, AgentSession
+from numericos.persistence.models import AgentMessage, AgentPolicy, AgentSession
 
 
-def choice_for(
-    session: AgentSession, policy_tasks: dict[str, Any] | None
-) -> tuple[str | None, str | None]:
-    """The model and effort a turn of ``session`` is started with: the session's own choice,
-    else the policy's for its task (the suggested policy while none was saved), else nothing
-    (the provider's default)."""
-    chosen = (policy_tasks if policy_tasks is not None else SUGGESTED_POLICY).get(
-        session.task
-    ) or {}
-    model = session.model or chosen.get("model")
-    effort = session.effort or chosen.get("effort")
+def choice_for(session: AgentSession, policy: AgentPolicy | None) -> tuple[str | None, str | None]:
+    """The model and effort a turn of ``session`` is started with, each on its own: the
+    session's own choice, else the policy's for its task, else the policy's default, else
+    nothing (the provider then uses what it uses by itself). While no policy was saved the
+    suggested one applies."""
+    tasks = policy.tasks if policy is not None else SUGGESTED_POLICY
+    defaults = (policy.defaults if policy is not None else None) or {}
+    chosen = tasks.get(session.task) or {}
+    model = session.model or chosen.get("model") or defaults.get("model")
+    effort = session.effort or chosen.get("effort") or defaults.get("effort")
     return (model if isinstance(model, str) and model else None), (
         effort if isinstance(effort, str) and effort else None
     )

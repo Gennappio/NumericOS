@@ -194,6 +194,11 @@ def test_the_policy_names_a_model_and_effort_per_task(client: TestClient, repo: 
     unchanged = client.put(path, json={"version": 1, "tasks": again["tasks"]})
 
     assert before["version"] == 0 and before["updated_at"] is None
+    # No default was chosen: a task that chooses nothing is left to the provider, which was
+    # not seen to choose anything here yet.
+    assert before["defaults"] == {"model": None, "effort": None}
+    assert before["provider_default"] is None
+    assert again["defaults"] == {"model": None, "effort": None}
     assert set(before["tasks"]) == {
         "conversation",
         "clarify",
@@ -234,6 +239,55 @@ def test_the_policy_names_a_model_and_effort_per_task(client: TestClient, repo: 
     assert unchanged.json()["version"] == 1  # saving the same choices changes nothing
     kinds = [e["type"] for e in events(client, project["id"])]
     assert kinds.count("AGENT_POLICY_UPDATED") == 1
+
+
+def test_the_policy_has_a_default_for_the_tasks_that_do_not_choose(
+    client: TestClient, repo: Repo
+) -> None:
+    project = trusted_project(client, repo.root)
+    path = f"/v1/projects/{project['id']}/agent-policy"
+    tasks = {"conversation": {"model": "claude-haiku-5-5", "effort": None}}
+
+    saved = client.put(
+        path,
+        json={
+            "version": 0,
+            "tasks": tasks,
+            "defaults": {"model": "claude-sonnet-5-5", "effort": "low"},
+        },
+    )
+    kept = client.put(path, json={"version": 1, "tasks": tasks})  # says nothing of the default
+    half = client.put(
+        path, json={"version": 1, "tasks": tasks, "defaults": {"model": None, "effort": "high"}}
+    )
+    unknown = client.put(
+        path, json={"version": 2, "tasks": tasks, "defaults": {"model": "gpt-9", "effort": "low"}}
+    )
+    now = client.get(path).json()
+
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["defaults"] == {"model": "claude-sonnet-5-5", "effort": "low"}
+    # A task that chose nothing is stored as that: what it runs with is the default's to say.
+    assert saved.json()["tasks"]["theory"] == {"model": None, "effort": None}
+    assert saved.json()["tasks"]["conversation"] == {"model": "claude-haiku-5-5", "effort": None}
+    # A request that does not speak of the default leaves it, and changes nothing.
+    assert (kept.json()["version"], kept.json()["defaults"]) == (
+        1,
+        {"model": "claude-sonnet-5-5", "effort": "low"},
+    )
+    # Each half of the default stands alone: the model back to the provider, the effort set.
+    assert (half.json()["version"], half.json()["defaults"]) == (
+        2,
+        {"model": None, "effort": "high"},
+    )
+    assert unknown.status_code == 422
+    assert error_of(unknown)["details"]["errors"][0]["loc"] == ["body", "defaults", "model"]
+    assert now["defaults"] == {"model": None, "effort": "high"} and now["version"] == 2
+    updates = [e for e in events(client, project["id"]) if e["type"] == "AGENT_POLICY_UPDATED"]
+    assert [e["payload"]["defaults"] for e in updates] == [
+        {"model": "claude-sonnet-5-5", "effort": "low"},
+        {"model": None, "effort": "high"},
+    ]
 
 
 def test_a_session_may_override_the_policy_with_what_the_provider_offers(

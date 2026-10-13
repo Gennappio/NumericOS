@@ -134,6 +134,10 @@
             "title": "Available",
             "type": "array"
           },
+          "defaults": {
+            "$ref": "#/components/schemas/TaskPolicy",
+            "description": "The model and effort of the tasks that do not choose; null leaves the choice to the provider, which then uses what it uses when started without one."
+          },
           "project_id": {
             "title": "Project Id",
             "type": "string"
@@ -141,11 +145,22 @@
           "provider": {
             "$ref": "#/components/schemas/AgentProvider"
           },
+          "provider_default": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderDefault"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the provider was last seen to use by itself; null if never seen."
+          },
           "tasks": {
             "additionalProperties": {
               "$ref": "#/components/schemas/TaskPolicy"
             },
-            "description": "One entry per task, always.",
+            "description": "One entry per task, always; null takes `defaults`.",
             "propertyNames": {
               "$ref": "#/components/schemas/AgentTask"
             },
@@ -173,8 +188,10 @@
         "required": [
           "project_id",
           "provider",
+          "defaults",
           "tasks",
           "available",
+          "provider_default",
           "version",
           "updated_at"
         ],
@@ -184,11 +201,22 @@
       "AgentPolicyPut": {
         "additionalProperties": false,
         "properties": {
+          "defaults": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The default of the tasks that do not choose. Absent keeps the saved one."
+          },
           "tasks": {
             "additionalProperties": {
               "$ref": "#/components/schemas/TaskPolicy"
             },
-            "description": "Tasks to set; a task left out keeps the provider's default.",
+            "description": "Tasks to set; a task left out takes the default.",
             "propertyNames": {
               "$ref": "#/components/schemas/AgentTask"
             },
@@ -5062,6 +5090,32 @@
         "title": "ProjectVersion",
         "type": "object"
       },
+      "ProviderDefault": {
+        "description": "What the provider used by itself, as it was last observed: the model it reported for\nthe newest turn that was started without naming one. The provider does not report the\neffort it uses.",
+        "properties": {
+          "in_project": {
+            "description": "False when no turn of this project ran that way yet: seen in another.",
+            "title": "In Project",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "seen_at": {
+            "format": "date-time",
+            "title": "Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "seen_at",
+          "in_project"
+        ],
+        "title": "ProviderDefault",
+        "type": "object"
+      },
       "ResourcePage": {
         "properties": {
           "complete": {
@@ -6024,7 +6078,7 @@
       },
       "TaskPolicy": {
         "additionalProperties": false,
-        "description": "The model and effort for one kind of task; null takes the provider's default.",
+        "description": "A model and an effort. For a task, null takes the project's default; for the default,\nnull leaves the choice to the provider.",
         "properties": {
           "effort": {
             "anyOf": [

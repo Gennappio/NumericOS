@@ -52,6 +52,23 @@ describe("ConversationView", () => {
     expect(screen.queryByRole("table", { name: "Models and effort per task" })).toBeNull()
   })
 
+  it("shows what a conversation that does not choose takes from the project's default", async () => {
+    const none = { model: null, effort: null }
+    open(projectRecord(), {
+      "/v1/projects/prj_1/agent-policy": policyRecord({
+        defaults: { model: "claude-haiku-5-5", effort: null },
+        tasks: { ...policyRecord().tasks, conversation: none },
+      }),
+    })
+
+    await screen.findByRole("article", { name: "Agent answer" })
+    // The model comes from the default; no effort is chosen anywhere: the agent's own.
+    expect(await screen.findByRole("option", { name: "Policy: Haiku 5.5" })).toBeInTheDocument()
+    expect(
+      screen.getByRole("option", { name: "Policy: Claude Code's own setting" }),
+    ).toBeInTheDocument()
+  })
+
   it("invites to ask in a conversation where nothing was asked yet", async () => {
     open(projectRecord(), {
       "/v1/agent-sessions/ases_1": sessionRecord({ title: "New conversation", message_count: 0 }),

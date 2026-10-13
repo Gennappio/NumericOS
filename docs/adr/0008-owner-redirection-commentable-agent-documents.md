@@ -122,6 +122,10 @@ the owner then asked for: the Pipeline page, a board of boxes and arrows written
   and on whether the session is new (its system prompt is cached for the later turns). By the
   owner's request of the same evening, the model and the effort are chosen **per task**
   (conversation, clarify, resolve, theory, file descriptions, execution description, plan)
-  among what the chosen coding agent offers, with a per-conversation override.
+  among what the chosen coding agent offers, with a per-conversation override. On 2026-10-13
+  the owner asked what "provider default" was and to set the default in the same tab: the
+  policy has a **default** for the tasks that do not choose, and where that too is left
+  open the choice is the coding agent's own (what it uses when started by hand), named as
+  such and shown as it was last seen to be.
 - The release benchmark of the root `AGENTS.md` (section 9) becomes possible once the adapter
   exists, but is not part of these tickets.

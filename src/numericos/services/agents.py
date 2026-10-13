@@ -45,6 +45,7 @@ from numericos.core.schemas import (
     MessageList,
     MessageOut,
     MoveCreatedFiles,
+    ProviderDefault,
     TaskPolicy,
     WorkspaceOut,
 )
@@ -170,24 +171,41 @@ def _check_choice(
         )
 
 
-def _policy_out(project_id: str, row: AgentPolicy | None) -> AgentPolicyOut:
+def _provider_default(uow: UnitOfWork, project_id: str) -> ProviderDefault | None:
+    """What the provider was last seen to use when a turn named no model: in this project if
+    a turn of it ran that way, in any other otherwise. Read from what was recorded, not from
+    the provider's own settings, which are its own to interpret."""
+    seen = uow.messages.latest_on_providers_choice(project_id)
+    here = seen is not None
+    seen = seen or uow.messages.latest_on_providers_choice()
+    if seen is None or seen.model is None:
+        return None
+    return ProviderDefault(
+        model=seen.model, seen_at=seen.started_at or seen.created_at, in_project=here
+    )
+
+
+def _policy_out(uow: UnitOfWork, project_id: str, row: AgentPolicy | None) -> AgentPolicyOut:
     # Until a policy is saved, the provider's suggestions are what turns are started with.
     stored = row.tasks if row is not None else claude_code.SUGGESTED_POLICY
     return AgentPolicyOut(
         project_id=project_id,
         provider=AgentProvider(row.provider) if row is not None else AgentProvider.CLAUDE_CODE,
+        defaults=TaskPolicy.model_validate((row.defaults if row is not None else None) or {}),
         tasks={task: TaskPolicy.model_validate(stored.get(task.value) or {}) for task in AgentTask},
         available=sorted(AVAILABLE_TASKS, key=list(AgentTask).index),
+        provider_default=_provider_default(uow, project_id),
         version=row.version if row is not None else 0,
         updated_at=row.updated_at if row is not None else None,
     )
 
 
 def get_policy(uow: UnitOfWork, project_id: str) -> AgentPolicyOut:
-    """The model and effort per task; the provider's defaults until something was saved."""
+    """The model and effort per task and for the tasks that do not choose; the suggested
+    policy until something was saved."""
     with uow:
         project = require_project(uow, project_id)
-        return _policy_out(project.id, uow.agent_policies.get(project.id))
+        return _policy_out(uow, project.id, uow.agent_policies.get(project.id))
 
 
 def put_policy(
@@ -201,6 +219,8 @@ def put_policy(
     found = require_available(settings)
     for task, choice in data.tasks.items():
         _check_choice(found, choice.model, choice.effort, ["body", "tasks", task.value])
+    if data.defaults is not None:
+        _check_choice(found, data.defaults.model, data.defaults.effort, ["body", "defaults"])
     # Stored in one shape for every task, so that saving the same choices again is a no-op.
     tasks = {
         task.value: data.tasks.get(task, TaskPolicy()).model_dump(mode="json") for task in AgentTask
@@ -211,30 +231,35 @@ def put_policy(
         row = uow.agent_policies.get(project.id)
         current = row.version if row is not None else 0
         check_version("agent_policy", project.id, current=current, provided=data.version)
+        # A request that does not speak of the default leaves it as it is.
+        kept = TaskPolicy.model_validate((row.defaults if row is not None else None) or {})
+        defaults = (data.defaults if data.defaults is not None else kept).model_dump(mode="json")
         if row is None:
             row = uow.agent_policies.add(
                 AgentPolicy(
                     project_id=project.id,
                     provider=found.provider.value,
                     tasks=tasks,
+                    defaults=defaults,
                     version=1,
                     created_at=now,
                     updated_at=now,
                 )
             )
         else:
-            if row.tasks == tasks:
-                return _policy_out(project.id, row)
+            if row.tasks == tasks and kept.model_dump(mode="json") == defaults:
+                return _policy_out(uow, project.id, row)
             row.tasks = tasks
+            row.defaults = defaults
             row.version += 1
             row.updated_at = now
-        out = _policy_out(project.id, row)
+        out = _policy_out(uow, project.id, row)
         uow.record(
             build_event(
                 event_type=EventType.AGENT_POLICY_UPDATED,
                 project_id=project.id,
                 subject_id=project.id,
-                payload={"tasks": tasks, "version": row.version},
+                payload={"tasks": tasks, "defaults": defaults, "version": row.version},
                 context=context,
             )
         )

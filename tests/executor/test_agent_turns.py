@@ -287,3 +287,57 @@ def test_the_policy_of_the_project_chooses_model_and_effort_unless_the_session_d
     assert first["plan_usage"]["five_hour"]["utilization"] == 0.21
     assert first["plan_usage"]["seven_day"]["utilization"] == 0.04
     assert first["plan_usage"]["using_overage"] is False
+
+
+def test_a_task_that_does_not_choose_runs_with_the_default_and_else_with_the_providers_own(
+    lab: Lab, supervisor: Worker, settings: Settings
+) -> None:
+    path = f"/v1/projects/{lab.project['id']}/agent-policy"
+
+    def argv_of(message_id: str) -> list[str]:
+        spec = json.loads(
+            (layout.turn_dir(settings.data_dir, message_id) / layout.SPEC).read_text()
+        )
+        argv: list[str] = spec["argv"]
+        return argv
+
+    # Nothing is chosen anywhere: the provider is started without a model and says which it
+    # used. That is the only way its own choice is known, and it is remembered as seen.
+    unseen = lab.get(path)["provider_default"]
+    own = lab.ask(lab.open_session(), "ECHO the provider's own")
+    drive(supervisor, lambda: ended(lab, own["id"]))
+    seen = lab.get(path)["provider_default"]
+
+    # A default for the project: the conversation takes it; the theory has its own model and
+    # takes only the effort; a session that chooses is not touched by either.
+    lab.http.put(
+        path,
+        json={
+            "version": 0,
+            "tasks": {"theory": {"model": "claude-fable-5-1"}},
+            "defaults": {"model": "claude-haiku-5-5", "effort": "low"},
+        },
+    )
+    by_default = lab.ask(lab.open_session(), "ECHO by default")
+    drive(supervisor, lambda: ended(lab, by_default["id"]))
+    theory = lab.generate("theory", "ECHO # T")
+    drive(supervisor, lambda: ended(lab, theory["pending_message_id"]))
+    by_session = lab.ask(lab.open_session(model="claude-sonnet-5-5"), "ECHO by session")
+    drive(supervisor, lambda: ended(lab, by_session["id"]))
+    still = lab.get(path)["provider_default"]
+
+    assert unseen is None
+    first = lab.message(own["id"])
+    assert (first["model_requested"], first["effort"], first["model"]) == (None, None, "fake-model")
+    assert "--model" not in argv_of(own["id"]) and "--effort" not in argv_of(own["id"])
+    assert (seen["model"], seen["in_project"]) == ("fake-model", True)
+    assert seen["seen_at"] == first["started_at"]
+
+    second = lab.message(by_default["id"])
+    assert (second["model_requested"], second["effort"]) == ("claude-haiku-5-5", "low")
+    written = lab.message(theory["pending_message_id"])
+    assert (written["model_requested"], written["effort"]) == ("claude-fable-5-1", "low")
+    third = lab.message(by_session["id"])
+    assert (third["model_requested"], third["effort"]) == ("claude-sonnet-5-5", "low")
+    # Turns that named a model say nothing about what the provider would have chosen.
+    assert still == seen

@@ -499,7 +499,8 @@ class Annotation(Base):
 
 
 class AgentPolicy(Base):
-    """Which model and effort the agent uses for each kind of task of a project."""
+    """Which model and effort the agent uses for each kind of task of a project, and which
+    for the tasks that do not choose."""
 
     __tablename__ = "agent_policies"
     __table_args__ = (CheckConstraint(one_of("provider", AgentProvider), name="provider"),)
@@ -508,8 +509,11 @@ class AgentPolicy(Base):
         String(40), ForeignKey("projects.id", ondelete="RESTRICT"), primary_key=True
     )
     provider: Mapped[str] = mapped_column(String(20))
-    #: ``{task: {"model": ..., "effort": ...}}``; null values take the provider's default.
+    #: ``{task: {"model": ..., "effort": ...}}``; a null value takes the project's default.
     tasks: Mapped[dict[str, Any]] = mapped_column(JSON)
+    #: ``{"model": ..., "effort": ...}`` for the tasks that do not choose; a null value leaves
+    #: the choice to the provider (what it uses when it is started without one).
+    defaults: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime)

@@ -629,18 +629,42 @@ class WorkspaceOut(BaseModel):
 
 
 class TaskPolicy(StrictModel):
-    """The model and effort for one kind of task; null takes the provider's default."""
+    """A model and an effort. For a task, null takes the project's default; for the default,
+    null leaves the choice to the provider."""
 
     model: str | None = Field(default=None, max_length=100)
     effort: str | None = Field(default=None, max_length=20)
 
 
+class ProviderDefault(BaseModel):
+    """What the provider used by itself, as it was last observed: the model it reported for
+    the newest turn that was started without naming one. The provider does not report the
+    effort it uses."""
+
+    model: str
+    seen_at: datetime
+    in_project: bool = Field(
+        description="False when no turn of this project ran that way yet: seen in another."
+    )
+
+
 class AgentPolicyOut(BaseModel):
     project_id: str
     provider: AgentProvider
-    tasks: dict[AgentTask, TaskPolicy] = Field(description="One entry per task, always.")
+    defaults: TaskPolicy = Field(
+        description=(
+            "The model and effort of the tasks that do not choose; null leaves the choice to "
+            "the provider, which then uses what it uses when started without one."
+        )
+    )
+    tasks: dict[AgentTask, TaskPolicy] = Field(
+        description="One entry per task, always; null takes `defaults`."
+    )
     available: list[AgentTask] = Field(
         description="Tasks a built feature uses today; the others wait for theirs."
+    )
+    provider_default: ProviderDefault | None = Field(
+        description="What the provider was last seen to use by itself; null if never seen."
     )
     version: int = Field(description="0 until the policy was saved once.")
     updated_at: datetime | None
@@ -649,7 +673,11 @@ class AgentPolicyOut(BaseModel):
 class AgentPolicyPut(StrictModel):
     version: int = Field(ge=0, description="Current version; 0 saves it for the first time.")
     tasks: dict[AgentTask, TaskPolicy] = Field(
-        description="Tasks to set; a task left out keeps the provider's default."
+        description="Tasks to set; a task left out takes the default."
+    )
+    defaults: TaskPolicy | None = Field(
+        default=None,
+        description="The default of the tasks that do not choose. Absent keeps the saved one.",
     )
 
 
